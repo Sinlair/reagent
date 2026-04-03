@@ -1,0 +1,49 @@
+{
+  "name": "reagent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "prestart": "npm run build",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "node tests/researchWorkflow.test.mjs && node tests/platform.test.mjs && node tests/provider.test.mjs && node tests/nativeWeChatProvider.test.mjs && node tests/researchDirectionService.test.mjs && node tests/researchDiscoveryService.test.mjs && node tests/researchDiscoverySchedulerService.test.mjs && node tests/researchLinkIngestionService.test.mjs && node tests/researchRepoAnalysisService.test.mjs && node tests/researchPresentationService.test.mjs && node tests/researchPaperAnalysisService.test.mjs && node tests/researchBaselineService.test.mjs && node tests/researchModuleAssetService.test.mjs && node tests/researchMemoryRegistryService.test.mjs && node tests/researchTaskService.test.mjs && node tests/chatResearchAgentTools.test.mjs && node tests/chatResearchPaperAnalysisTool.test.mjs && node tests/chatResearchModuleTool.test.mjs",
+    "pm2:start": "npx.cmd -y pm2@latest start ecosystem.config.cjs --only reagent",
+    "pm2:restart": "npx.cmd -y pm2@latest restart reagent",
+    "pm2:stop": "npx.cmd -y pm2@latest stop reagent",
+    "pm2:delete": "npx.cmd -y pm2@latest delete reagent",
+    "pm2:logs": "npx.cmd -y pm2@latest logs reagent",
+    "service:preflight": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\preflight-windows-service.ps1",
+    "service:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\install-windows-service.ps1",
+    "service:status": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\status-windows-service.ps1",
+    "service:uninstall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\uninstall-windows-service.ps1",
+    "service:start": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\start-windows-service.ps1",
+    "service:stop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\stop-windows-service.ps1",
+    "service:runner": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\reagent-service-runner.ps1",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "@prisma/adapter-better-sqlite3": "^7.0.0",
+    "@prisma/client": "^7.0.0",
+    "dotenv": "^17.3.1",
+    "fastify": "^5.8.4",
+    "jsdom": "^29.0.1",
+    "openai": "^6.33.0",
+    "pdfjs-dist": "^5.6.205",
+    "qrcode": "^1.5.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.5.0",
+    "prisma": "^7.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}

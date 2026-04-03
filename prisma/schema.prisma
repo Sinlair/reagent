@@ -1,0 +1,96 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model ResearchReport {
+  taskId                   String             @id
+  topic                    String
+  question                 String?
+  generatedAt              DateTime
+  summary                  String
+  objective                String
+  subquestions             Json
+  searchQueries            Json
+  findings                 Json
+  gaps                     Json
+  nextActions              Json
+  warnings                 Json
+  critiqueVerdict          String?
+  critiqueSummary          String?
+  critiqueIssues           Json?
+  critiqueRecommendations  Json?
+  supportedEvidenceCount   Int?
+  unsupportedEvidenceCount Int?
+  coveredFindingsCount     Int?
+  citationDiversity        Int?
+  citationCoverage         Float?
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  papers                   ResearchPaper[]
+  chunks                   ResearchChunk[]
+  evidence                 ResearchEvidence[]
+}
+
+model ResearchPaper {
+  id              String         @id @default(cuid())
+  reportId        String
+  externalId      String
+  title           String
+  abstract        String?
+  authors         Json
+  url             String
+  pdfUrl          String?
+  year            Int?
+  venue           String?
+  doi             String?
+  source          String
+  relevanceReason String?
+  rank            Int?
+  score           Int?
+  rankingReasons  Json?
+  report          ResearchReport @relation(fields: [reportId], references: [taskId], onDelete: Cascade)
+
+  @@index([reportId])
+  @@unique([reportId, externalId])
+}
+
+model ResearchChunk {
+  id         String         @id
+  reportId   String
+  paperId    String
+  ordinal    Int
+  sourceType String
+  text       String
+  pageNumber Int?
+  report     ResearchReport @relation(fields: [reportId], references: [taskId], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([reportId, paperId])
+}
+
+model ResearchEvidence {
+  id         String         @id @default(cuid())
+  reportId   String
+  paperId    String
+  chunkId    String?
+  claim      String
+  support    String
+  quote      String?
+  pageNumber Int?
+  sourceType String?
+  confidence String
+  report     ResearchReport @relation(fields: [reportId], references: [taskId], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([reportId, paperId])
+  @@index([reportId, chunkId])
+}

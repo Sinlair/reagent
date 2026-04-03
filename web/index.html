@@ -1,0 +1,1495 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReAgent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app-shell" class="shell shell--chat">
+      <button
+        id="nav-backdrop"
+        class="shell-nav-backdrop"
+        type="button"
+        data-i18n-aria-label="common.closeNav"
+        aria-label="Close navigation"
+      ></button>
+
+      <header class="topbar">
+        <div class="topnav-shell">
+          <button
+            id="nav-toggle"
+            class="topbar-nav-toggle btn btn--icon"
+            type="button"
+            data-i18n-aria-label="common.toggleNav"
+            aria-label="Toggle navigation"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <line x1="4" y1="7" x2="20" y2="7"></line>
+              <line x1="4" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="17" x2="20" y2="17"></line>
+            </svg>
+          </button>
+
+          <div class="topnav-shell__content">
+            <div class="dashboard-header">
+              <div class="dashboard-header__breadcrumb">
+                <span class="dashboard-header__breadcrumb-link">ReAgent</span>
+                <span class="dashboard-header__breadcrumb-sep">/</span>
+                <span id="current-tab-label" class="dashboard-header__breadcrumb-current"
+                  >Chat</span
+                >
+              </div>
+              <div class="dashboard-header__title-row">
+                <h1 id="page-title">Chat Workspace</h1>
+                <p id="page-subtitle">
+                  Direct chat and slash-command control live in the same thread.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="topnav-shell__actions">
+            <button
+              id="focus-chat-input"
+              class="topbar-search"
+              type="button"
+              data-i18n-title="common.commandPaletteTitle"
+              title="Search or jump"
+            >
+              <span
+                id="focus-chat-input-label"
+                class="topbar-search__label"
+                data-i18n="common.commandPalette"
+                >Search or jump</span
+              >
+              <kbd class="topbar-search__kbd">Ctrl K</kbd>
+            </button>
+
+            <div class="lang-switch" role="group" aria-label="Language switch">
+              <button
+                id="lang-zh-btn"
+                class="lang-switch__btn"
+                type="button"
+                data-lang="zh"
+              >ZH</button>
+              <button
+                id="lang-en-btn"
+                class="lang-switch__btn"
+                type="button"
+                data-lang="en"
+              >
+                EN
+              </button>
+            </div>
+
+            <div class="topbar-status">
+              <div class="pill pill--health">
+                <span id="health-dot" class="statusDot"></span>
+                <span id="health-chip">Loading</span>
+              </div>
+              <div class="pill">
+                <span
+                  id="wechat-pill-label"
+                  class="pill__label"
+                  data-i18n="common.wechat"
+                  >WeChat</span
+                >
+                <strong id="wechat-connection">-</strong>
+                <span id="wechat-mode" class="pill__meta">provider</span>
+              </div>
+              <div class="pill">
+                <span
+                  id="memory-pill-label"
+                  class="pill__label"
+                  data-i18n="common.memory"
+                  >Memory</span
+                >
+                <strong id="memory-file-count">-</strong>
+                <span id="memory-mode" class="pill__meta">mode</span>
+              </div>
+              <div class="pill">
+                <span
+                  id="sessions-pill-label"
+                  class="pill__label"
+                  data-i18n="common.sessions"
+                  >Sessions</span
+                >
+                <strong id="research-session-count">-</strong>
+                <span id="latest-report-age" class="pill__meta">latest</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="shell-nav">
+        <aside id="sidebar" class="sidebar">
+          <div class="sidebar-shell">
+            <div class="sidebar-shell__header">
+              <div class="sidebar-brand">
+                <div class="sidebar-brand__logo">
+                  <span class="sidebar-brand__logo-mark">R</span>
+                </div>
+                <div class="sidebar-brand__copy">
+                  <span
+                    id="sidebar-brand-eyebrow"
+                    class="sidebar-brand__eyebrow"
+                    data-i18n="shell.brandEyebrow"
+                    >Control UI</span
+                  >
+                  <span class="sidebar-brand__title">ReAgent</span>
+                </div>
+              </div>
+
+              <button
+                id="nav-collapse-toggle"
+                class="nav-collapse-toggle"
+                type="button"
+                data-i18n-title="common.collapseNav"
+                title="Collapse navigation"
+              >
+                <span class="nav-collapse-toggle__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M15 18l-6-6 6-6"></path>
+                  </svg>
+                </span>
+              </button>
+            </div>
+
+            <div class="sidebar-shell__body">
+              <nav class="sidebar-nav">
+                <section class="nav-section">
+                  <div
+                    id="nav-section-chat-label"
+                    class="nav-section__label static-label"
+                    data-i18n="shell.navChat"
+                  >
+                    Chat
+                  </div>
+                  <button class="nav-item nav-item--active" data-tab="chat" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.chat">Chat</span>
+                  </button>
+                </section>
+
+                <section class="nav-section">
+                  <div
+                    id="nav-section-control-label"
+                    class="nav-section__label static-label"
+                    data-i18n="shell.navControl"
+                  >
+                    Control
+                  </div>
+                  <button class="nav-item" data-tab="overview" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M3 3v18h18"></path>
+                        <path d="M8 15V9"></path>
+                        <path d="M12 15V6"></path>
+                        <path d="M16 15v-3"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.overview">Overview</span>
+                  </button>
+                  <button class="nav-item" data-tab="graph" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <circle cx="5" cy="6" r="2"></circle><circle cx="19" cy="6" r="2"></circle><circle cx="12" cy="18" r="2"></circle><path d="M7 6h10"></path><path d="M6 8l5 8"></path><path d="M18 8l-5 8"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.graph">Graph</span>
+                  </button>
+                  <button class="nav-item" data-tab="research" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="M21 21l-4.35-4.35"></path>
+                        <path d="M11 8v6"></path>
+                        <path d="M8 11h6"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.research">Research</span>
+                  </button>
+                  <button class="nav-item" data-tab="memory" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M5 4h11a3 3 0 0 1 3 3v13l-4-2-4 2-4-2-4 2V7a3 3 0 0 1 3-3z"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.memory">Memory</span>
+                  </button>
+                </section>
+
+                <section class="nav-section">
+                  <div
+                    id="nav-section-agent-label"
+                    class="nav-section__label static-label"
+                    data-i18n="shell.navAgent"
+                  >
+                    Agent
+                  </div>
+                  <button class="nav-item" data-tab="agents" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M12 3l7 4v10l-7 4-7-4V7z"></path>
+                        <path d="M9 11a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.agents">Agents</span>
+                  </button>
+                  <button class="nav-item" data-tab="skills" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M13 3l8 8-10 10H3v-8z"></path>
+                        <path d="M8 8l8 8"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.skills">Skills</span>
+                  </button>
+                  <button class="nav-item" data-tab="sessions" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <path d="M14 2v6h6"></path>
+                        <path d="M8 13h8"></path>
+                        <path d="M8 17h5"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.sessions">Sessions</span>
+                  </button>
+                </section>
+
+                <section class="nav-section">
+                  <div
+                    id="nav-section-settings-label"
+                    class="nav-section__label static-label"
+                    data-i18n="shell.navSettings"
+                  >
+                    Settings
+                  </div>
+                  <button class="nav-item" data-tab="settings" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6z"></path>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83a2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33a1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0a2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1a1.65 1.65 0 0 0-.33-1.82L4.21 6.21a2 2 0 0 1 0-2.83a2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0a2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.settings">Settings</span>
+                  </button>
+                  <button class="nav-item" data-tab="channels" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11.1 4.83"></path>
+                        <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L12.9 19.17"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.channels">Channels</span>
+                  </button>
+                  <button class="nav-item" data-tab="logs" type="button">
+                    <span class="nav-item__icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M8 6h13"></path>
+                        <path d="M8 12h13"></path>
+                        <path d="M8 18h13"></path>
+                        <path d="M3 6h.01"></path>
+                        <path d="M3 12h.01"></path>
+                        <path d="M3 18h.01"></path>
+                      </svg>
+                    </span>
+                    <span class="nav-item__text" data-i18n="tabs.logs">Logs</span>
+                  </button>
+                </section>
+              </nav>
+            </div>
+
+            <div class="sidebar-shell__footer">
+              <div class="sidebar-utility-group">
+                <div class="sidebar-version">
+                  <span
+                    id="sidebar-status-label"
+                    class="sidebar-version__label"
+                    data-i18n="common.status"
+                    >Status</span
+                  >
+                  <span id="sidebar-status-text" class="sidebar-version__text">Loading</span>
+                  <span
+                    id="sidebar-status-dot"
+                    class="sidebar-version__status sidebar-connection-status--offline"
+                  ></span>
+                </div>
+                <div
+                  id="sidebar-note"
+                  class="sidebar-note"
+                  data-i18n="shell.sidebarNote"
+                >
+                  Research, memory, chat, and transport stay in one workspace shell.
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <main id="content-root" class="content content--chat">
+        <div id="product-alerts" class="content-alerts" hidden></div>
+        <section class="workspace-panel workspace-panel--active" data-panel="chat">
+          <div class="chat-layout">
+            <article class="card chat-stage">
+              <div class="chat-stage__header">
+                <div>
+                  <div
+                    id="chat-card-kicker"
+                    class="section-kicker"
+                    data-i18n="chat.kicker"
+                  >
+                    Conversation
+                  </div>
+                  <div
+                    id="chat-card-title"
+                    class="card-title card-title--lg"
+                    data-i18n="chat.title"
+                  >
+                    Chat Workspace
+                  </div>
+                  <div
+                    id="chat-card-sub"
+                    class="card-sub"
+                    data-i18n="chat.sub"
+                  >
+                    Direct chat and slash-command control live in the same thread.
+                  </div>
+                </div>
+                <div class="chat-stage__meta">
+                  <span class="pill">
+                    <span class="statusDot muted"></span>
+                    <span id="chat-transport-pill">Transport</span>
+                  </span>
+                  <span class="pill">
+                    <span class="statusDot accent"></span>
+                    <span id="chat-memory-pill">Memory</span>
+                  </span>
+                </div>
+              </div>
+
+              <div class="chat-thread-shell">
+                <div id="wechat-messages" class="chat-thread empty-state">No messages yet.</div>
+              </div>
+
+              <form id="wechat-message-form" class="chat-compose">
+                <div class="chat-compose__row">
+                  <label class="field chat-compose__field">
+                    <span id="chat-message-label" data-i18n="chat.messageLabel">Message</span>
+                    <textarea
+                      id="wechat-message"
+                      rows="1"
+                      data-i18n-placeholder="chat.messagePlaceholder"
+                      placeholder="Message ReAgent or use /research, /memory, /remember"
+                    ></textarea>
+                  </label>
+                  <div class="chat-compose__actions">
+                    <button
+                      id="chat-send-button"
+                      class="btn primary"
+                      type="submit"
+                      data-i18n="common.send"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+
+                <div class="compose-shortcuts">
+                  <button class="quick-command" type="button" data-prompt="/research agentic rag">
+                    /research
+                  </button>
+                  <button class="quick-command" type="button" data-prompt="/memory user preference">
+                    /memory
+                  </button>
+                  <button
+                    class="quick-command"
+                    type="button"
+                    data-prompt="/remember user prefers TypeScript"
+                  >
+                    /remember
+                  </button>
+                </div>
+              </form>
+            </article>
+
+            <aside class="chat-sidebar">
+              <article class="card side-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title" data-i18n="chat.overviewTitle">Overview</div>
+                    <div class="card-sub" data-i18n="chat.overviewSub">
+                      At-a-glance workspace signals.
+                    </div>
+                  </div>
+                </div>
+                <div id="chat-overview-cards" class="ov-cards ov-cards--compact"></div>
+              </article>
+
+              <article class="card side-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="workspace-status-title"
+                      class="card-title"
+                      data-i18n="chat.workspaceStatusTitle"
+                    >
+                      Workspace Status
+                    </div>
+                    <div
+                      id="workspace-status-sub"
+                      class="card-sub"
+                      data-i18n="chat.workspaceStatusSub"
+                    >
+                      Live channel and workspace summary.
+                    </div>
+                  </div>
+                </div>
+                <div class="detail-list">
+                  <div class="detail-row">
+                    <span id="workspace-path-label" data-i18n="chat.workspaceLabel"
+                      >Workspace</span
+                    >
+                    <strong id="workspace-path">-</strong>
+                  </div>
+                  <div class="detail-row">
+                    <span
+                      id="wechat-provider-overview-label"
+                      data-i18n="chat.wechatProviderLabel"
+                      >WeChat provider</span
+                    >
+                    <strong id="wechat-provider-overview">-</strong>
+                  </div>
+                  <div class="detail-row">
+                    <span
+                      id="memory-mode-overview-label"
+                      data-i18n="chat.memoryModeLabel"
+                      >Memory search</span
+                    >
+                    <strong id="memory-mode-overview">-</strong>
+                  </div>
+                </div>
+              </article>
+
+              <article class="card side-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="latest-research-title"
+                      class="card-title"
+                      data-i18n="chat.latestResearchTitle"
+                    >
+                      Latest Research
+                    </div>
+                    <div
+                      id="latest-research-sub"
+                      class="card-sub"
+                      data-i18n="chat.latestResearchSub"
+                    >
+                      The latest report stays one click away from the thread.
+                    </div>
+                  </div>
+                </div>
+                <div id="chat-latest-report" class="empty-state compact-empty">No report yet.</div>
+              </article>
+
+              <article class="card side-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="recent-sessions-title"
+                      class="card-title"
+                      data-i18n="chat.recentSessionsTitle"
+                    >
+                      Recent Sessions
+                    </div>
+                    <div
+                      id="recent-sessions-sub"
+                      class="card-sub"
+                      data-i18n="chat.recentSessionsSub"
+                    >
+                      Recent research runs surfaced next to the chat thread.
+                    </div>
+                  </div>
+                </div>
+                <div id="chat-session-list" class="empty-state compact-empty">No sessions yet.</div>
+              </article>
+
+              <article class="card side-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="command-model-title"
+                      class="card-title"
+                      data-i18n="chat.commandModelTitle"
+                    >
+                      Command Model
+                    </div>
+                    <div
+                      id="command-model-sub"
+                      class="card-sub"
+                      data-i18n="chat.commandModelSub"
+                    >
+                      Plain text chats. Slash commands control the workspace.
+                    </div>
+                  </div>
+                </div>
+                <div class="command-list">
+                  <div class="command-item">
+                    <code>/research topic</code>
+                    <span id="command-research-desc" data-i18n="chat.commandResearchDesc"
+                      >Run the research workflow.</span
+                    >
+                  </div>
+                  <div class="command-item">
+                    <code>/memory query</code>
+                    <span id="command-memory-desc" data-i18n="chat.commandMemoryDesc"
+                      >Search file-backed memory.</span
+                    >
+                  </div>
+                  <div class="command-item">
+                    <code>/remember fact</code>
+                    <span id="command-remember-desc" data-i18n="chat.commandRememberDesc"
+                      >Write a note into memory.</span
+                    >
+                  </div>
+                  <div class="command-item">
+                    <code>/role researcher</code>
+                    <span>Switch the active runtime role for this chat session.</span>
+                  </div>
+                  <div class="command-item">
+                    <code>/skills</code>
+                    <span>Inspect the skills currently enabled for the runtime.</span>
+                  </div>
+                </div>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section class="workspace-panel" data-panel="overview">
+          <div class="panel-head">
+            <div>
+              <div id="overview-kicker" class="section-kicker" data-i18n="overview.kicker">
+                Overview
+              </div>
+              <h2 id="overview-heading" class="page-title" data-i18n="overview.heading">
+                Workspace Overview
+              </h2>
+              <p id="overview-subtitle" class="panel-sub" data-i18n="overview.sub">
+                Recent activity, live system status, and the latest research snapshot.
+              </p>
+            </div>
+            <div class="panel-actions">
+              <button
+                id="refresh-overview"
+                class="btn btn--ghost"
+                type="button"
+                data-i18n="common.refresh"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div id="overview-cards" class="ov-cards"></div>
+
+          <div class="grid grid--overview">
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="recent-activity-title"
+                    class="card-title"
+                    data-i18n="overview.activityTitle"
+                  >
+                    Recent Activity
+                  </div>
+                  <div
+                    id="recent-activity-sub"
+                    class="card-sub"
+                    data-i18n="overview.activitySub"
+                  >
+                    Latest inbound, outbound, and system events.
+                  </div>
+                </div>
+              </div>
+              <div id="overview-activity" class="empty-state">No activity yet.</div>
+            </article>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="overview-latest-research-title"
+                    class="card-title"
+                    data-i18n="overview.latestResearchTitle"
+                  >
+                    Latest Research
+                  </div>
+                  <div
+                    id="overview-latest-research-sub"
+                    class="card-sub"
+                    data-i18n="overview.latestResearchSub"
+                  >
+                    The most recent report snapshot in this workspace.
+                  </div>
+                </div>
+              </div>
+              <div id="overview-latest-report" class="empty-state">No report yet.</div>
+            </article>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="overview-session-title"
+                    class="card-title"
+                    data-i18n="overview.sessionsTitle"
+                  >
+                    Recent Sessions
+                  </div>
+                  <div
+                    id="overview-session-sub"
+                    class="card-sub"
+                    data-i18n="overview.sessionsSub"
+                  >
+                    Jump back into recent research runs.
+                  </div>
+                </div>
+              </div>
+              <div id="overview-session-list" class="empty-state">No sessions yet.</div>
+            </article>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="overview-notes-title"
+                    class="card-title"
+                    data-i18n="overview.notesTitle"
+                  >
+                    Workspace Notes
+                  </div>
+                  <div
+                    id="overview-notes-sub"
+                    class="card-sub"
+                    data-i18n="overview.notesSub"
+                  >
+                    Key operational details from the current workspace.
+                  </div>
+                </div>
+              </div>
+              <div id="overview-notes" class="detail-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="workspace-panel" data-panel="channels">
+          <div class="panel-head">
+            <div>
+              <div id="channels-kicker" class="section-kicker" data-i18n="channels.kicker">
+                Channels
+              </div>
+              <h2 id="channels-heading" class="page-title" data-i18n="channels.heading">
+                WeChat Transport
+              </h2>
+              <p id="channels-subtitle" class="panel-sub" data-i18n="channels.sub">
+                Pairing, provider state, connection control, and transport flow.
+              </p>
+            </div>
+            <div class="panel-actions">
+              <button
+                id="refresh-wechat"
+                class="btn btn--ghost"
+                type="button"
+                data-i18n="common.refresh"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid--channels">
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="channels-status-title"
+                    class="card-title"
+                    data-i18n="channels.statusTitle"
+                  >
+                    Status
+                  </div>
+                  <div
+                    id="channels-status-sub"
+                    class="card-sub"
+                    data-i18n="channels.statusSub"
+                  >
+                    Provider state, connection, pairing, and last status line.
+                  </div>
+                </div>
+              </div>
+              <div id="wechat-status" class="detail-list"></div>
+            </article>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="pairing-title"
+                    class="card-title"
+                    data-i18n="channels.pairingTitle"
+                  >
+                    Pairing
+                  </div>
+                  <div
+                    id="pairing-sub"
+                    class="card-sub"
+                    data-i18n="channels.pairingSub"
+                  >
+                    Start QR login, wait for confirmation, or disconnect.
+                  </div>
+                </div>
+              </div>
+              <div class="pairing-card">
+                <div id="pairing-code" class="pairing-code">-</div>
+                <img id="pairing-qr" class="pairing-qr" alt="WeChat QR" hidden />
+                <p id="pairing-hint" class="hint">Pairing details will show here.</p>
+              </div>
+              <div class="stack-form">
+                <input
+                  id="wechat-display-name"
+                  data-i18n-placeholder="channels.displayName"
+                  placeholder="Display name"
+                />
+                <div class="button-row button-row--3">
+                  <button
+                    id="wechat-start"
+                    class="btn primary"
+                    type="button"
+                    data-i18n="channels.startPairing"
+                  >
+                    Start pairing
+                  </button>
+                  <button
+                    id="wechat-complete"
+                    class="btn"
+                    type="button"
+                    data-i18n="channels.waitScan"
+                  >
+                    Wait for scan
+                  </button>
+                  <button
+                    id="wechat-logout"
+                    class="btn btn--ghost"
+                    type="button"
+                    data-i18n="channels.disconnect"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+            </article>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="message-flow-title"
+                    class="card-title"
+                    data-i18n="channels.messageFlowTitle"
+                  >
+                    Message Flow
+                  </div>
+                  <div
+                    id="message-flow-sub"
+                    class="card-sub"
+                    data-i18n="channels.messageFlowSub"
+                  >
+                    Transport-side WeChat and system events live here.
+                  </div>
+                </div>
+              </div>
+              <div id="wechat-channel-messages" class="empty-state compact-empty">
+                No transport messages yet.
+              </div>
+            </article>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="channel-notes-title"
+                    class="card-title"
+                    data-i18n="channels.notesTitle"
+                  >
+                    Operational Notes
+                  </div>
+                  <div
+                    id="channel-notes-sub"
+                    class="card-sub"
+                    data-i18n="channels.notesSub"
+                  >
+                    Bridge details, status hints, and recommended next actions.
+                  </div>
+                </div>
+              </div>
+              <div id="channel-notes" class="result-stack"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="workspace-panel" data-panel="sessions">
+          <div class="panel-head">
+            <div>
+              <div id="sessions-kicker" class="section-kicker" data-i18n="sessions.kicker">
+                Sessions
+              </div>
+              <h2 id="sessions-heading" class="page-title" data-i18n="sessions.heading">
+                Agent Sessions
+              </h2>
+              <p id="sessions-subtitle" class="panel-sub" data-i18n="sessions.sub">
+                Inspect persisted runtime sessions, activity, and role assignments.
+              </p>
+            </div>
+            <div class="panel-actions">
+              <button
+                id="refresh-sessions"
+                class="btn btn--ghost"
+                type="button"
+                data-i18n="common.refresh"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <article class="card panel-card">
+            <div id="agent-sessions-list" class="empty-state">No sessions yet.</div>
+          </article>
+        </section>
+
+        <section class="workspace-panel" data-panel="agents">
+          <div class="panel-head">
+            <div>
+              <div id="agents-kicker" class="section-kicker" data-i18n="agents.kicker">
+                Agents
+              </div>
+              <h2 id="agents-heading" class="page-title" data-i18n="agents.heading">
+                Agent Workspaces
+              </h2>
+              <p id="agents-subtitle" class="panel-sub" data-i18n="agents.sub">
+                Configure the active runtime role and workspace skills for chat.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid--2">
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div class="card-title" data-i18n="chat.agentTitle">Agent Runtime</div>
+                  <div class="card-sub" data-i18n="chat.agentSub">
+                    Switch the active role and enabled skills for this chat session.
+                  </div>
+                </div>
+              </div>
+              <div id="agent-session-summary" class="detail-list"></div>
+              <div class="stack-form agent-config">
+                <label class="field">
+                  <span data-i18n="chat.agentRoleLabel">Role</span>
+                  <select id="agent-role-select"></select>
+                </label>
+                <div class="field">
+                  <span>Model Selection</span>
+                  <select id="agent-model-select"></select>
+                  <div id="agent-model-hint" class="card-sub">
+                    Switch the active model route for this chat session, or inherit the registry default.
+                  </div>
+                  <div class="inline-form">
+                    <button id="agent-model-reset" class="btn btn--ghost" type="button">
+                      Use Default Route
+                    </button>
+                  </div>
+                </div>
+                <div class="field">
+                  <span>Fallbacks</span>
+                  <div id="agent-fallbacks-list" class="fallback-route-list"></div>
+                  <div class="inline-form">
+                    <select id="agent-fallbacks-select"></select>
+                    <button id="agent-fallbacks-add" class="btn btn--ghost" type="button">
+                      Add Fallback
+                    </button>
+                    <button id="agent-fallbacks-clear" class="btn btn--ghost" type="button">
+                      Clear Fallbacks
+                    </button>
+                  </div>
+                </div>
+                <div class="field">
+                  <span>Reasoning</span>
+                  <select id="agent-reasoning-select"></select>
+                  <div id="agent-reasoning-hint" class="card-sub">
+                    Set the reasoning effort for the active chat session.
+                  </div>
+                </div>
+                <div class="field">
+                  <span data-i18n="chat.agentSkillsLabel">Skills</span>
+                  <div id="agent-skills" class="agent-skills"></div>
+                  <div id="agent-skills-hint" class="card-sub" data-i18n="chat.agentSkillsHint">
+                    Enabled skills directly control which local tools the runtime may call.
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Runtime Notes</div>
+                  <div class="card-sub">
+                    The current chat session behaves like a host workspace: role and skills change tool access immediately.
+                  </div>
+                </div>
+              </div>
+              <div id="agent-runtime-notes" class="result-stack"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="workspace-panel" data-panel="skills">
+          <div class="panel-head">
+            <div>
+              <div id="skills-kicker" class="section-kicker" data-i18n="skills.kicker">
+                Skills
+              </div>
+              <h2 id="skills-heading" class="page-title" data-i18n="skills.heading">
+                Skill Registry
+              </h2>
+              <p id="skills-subtitle" class="panel-sub" data-i18n="skills.sub">
+                See which skills are available and whether the current session enables them.
+              </p>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="inline-form inline-form--equal">
+              <input id="skills-filter-input" placeholder="Search skills" />
+              <select id="skills-status-filter">
+                <option value="all">All</option>
+                <option value="ready">Ready</option>
+                <option value="needs-setup">Needs Setup</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+            <div id="skills-catalog"></div>
+          </div>
+        </section>
+
+        <section class="workspace-panel" data-panel="graph">
+          <div class="panel-head">
+            <div>
+              <div class="section-kicker" data-i18n="graph.kicker">Graph</div>
+              <h2 class="page-title" data-i18n="graph.heading">Research Knowledge Graph</h2>
+              <p class="panel-sub" data-i18n="graph.sub">
+                See how directions, sources, reports, repos, modules, and presentations connect.
+              </p>
+            </div>
+            <div class="panel-actions">
+              <button id="refresh-graph" class="btn btn--ghost" type="button" data-i18n="common.refresh">
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <article class="card panel-card graph-toolbar">
+            <div class="graph-toolbar__search">
+              <label class="field">
+                <span>Search</span>
+                <input
+                  id="graph-search"
+                  type="search"
+                  placeholder="Filter by topic, title, tag, or source"
+                />
+              </label>
+              <label class="field graph-toolbar__range">
+                <span>Time Window</span>
+                <select id="graph-date-range">
+                  <option value="all">All time</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="90d">Last 90 days</option>
+                </select>
+              </label>
+            </div>
+            <div class="graph-toolbar__actions">
+              <button id="graph-clear-filters" class="btn btn--ghost" type="button">
+                Clear filters
+              </button>
+            </div>
+          </article>
+
+          <div id="graph-type-filters" class="graph-filter-chips"></div>
+          <div id="graph-stats" class="graph-stats"></div>
+
+          <div class="grid graph-workbench">
+            <div class="stack">
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Graph Summary</div>
+                    <div class="card-sub">
+                      Node and edge counts across the research memory registry.
+                    </div>
+                  </div>
+                </div>
+                <div id="graph-summary" class="detail-list empty-state compact-empty">
+                  Loading graph...
+                </div>
+              </article>
+
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="research-task-title"
+                      class="card-title"
+                      data-i18n="research.taskQueueTitle"
+                    >
+                      Task Queue
+                    </div>
+                    <div
+                      id="research-task-sub"
+                      class="card-sub"
+                      data-i18n="research.taskQueueSub"
+                    >
+                      Track running, failed, and completed research tasks.
+                    </div>
+                  </div>
+                </div>
+                <div id="research-task-list" class="empty-state compact-empty">
+                  No tasks yet.
+                </div>
+              </article>
+
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Connections</div>
+                    <div class="card-sub">
+                      Click nodes to inspect details and related artifacts.
+                    </div>
+                  </div>
+                </div>
+                <div id="graph-canvas" class="graph-canvas empty-state compact-empty">No graph yet.</div>
+              </article>
+
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Relationships</div>
+                    <div class="card-sub">Filtered edges around the current graph selection.</div>
+                  </div>
+                </div>
+                <div id="graph-edges" class="result-stack empty-state compact-empty">No graph yet.</div>
+              </article>
+            </div>
+
+            <aside class="stack graph-side">
+              <article class="card panel-card graph-detail-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Node Detail</div>
+                    <div class="card-sub">
+                      Inspect metadata, related nodes, and raw report or artifact links.
+                    </div>
+                  </div>
+                </div>
+                <div id="graph-detail" class="empty-state compact-empty">
+                  Select a node to inspect it.
+                </div>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section class="workspace-panel" data-panel="research">
+          <div class="panel-head">
+            <div>
+              <div id="research-kicker" class="section-kicker" data-i18n="research.kicker">
+                Research
+              </div>
+              <h2 id="research-heading" class="page-title" data-i18n="research.heading">
+                Workflow Runner
+              </h2>
+              <p id="research-subtitle" class="panel-sub" data-i18n="research.sub">
+                Launch new reports and inspect the latest synthesis.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid--research">
+            <div class="stack">
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="run-research-title"
+                      class="card-title"
+                      data-i18n="research.runTitle"
+                    >
+                      Run Research
+                    </div>
+                    <div
+                      id="run-research-sub"
+                      class="card-sub"
+                      data-i18n="research.runSub"
+                    >
+                      Launch a new research workflow or load an existing report.
+                    </div>
+                  </div>
+                </div>
+
+                <form id="research-form" class="stack-form">
+                  <input
+                    id="research-topic"
+                    data-i18n-placeholder="research.topic"
+                    placeholder="Topic"
+                  />
+                  <input
+                    id="research-question"
+                    data-i18n-placeholder="research.question"
+                    placeholder="Question (optional)"
+                  />
+                  <button
+                    id="run-research-button"
+                    class="btn primary"
+                    type="submit"
+                    data-i18n="research.runButton"
+                  >
+                    Run research
+                  </button>
+                </form>
+
+                <div class="inline-form">
+                  <input
+                    id="report-task-id"
+                    data-i18n-placeholder="research.taskId"
+                    placeholder="Load report by taskId"
+                  />
+                  <button
+                    id="load-report"
+                    class="btn btn--ghost"
+                    type="button"
+                    data-i18n="common.load"
+                  >
+                    Load
+                  </button>
+                </div>
+              </article>
+
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="research-session-title"
+                      class="card-title"
+                      data-i18n="research.recentTitle"
+                    >
+                      Recent Research
+                    </div>
+                    <div
+                      id="research-session-sub"
+                      class="card-sub"
+                      data-i18n="research.recentSub"
+                    >
+                      Open a recent report without leaving the workflow view.
+                    </div>
+                  </div>
+                </div>
+                <div id="research-session-list" class="empty-state compact-empty">
+                  No sessions yet.
+                </div>
+              </article>
+            </div>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="research-report-title"
+                    class="card-title"
+                    data-i18n="research.reportTitle"
+                  >
+                    Research Report
+                  </div>
+                  <div
+                    id="research-report-sub"
+                    class="card-sub"
+                    data-i18n="research.reportSub"
+                  >
+                    The full report is rendered here, not squeezed into chat bubbles.
+                  </div>
+                </div>
+              </div>
+              <div id="research-report" class="empty-state">No report loaded.</div>
+            </article>
+          </div>
+        </section>
+        <section class="workspace-panel" data-panel="memory">
+          <div class="panel-head">
+            <div>
+              <div id="memory-kicker" class="section-kicker" data-i18n="memory.kicker">
+                Memory
+              </div>
+              <h2 id="memory-heading" class="page-title" data-i18n="memory.heading">
+                Memory Workspace
+              </h2>
+              <p id="memory-subtitle" class="panel-sub" data-i18n="memory.sub">
+                Search, write, and inspect file-backed memory.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid--memory">
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div
+                    id="search-write-title"
+                    class="card-title"
+                    data-i18n="memory.searchWriteTitle"
+                  >
+                    Search and Write
+                  </div>
+                  <div
+                    id="search-write-sub"
+                    class="card-sub"
+                    data-i18n="memory.searchWriteSub"
+                  >
+                    Search workspace memory or write new notes.
+                  </div>
+                </div>
+              </div>
+
+              <form id="memory-search-form" class="inline-form">
+                <input
+                  id="memory-query"
+                  data-i18n-placeholder="memory.searchPlaceholder"
+                  placeholder="Search memory"
+                />
+                <button
+                  id="memory-search-button"
+                  class="btn"
+                  type="submit"
+                  data-i18n="common.search"
+                >
+                  Search
+                </button>
+              </form>
+
+              <div id="memory-results" class="empty-state">No memory results yet.</div>
+
+              <form id="memory-remember-form" class="stack-form">
+                <div class="inline-form inline-form--equal">
+                  <select id="memory-scope">
+                    <option value="daily" data-i18n="memory.daily">daily</option>
+                    <option value="long-term" data-i18n="memory.longTerm">long-term</option>
+                  </select>
+                  <input
+                    id="memory-title"
+                    data-i18n-placeholder="memory.title"
+                    placeholder="Title"
+                  />
+                </div>
+                <textarea
+                  id="memory-content"
+                  rows="6"
+                  data-i18n-placeholder="memory.writePlaceholder"
+                  placeholder="Write a note into memory"
+                ></textarea>
+                <button
+                  id="memory-save-button"
+                  class="btn primary"
+                  type="submit"
+                  data-i18n="memory.saveButton"
+                >
+                  Save memory
+                </button>
+              </form>
+            </article>
+
+            <div class="stack">
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="memory-files-title"
+                      class="card-title"
+                      data-i18n="memory.filesTitle"
+                    >
+                      Memory Files
+                    </div>
+                    <div
+                      id="memory-files-sub"
+                      class="card-sub"
+                      data-i18n="memory.filesSub"
+                    >
+                      Inspect files and open file contents.
+                    </div>
+                  </div>
+                </div>
+                <div id="memory-files" class="empty-state">No files.</div>
+              </article>
+
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="memory-viewer-title"
+                      class="card-title"
+                      data-i18n="memory.viewerTitle"
+                    >
+                      File Preview
+                    </div>
+                    <div
+                      id="memory-viewer-sub"
+                      class="card-sub"
+                      data-i18n="memory.viewerSub"
+                    >
+                      Read the selected memory file without leaving the workspace.
+                    </div>
+                  </div>
+                </div>
+                <pre
+                  id="memory-file-viewer"
+                  class="code-panel"
+                  data-i18n="memory.viewerEmpty"
+                >
+Select a file to preview its content.</pre
+                >
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="workspace-panel" data-panel="settings">
+          <div class="panel-head">
+            <div>
+              <div id="settings-kicker" class="section-kicker" data-i18n="settings.kicker">
+                Settings
+              </div>
+              <h2 id="settings-heading" class="page-title" data-i18n="settings.heading">
+                Settings & Infrastructure
+              </h2>
+              <p id="settings-subtitle" class="panel-sub" data-i18n="settings.sub">
+                Communications, runtime, MCP status, and bridge configuration.
+              </p>
+            </div>
+          </div>
+
+          <div id="settings-overview"></div>
+        </section>
+
+        <section class="workspace-panel" data-panel="logs">
+          <div class="panel-head">
+            <div>
+              <div id="logs-kicker" class="section-kicker" data-i18n="logs.kicker">Logs</div>
+              <h2 id="logs-heading" class="page-title" data-i18n="logs.heading">
+                Runtime Log Tail
+              </h2>
+              <p id="logs-subtitle" class="panel-sub" data-i18n="logs.sub">
+                Inspect stdout and stderr from the current runtime.
+              </p>
+            </div>
+            <div class="panel-actions">
+              <button
+                id="refresh-logs"
+                class="btn btn--ghost"
+                type="button"
+                data-i18n="common.refresh"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid--2">
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div id="stdout-title" class="card-title" data-i18n="logs.stdoutTitle">
+                    Stdout
+                  </div>
+                  <div
+                    id="runtime-log-stdout-path"
+                    class="card-sub"
+                    data-i18n="logs.waitingStdout"
+                  >
+                    Waiting for stdout log...
+                  </div>
+                </div>
+              </div>
+              <pre id="runtime-log-output" class="code-panel">No stdout logs yet.</pre>
+            </article>
+
+            <article class="card panel-card">
+              <div class="card-head">
+                <div>
+                  <div id="stderr-title" class="card-title" data-i18n="logs.stderrTitle">
+                    Stderr
+                  </div>
+                  <div
+                    id="runtime-log-stderr-path"
+                    class="card-sub"
+                    data-i18n="logs.waitingStderr"
+                  >
+                    Waiting for stderr log...
+                  </div>
+                </div>
+              </div>
+              <pre id="runtime-log-error" class="code-panel">No stderr logs yet.</pre>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="command-palette-overlay" class="cmd-palette-overlay" hidden>
+      <div class="cmd-palette" role="dialog" aria-modal="true">
+        <input
+          id="command-palette-input"
+          class="cmd-palette__input"
+          type="text"
+          data-i18n-placeholder="common.commandPalettePlaceholder"
+          placeholder="Search tabs and commands..."
+        />
+        <div id="command-palette-results" class="cmd-palette__results"></div>
+        <div
+          id="command-palette-footer"
+          class="cmd-palette__footer"
+          data-i18n="common.commandPaletteFooter"
+        >
+          Press Enter to jump, Esc to close
+        </div>
+      </div>
+    </div>
+
+    <div id="skill-detail-modal" class="cmd-palette-overlay" hidden>
+      <div class="cmd-palette skill-detail-modal" role="dialog" aria-modal="true">
+        <div id="skill-detail"></div>
+      </div>
+    </div>
+    <script type="module" src="/i18n.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
