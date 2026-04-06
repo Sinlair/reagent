@@ -13,9 +13,12 @@ import type {
   ResearchDiscoveryStore,
 } from "../types/researchDiscovery.js";
 import type { ResearchDirectionProfile } from "../types/researchDirection.js";
+import { ArxivPaperSearchProvider } from "../providers/search/arxivPaperSearchProvider.js";
+import { CompositePaperSearchProvider } from "../providers/search/compositePaperSearchProvider.js";
 import { rankPapers } from "../workflows/paperRanker.js";
 import { env } from "../config/env.js";
 import { ResearchDirectionService } from "./researchDirectionService.js";
+import { ResearchFeedbackService } from "./researchFeedbackService.js";
 
 const STORE_FILE = "channels/research-discovery-runs.json";
 const DEFAULT_MAX_PAPERS_PER_QUERY = 4;
@@ -25,6 +28,7 @@ const MAX_RUN_HISTORY = 30;
 interface ResearchDiscoveryServiceOptions {
   searchProvider?: DiscoveryPaperSearchProvider;
   pushDigest?: ((input: { senderId: string; senderName?: string | undefined; text: string }) => Promise<void>) | undefined;
+  feedbackService?: ResearchFeedbackService | undefined;
 }
 
 function nowIso(): string {
@@ -90,6 +94,20 @@ function scorePreferenceMatches(item: ResearchDiscoveryItem, profile: ResearchDi
   }
 
   return score;
+}
+
+async function scoreFeedbackMatches(
+  feedbackService: ResearchFeedbackService,
+  item: ResearchDiscoveryItem,
+  profile: ResearchDirectionProfile,
+): Promise<{ score: number; reasons: string[] }> {
+  return feedbackService.scoreDiscoveryCandidate({
+    directionId: profile.id,
+    topic: profile.label,
+    title: item.title,
+    abstract: item.abstract,
+    venue: item.venue,
+  });
 }
 
 function buildDiscoveryItem(
@@ -190,6 +208,7 @@ export class ResearchDiscoveryService {
   private readonly directionService: ResearchDirectionService;
   private readonly searchProvider: DiscoveryPaperSearchProvider;
   private readonly pushDigest?: ResearchDiscoveryServiceOptions["pushDigest"];
+  private readonly feedbackService: ResearchFeedbackService;
 
   constructor(
     private readonly workspaceDir: string,
@@ -197,8 +216,14 @@ export class ResearchDiscoveryService {
   ) {
     this.storePath = discoveryStorePath(workspaceDir);
     this.directionService = new ResearchDirectionService(workspaceDir);
-    this.searchProvider = options.searchProvider ?? new CrossrefPaperSearchProvider(env.CROSSREF_MAILTO);
+    this.searchProvider =
+      options.searchProvider ??
+      new CompositePaperSearchProvider([
+        new CrossrefPaperSearchProvider(env.CROSSREF_MAILTO),
+        new ArxivPaperSearchProvider()
+      ]);
     this.pushDigest = options.pushDigest;
+    this.feedbackService = options.feedbackService ?? new ResearchFeedbackService(workspaceDir);
   }
 
   private async readStore(): Promise<ResearchDiscoveryStore> {
@@ -308,10 +333,24 @@ export class ResearchDiscoveryService {
               rankingReasons: uniqueTrimmed([
                 ...(paper.rankingReasons ?? []),
                 bonus > 0 ? `Profile bonus: +${bonus}.` : "",
+                ]),
+              };
+            });
+          const feedbackAdjusted: ResearchDiscoveryItem[] = [];
+          for (const item of ranked) {
+            const feedback = await scoreFeedbackMatches(this.feedbackService, item, profile);
+            const feedbackBonus = feedback.score;
+            feedbackAdjusted.push({
+              ...item,
+              score: (item.score ?? 0) + feedbackBonus,
+              rankingReasons: uniqueTrimmed([
+                ...(item.rankingReasons ?? []),
+                feedbackBonus !== 0 ? `Feedback adjustment: ${feedbackBonus > 0 ? "+" : ""}${feedbackBonus}.` : "",
+                ...feedback.reasons,
               ]),
-            };
-          });
-          perProfilePapers = [...perProfilePapers, ...ranked];
+            });
+          }
+          perProfilePapers = [...perProfilePapers, ...feedbackAdjusted];
         } catch (error) {
           warnings.push(
             `Discovery search failed for ${profile.label} / ${queryCandidate.query}: ${error instanceof Error ? error.message : String(error)}`,

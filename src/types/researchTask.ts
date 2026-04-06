@@ -3,10 +3,16 @@ import type { ResearchReport, ResearchRequest } from "./research.js";
 export type ResearchTaskState =
   | "queued"
   | "planning"
+  | "fetching"
+  | "parsing"
+  | "normalizing"
   | "searching-paper"
   | "downloading-paper"
   | "analyzing-paper"
+  | "checking-repo"
+  | "extracting-module"
   | "generating-summary"
+  | "generating-ppt"
   | "persisting"
   | "completed"
   | "failed";

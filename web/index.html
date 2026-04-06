@@ -1220,6 +1220,98 @@
                   No sessions yet.
                 </div>
               </article>
+
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Direction Reports</div>
+                    <div class="card-sub">
+                      Generate reusable direction summaries from recent papers, baselines, and modules.
+                    </div>
+                  </div>
+                </div>
+
+                <form id="direction-report-form" class="stack-form">
+                  <input
+                    id="direction-report-topic"
+                    placeholder="Topic or direction label"
+                  />
+                  <input
+                    id="direction-report-id"
+                    placeholder="Direction ID (optional)"
+                  />
+                  <div class="inline-form inline-form--equal">
+                    <input
+                      id="direction-report-days"
+                      type="number"
+                      min="1"
+                      max="30"
+                      value="14"
+                      placeholder="Days"
+                    />
+                    <button
+                      id="generate-direction-report"
+                      class="btn btn--ghost"
+                      type="submit"
+                    >
+                      Generate report
+                    </button>
+                  </div>
+                </form>
+
+                <div id="direction-report-list" class="empty-state compact-empty">
+                  No direction reports yet.
+                </div>
+              </article>
+
+              <article class="card panel-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title">Feedback Loop</div>
+                    <div class="card-sub">
+                      Record useful or negative feedback so discovery can adapt over time.
+                    </div>
+                  </div>
+                </div>
+
+                <form id="research-feedback-form" class="stack-form">
+                  <select id="feedback-signal">
+                    <option value="useful">useful</option>
+                    <option value="not-useful">not-useful</option>
+                    <option value="more-like-this">more-like-this</option>
+                    <option value="less-like-this">less-like-this</option>
+                    <option value="too-theoretical">too-theoretical</option>
+                    <option value="too-engineering-heavy">too-engineering-heavy</option>
+                    <option value="worth-following">worth-following</option>
+                    <option value="not-worth-following">not-worth-following</option>
+                  </select>
+                  <input
+                    id="feedback-topic"
+                    placeholder="Topic or direction"
+                  />
+                  <input
+                    id="feedback-paper-title"
+                    placeholder="Paper title (optional)"
+                  />
+                  <textarea
+                    id="feedback-notes"
+                    rows="4"
+                    placeholder="Notes about what to encourage or avoid"
+                  ></textarea>
+                  <button
+                    id="save-feedback-button"
+                    class="btn primary"
+                    type="submit"
+                  >
+                    Save feedback
+                  </button>
+                </form>
+
+                <div id="feedback-summary" class="detail-list"></div>
+                <div id="feedback-list" class="empty-state compact-empty">
+                  No feedback recorded yet.
+                </div>
+              </article>
             </div>
 
             <article class="card panel-card">

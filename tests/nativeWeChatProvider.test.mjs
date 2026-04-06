@@ -20,7 +20,17 @@ async function withTempDir(fn) {
   try {
     await fn(dir);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    let lastError;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await rm(dir, { recursive: true, force: true });
+        return;
+      } catch (error) {
+        lastError = error;
+        await sleep(100 * (attempt + 1));
+      }
+    }
+    throw lastError;
   }
 }
 

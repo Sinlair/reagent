@@ -50,6 +50,14 @@ export class ResearchWorkflow {
 
     try {
       await options.onProgress?.({
+        state: "fetching",
+        message: "Fetching candidate papers from discovery sources."
+      });
+      await options.onProgress?.({
+        state: "normalizing",
+        message: "Normalizing and deduplicating candidate papers."
+      });
+      await options.onProgress?.({
         state: "searching-paper",
         message: "Searching and ranking relevant papers."
       });
@@ -70,7 +78,11 @@ export class ResearchWorkflow {
     try {
       await options.onProgress?.({
         state: "downloading-paper",
-        message: "Downloading and extracting paper content."
+        message: "Downloading paper files and related artifacts."
+      });
+      await options.onProgress?.({
+        state: "parsing",
+        message: "Parsing paper text, figures, and evidence snippets."
       });
       const contentResult = await this.paperContentProvider.collect({
         taskId,

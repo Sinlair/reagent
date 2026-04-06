@@ -32,14 +32,26 @@ function progressForState(state: ResearchTaskState): number {
       return 5;
     case "planning":
       return 12;
+    case "fetching":
+      return 20;
+    case "normalizing":
+      return 28;
     case "searching-paper":
-      return 26;
+      return 36;
     case "downloading-paper":
-      return 44;
+      return 48;
+    case "parsing":
+      return 56;
     case "analyzing-paper":
-      return 62;
+      return 68;
+    case "checking-repo":
+      return 74;
+    case "extracting-module":
+      return 78;
     case "generating-summary":
-      return 80;
+      return 84;
+    case "generating-ppt":
+      return 88;
     case "persisting":
       return 92;
     case "completed":

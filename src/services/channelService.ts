@@ -5,6 +5,7 @@ import path from "node:path";
 import type { ResearchService } from "./researchService.js";
 import type { MemoryService } from "./memoryService.js";
 import { ChatService, type ChatServiceLike } from "./chatService.js";
+import { ResearchFeedbackService } from "./researchFeedbackService.js";
 import type {
   ChannelsStatusSnapshot,
   WeChatLifecycleState,
@@ -122,6 +123,7 @@ function buildCommandHelpReply(): string {
     "/research <topic>",
     "/memory <query>",
     "/remember <fact>",
+    "/feedback <signal> [notes]",
     "/role <assistant|operator|researcher>",
     "/skills",
     "/model [providerId modelId]",
@@ -251,6 +253,7 @@ export class ChannelService {
   private readonly lifecycleStatePath: string;
   private readonly lifecycleAuditPath: string;
   private readonly chatService: ChatServiceLike;
+  private readonly feedbackService: ResearchFeedbackService;
   private readonly healthMonitorIntervalMs: number;
   private readonly restartCooldownMs: number;
   private readonly unhealthyThreshold: number;
@@ -271,6 +274,7 @@ export class ChannelService {
       new ChatService(workspaceDir, memoryService, {
         researchService
       });
+    this.feedbackService = new ResearchFeedbackService(workspaceDir);
     this.mockProvider =
       this.wechatProviderMode === "mock" ? new MockWeChatChannelProvider(workspaceDir) : null;
     this.nativeProvider =
@@ -933,6 +937,45 @@ export class ChannelService {
           source: "wechat"
         });
         reply = "Saved to today's memory file.";
+      }
+    } else if (message === "/feedback" || message.startsWith("/feedback ")) {
+      const content = message.slice("/feedback".length).trim();
+      if (!content) {
+        reply = "Usage: /feedback <useful|not-useful|more-like-this|less-like-this|too-theoretical|too-engineering-heavy|worth-following|not-worth-following> [notes]";
+      } else {
+        const [rawSignal, ...rest] = content.split(/\s+/u);
+        const signal = rawSignal?.trim().toLowerCase();
+        const feedbackSignals = new Set([
+          "useful",
+          "not-useful",
+          "more-like-this",
+          "less-like-this",
+          "too-theoretical",
+          "too-engineering-heavy",
+          "worth-following",
+          "not-worth-following"
+        ]);
+
+        if (!signal || !feedbackSignals.has(signal)) {
+          reply = "Unsupported feedback signal. Use one of: useful, not-useful, more-like-this, less-like-this, too-theoretical, too-engineering-heavy, worth-following, not-worth-following";
+        } else {
+          const notes = rest.join(" ").trim();
+          const record = await this.feedbackService.record({
+            feedback: signal as
+              | "useful"
+              | "not-useful"
+              | "more-like-this"
+              | "less-like-this"
+              | "too-theoretical"
+              | "too-engineering-heavy"
+              | "worth-following"
+              | "not-worth-following",
+            senderId: input.senderId,
+            senderName: input.senderName,
+            ...(notes ? { notes } : {})
+          });
+          reply = `Recorded feedback: ${record.feedback}.${record.notes ? ` Notes: ${record.notes}` : ""}`;
+        }
       }
     } else if (message === "/role" || message.startsWith("/role ")) {
       if (!hasAgentRuntimeControls(this.chatService)) {

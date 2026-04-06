@@ -124,6 +124,7 @@ async function main() {
     await withTempDir(async (dir) => {
       const sentBodies = [];
       let commandCalls = 0;
+      let provider;
       const originalFetch = global.fetch;
       global.fetch = async (_url, options = {}) => {
         sentBodies.push(String(options.body ?? ""));
@@ -134,7 +135,7 @@ async function main() {
       };
 
       try {
-        const provider = new NativeWeChatChannelProvider(dir, async () => {
+        provider = new NativeWeChatChannelProvider(dir, async () => {
           commandCalls += 1;
           return {
             accepted: true,
@@ -173,6 +174,7 @@ async function main() {
         assert.equal(sentBodies.length, 1);
         assert.ok(sentBodies[0].includes(UNSUPPORTED_MEDIA_REPLY));
       } finally {
+        await provider?.close();
         global.fetch = originalFetch;
       }
     });

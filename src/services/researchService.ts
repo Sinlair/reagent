@@ -5,6 +5,8 @@ import { prisma } from "../lib/prisma.js";
 import { OpenAiLlmClient } from "../providers/llm/openaiLlmClient.js";
 import { FallbackLlmClient } from "../providers/llm/fallbackLlmClient.js";
 import { PdfjsPaperContentProvider } from "../providers/content/pdfjsPaperContentProvider.js";
+import { ArxivPaperSearchProvider } from "../providers/search/arxivPaperSearchProvider.js";
+import { CompositePaperSearchProvider } from "../providers/search/compositePaperSearchProvider.js";
 import { CrossrefPaperSearchProvider } from "../providers/search/crossrefPaperSearchProvider.js";
 import { PrismaResearchRepository } from "../repositories/prismaResearchRepository.js";
 import { ResearchWorkflow } from "../workflows/researchWorkflow.js";
@@ -13,7 +15,7 @@ import type { ResearchTaskProgressUpdate } from "../types/researchTask.js";
 
 export class ResearchService {
   private readonly llmRegistry: LlmRegistryService;
-  private readonly searchProvider: CrossrefPaperSearchProvider;
+  private readonly searchProvider: CompositePaperSearchProvider;
   private readonly contentProvider: PdfjsPaperContentProvider;
 
   constructor(
@@ -21,7 +23,10 @@ export class ResearchService {
     workspaceDir: string,
   ) {
     this.llmRegistry = new LlmRegistryService(workspaceDir);
-    this.searchProvider = new CrossrefPaperSearchProvider(env.CROSSREF_MAILTO);
+    this.searchProvider = new CompositePaperSearchProvider([
+      new CrossrefPaperSearchProvider(env.CROSSREF_MAILTO),
+      new ArxivPaperSearchProvider()
+    ]);
     this.contentProvider = new PdfjsPaperContentProvider();
   }
 

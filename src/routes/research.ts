@@ -6,9 +6,11 @@ import { z } from "zod";
 
 import { ResearchRequestSchema } from "../schemas/researchSchema.js";
 import { ResearchLinkIngestionService } from "../services/researchLinkIngestionService.js";
+import { ResearchFeedbackService } from "../services/researchFeedbackService.js";
 import { ResearchMemoryRegistryService } from "../services/researchMemoryRegistryService.js";
 import { ResearchModuleAssetService } from "../services/researchModuleAssetService.js";
 import { ResearchPaperAnalysisService } from "../services/researchPaperAnalysisService.js";
+import { ResearchDirectionReportService } from "../services/researchDirectionReportService.js";
 import { ResearchPresentationService } from "../services/researchPresentationService.js";
 import { ResearchRepoAnalysisService } from "../services/researchRepoAnalysisService.js";
 import type { ResearchDirectionService } from "../services/researchDirectionService.js";
@@ -63,6 +65,10 @@ const PresentationParamsSchema = z.object({
   presentationId: z.string().trim().min(1)
 });
 
+const DirectionReportParamsSchema = z.object({
+  reportId: z.string().trim().min(1)
+});
+
 const MemoryGraphNodeParamsSchema = z.object({
   nodeId: z.string().trim().min(1)
 });
@@ -85,6 +91,39 @@ const DiscoveryPlanQuerySchema = z.object({
 
 const DiscoveryRecentQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(10)
+});
+
+const FeedbackRecentQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20)
+});
+
+const DirectionReportGenerateSchema = z.object({
+  directionId: z.string().trim().min(1).optional(),
+  topic: z.string().trim().min(1).optional(),
+  days: z.coerce.number().int().min(1).max(30).optional(),
+}).refine((value) => Boolean(value.directionId || value.topic), {
+  message: "directionId or topic is required"
+});
+
+const FeedbackRecordSchema = z.object({
+  feedback: z.enum([
+    "useful",
+    "not-useful",
+    "more-like-this",
+    "less-like-this",
+    "too-theoretical",
+    "too-engineering-heavy",
+    "worth-following",
+    "not-worth-following"
+  ]),
+  senderId: z.string().trim().min(1).optional(),
+  senderName: z.string().trim().min(1).optional(),
+  directionId: z.string().trim().min(1).optional(),
+  topic: z.string().trim().min(1).optional(),
+  paperTitle: z.string().trim().min(1).optional(),
+  venue: z.string().trim().min(1).optional(),
+  sourceUrl: z.string().trim().url().optional(),
+  notes: z.string().trim().min(1).optional(),
 });
 
 const MemoryGraphQuerySchema = z.object({
@@ -217,6 +256,8 @@ export async function registerResearchRoutes(
   const paperAnalysisService = new ResearchPaperAnalysisService(workspaceDir);
   const repoAnalysisService = new ResearchRepoAnalysisService(workspaceDir);
   const moduleAssetService = new ResearchModuleAssetService(workspaceDir);
+  const feedbackService = new ResearchFeedbackService(workspaceDir);
+  const directionReportService = new ResearchDirectionReportService(workspaceDir);
   const presentationService = new ResearchPresentationService(workspaceDir, researchService);
   const researchMemoryRegistryService = new ResearchMemoryRegistryService(workspaceDir, researchService);
 
@@ -399,6 +440,36 @@ export async function registerResearchRoutes(
     });
   });
 
+  app.get("/api/research/feedback", async (request, reply) => {
+    const parsedQuery = FeedbackRecentQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsedQuery.success) {
+      return reply.code(400).send({
+        message: "Invalid feedback query",
+        issues: parsedQuery.error.flatten()
+      });
+    }
+
+    return reply.send({
+      summary: await feedbackService.getSummary(parsedQuery.data.limit),
+      items: await feedbackService.listRecent(parsedQuery.data.limit)
+    });
+  });
+
+  app.post("/api/research/feedback", async (request, reply) => {
+    const parsed = FeedbackRecordSchema.safeParse(request.body ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid research feedback payload",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    const record = await feedbackService.record(parsed.data);
+    return reply.code(201).send(record);
+  });
+
   app.get("/api/research/discovery/runs/:runId", async (request, reply) => {
     const parsedParams = DiscoveryRunParamsSchema.safeParse(request.params);
 
@@ -560,6 +631,55 @@ export async function registerResearchRoutes(
     }
 
     return reply.send(presentation);
+  });
+
+  app.get("/api/research/direction-reports/recent", async (request, reply) => {
+    const parsedQuery = RecentReportsQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsedQuery.success) {
+      return reply.code(400).send({
+        message: "Invalid direction report query",
+        issues: parsedQuery.error.flatten()
+      });
+    }
+
+    return reply.send({
+      reports: await directionReportService.listRecent(parsedQuery.data.limit)
+    });
+  });
+
+  app.get("/api/research/direction-reports/:reportId", async (request, reply) => {
+    const parsedParams = DirectionReportParamsSchema.safeParse(request.params);
+
+    if (!parsedParams.success) {
+      return reply.code(400).send({
+        message: "Invalid direction report id",
+        issues: parsedParams.error.flatten()
+      });
+    }
+
+    const report = await directionReportService.getReport(parsedParams.data.reportId);
+    if (!report) {
+      return reply.code(404).send({
+        message: "Direction report not found"
+      });
+    }
+
+    return reply.send(report);
+  });
+
+  app.post("/api/research/direction-reports/generate", async (request, reply) => {
+    const parsed = DirectionReportGenerateSchema.safeParse(request.body ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid direction report payload",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    const report = await directionReportService.generate(parsed.data);
+    return reply.code(201).send(report);
   });
 
   app.get("/api/research/directions/:directionId", async (request, reply) => {

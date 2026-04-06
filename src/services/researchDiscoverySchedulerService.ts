@@ -7,6 +7,7 @@ import type {
   ResearchDiscoveryScheduleState,
   ResearchDiscoverySchedulerStatus,
 } from "../types/researchDiscoveryScheduler.js";
+import { ResearchFeedbackService } from "./researchFeedbackService.js";
 import { ResearchDirectionService } from "./researchDirectionService.js";
 import { ResearchDiscoveryService } from "./researchDiscoveryService.js";
 
@@ -33,6 +34,20 @@ function currentLocalTimeHHmm(): string {
   const hours = String(now.getHours()).padStart(2, "0");
   const minutes = String(now.getMinutes()).padStart(2, "0");
   return `${hours}:${minutes}`;
+}
+
+function daysSinceLocalDate(value: string | undefined): number {
+  if (!value?.trim()) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const parsed = Date.parse(`${value.trim()}T00:00:00`);
+  if (!Number.isFinite(parsed)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const todayParsed = Date.parse(`${todayLocalDate()}T00:00:00`);
+  return Math.max(0, Math.floor((todayParsed - parsed) / (24 * 60 * 60 * 1000)));
 }
 
 function normalizeTime(value?: string | undefined): string {
@@ -84,6 +99,7 @@ function normalizeState(partial: Partial<ResearchDiscoveryScheduleState>): Resea
 export class ResearchDiscoverySchedulerService {
   private readonly storePath: string;
   private readonly directionService: ResearchDirectionService;
+  private readonly feedbackService: ResearchFeedbackService;
   private timer: NodeJS.Timeout | null = null;
   private runningTick = false;
 
@@ -93,6 +109,7 @@ export class ResearchDiscoverySchedulerService {
   ) {
     this.storePath = path.join(workspaceDir, STORE_FILE);
     this.directionService = new ResearchDirectionService(workspaceDir);
+    this.feedbackService = new ResearchFeedbackService(workspaceDir);
   }
 
   private async readState(): Promise<ResearchDiscoveryScheduleState> {
@@ -197,9 +214,23 @@ export class ResearchDiscoverySchedulerService {
 
       const today = todayLocalDate();
       const targetDirectionIds = await this.resolveTargetDirections(state);
-      const pendingDirectionIds = targetDirectionIds.filter(
-        (directionId) => state.lastRunDateByDirection[directionId] !== today,
-      );
+      const pendingDirectionIds: string[] = [];
+
+      for (const directionId of targetDirectionIds) {
+        const profile = await this.directionService.getProfile(directionId);
+        const policy = await this.feedbackService.getDirectionPushPolicy({
+          directionId,
+          topic: profile?.label,
+        });
+        const lastRunDate = state.lastRunDateByDirection[directionId];
+        if (lastRunDate === today) {
+          continue;
+        }
+        if (daysSinceLocalDate(lastRunDate) < policy.minSpacingDays) {
+          continue;
+        }
+        pendingDirectionIds.push(directionId);
+      }
 
       if (pendingDirectionIds.length === 0) {
         return [];
@@ -212,10 +243,16 @@ export class ResearchDiscoverySchedulerService {
       };
 
       for (const directionId of pendingDirectionIds) {
+        const profile = await this.directionService.getProfile(directionId);
+        const policy = await this.feedbackService.getDirectionPushPolicy({
+          directionId,
+          topic: profile?.label,
+        });
+        const adjustedTopK = Math.max(1, Math.min(state.topK + policy.topKAdjustment, 10));
         const result = await this.discoveryService.runDiscovery({
           directionId,
           maxPapersPerQuery: state.maxPapersPerQuery,
-          topK: state.topK,
+          topK: adjustedTopK,
           pushToWechat: true,
           senderId: state.senderId,
           ...(state.senderName?.trim() ? { senderName: state.senderName.trim() } : {}),

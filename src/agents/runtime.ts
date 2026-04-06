@@ -22,7 +22,9 @@ import {
 } from "../services/llmRegistryService.js";
 import { SkillRegistryService, type WorkspaceSkillDefinition } from "../services/skillRegistryService.js";
 import { ResearchDirectionService } from "../services/researchDirectionService.js";
+import { ResearchDirectionReportService } from "../services/researchDirectionReportService.js";
 import { ResearchDiscoveryService } from "../services/researchDiscoveryService.js";
+import { ResearchFeedbackService } from "../services/researchFeedbackService.js";
 import { ResearchLinkIngestionService } from "../services/researchLinkIngestionService.js";
 import { ResearchPaperAnalysisService } from "../services/researchPaperAnalysisService.js";
 import { ResearchRepoAnalysisService } from "../services/researchRepoAnalysisService.js";
@@ -299,6 +301,8 @@ function toolLabel(toolName: string): string {
     repo_analyze: "repo_analyze",
     module_extract: "module_extract",
     baseline_suggest: "baseline_suggest",
+    feedback_record: "feedback_record",
+    direction_report_generate: "direction_report_generate",
     presentation_generate: "presentation_generate",
   };
   return labels[toolName] ?? toolName;
@@ -484,7 +488,9 @@ export class AgentRuntime {
   private readonly injectedWireApi?: OpenAiWireApi | undefined;
   private readonly mcpRegistry: McpRegistryService;
   private readonly researchDirectionService: ResearchDirectionService;
+  private readonly researchDirectionReportService: ResearchDirectionReportService;
   private readonly researchDiscoveryService: ResearchDiscoveryService;
+  private readonly researchFeedbackService: ResearchFeedbackService;
   private readonly researchLinkIngestionService: ResearchLinkIngestionService;
   private readonly researchPaperAnalysisService: ResearchPaperAnalysisService;
   private readonly researchRepoAnalysisService: ResearchRepoAnalysisService;
@@ -504,7 +510,9 @@ export class AgentRuntime {
     this.skillRegistry = new SkillRegistryService(workspaceDir);
     this.mcpRegistry = new McpRegistryService(workspaceDir);
     this.researchDirectionService = new ResearchDirectionService(workspaceDir);
+    this.researchDirectionReportService = new ResearchDirectionReportService(workspaceDir);
     this.researchDiscoveryService = new ResearchDiscoveryService(workspaceDir);
+    this.researchFeedbackService = new ResearchFeedbackService(workspaceDir);
     this.researchLinkIngestionService = new ResearchLinkIngestionService(workspaceDir);
     this.researchPaperAnalysisService = new ResearchPaperAnalysisService(workspaceDir);
     this.researchRepoAnalysisService = new ResearchRepoAnalysisService(workspaceDir);
@@ -674,7 +682,7 @@ export class AgentRuntime {
             : skill.id === "memory-ops"
               ? ["memory_search", "memory_remember"]
               : skill.id === "research-ops"
-                ? ["research_run", "research_recent", "direction_list", "direction_upsert", "discovery_run", "discovery_recent", "link_ingest", "paper_analyze", "repo_analyze", "module_extract", "baseline_suggest", "presentation_generate"]
+                ? ["research_run", "research_recent", "direction_list", "direction_upsert", "discovery_run", "discovery_recent", "link_ingest", "paper_analyze", "repo_analyze", "module_extract", "baseline_suggest", "feedback_record", "direction_report_generate", "presentation_generate"]
                 : [],
       } satisfies AgentSkill;
     });
@@ -1127,6 +1135,8 @@ export class AgentRuntime {
       "- Prefer continuing the research pipeline when one strong candidate is found: link_ingest -> paper_analyze -> repo_analyze -> module_extract.",
       "- If the user asks for recent papers, use discovery_run or discovery_recent instead of giving generic suggestions.",
       "- If the user asks for baselines or innovation directions, use baseline_suggest.",
+      "- If the user gives explicit positive or negative research feedback, use feedback_record so later discovery can adapt.",
+      "- If the user asks for a direction overview, weekly synthesis, or topic summary, use direction_report_generate.",
       "- If the user asks for meeting slides or a weekly deck, use presentation_generate.",
       "- Keep the final answer concise and actionable.",
       "- When tools or research actions were involved, structure the final answer as: What I understood / What I did / What you should do next.",
@@ -1722,7 +1732,8 @@ export class AgentRuntime {
           contextTitle?: string | undefined;
           selectedPaths?: string[] | undefined;
         }),
-      },      {
+      },
+      {
         name: "baseline_suggest",
         description: "Suggest likely baselines, reusable modules, and innovation directions for a topic or direction.",
         skillId: "research-ops",
@@ -1744,7 +1755,105 @@ export class AgentRuntime {
           directionId?: string | undefined;
           topic?: string | undefined;
         }),
-      },      {
+      },
+      {
+        name: "feedback_record",
+        description: "Record explicit user feedback about paper quality, direction preference, or recommendation usefulness.",
+        skillId: "research-ops",
+        inputSchema: z.object({
+          feedback: z.enum([
+            "useful",
+            "not-useful",
+            "more-like-this",
+            "less-like-this",
+            "too-theoretical",
+            "too-engineering-heavy",
+            "worth-following",
+            "not-worth-following"
+          ]),
+          directionId: z.string().trim().min(1).optional(),
+          topic: z.string().trim().min(1).optional(),
+          paperTitle: z.string().trim().min(1).optional(),
+          venue: z.string().trim().min(1).optional(),
+          sourceUrl: z.string().trim().url().optional(),
+          notes: z.string().trim().min(1).optional(),
+        }),
+        parameters: {
+          type: "object",
+          properties: {
+            feedback: {
+              type: "string",
+              enum: [
+                "useful",
+                "not-useful",
+                "more-like-this",
+                "less-like-this",
+                "too-theoretical",
+                "too-engineering-heavy",
+                "worth-following",
+                "not-worth-following"
+              ]
+            },
+            directionId: { type: "string", minLength: 1 },
+            topic: { type: "string", minLength: 1 },
+            paperTitle: { type: "string", minLength: 1 },
+            venue: { type: "string", minLength: 1 },
+            sourceUrl: { type: "string", format: "uri" },
+            notes: { type: "string", minLength: 1 },
+          },
+          required: ["feedback"],
+          additionalProperties: false,
+        },
+        execute: async (args, context) =>
+          this.researchFeedbackService.record({
+            ...(context.input.senderId ? { senderId: context.input.senderId } : {}),
+            ...(context.input.senderName?.trim() ? { senderName: context.input.senderName.trim() } : {}),
+            ...(args as {
+              feedback:
+                | "useful"
+                | "not-useful"
+                | "more-like-this"
+                | "less-like-this"
+                | "too-theoretical"
+                | "too-engineering-heavy"
+                | "worth-following"
+                | "not-worth-following";
+              directionId?: string | undefined;
+              topic?: string | undefined;
+              paperTitle?: string | undefined;
+              venue?: string | undefined;
+              sourceUrl?: string | undefined;
+              notes?: string | undefined;
+            }),
+          }),
+      },
+      {
+        name: "direction_report_generate",
+        description: "Generate a reusable direction report with representative papers, baselines, modules, and suggested routes.",
+        skillId: "research-ops",
+        inputSchema: z.object({
+          directionId: z.string().trim().min(1).optional(),
+          topic: z.string().trim().min(1).optional(),
+          days: z.number().int().min(1).max(30).optional(),
+        }).refine((value) => Boolean(value.directionId || value.topic), {
+          message: "directionId or topic is required.",
+        }),
+        parameters: {
+          type: "object",
+          properties: {
+            directionId: { type: "string", minLength: 1 },
+            topic: { type: "string", minLength: 1 },
+            days: { type: "integer", minimum: 1, maximum: 30 },
+          },
+          additionalProperties: false,
+        },
+        execute: async (args) => this.researchDirectionReportService.generate(args as {
+          directionId?: string | undefined;
+          topic?: string | undefined;
+          days?: number | undefined;
+        }),
+      },
+      {
         name: "presentation_generate",
         description: "Generate a markdown draft for a group meeting presentation from recent research reports.",
         skillId: "research-ops",
