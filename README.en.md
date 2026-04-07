@@ -1,15 +1,25 @@
 # ReAgent
 
+<p align="center">
+  <img src="./docs/reagent-mark.svg" alt="ReAgent logo" width="96" />
+</p>
+
+<p align="center">
+  A research-oriented agent console.
+</p>
+
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![CI](https://github.com/Sinlair/reagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Sinlair/reagent/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-A research-oriented agent console.
-
 ReAgent is not designed as a generic chatbot with some research features bolted on. It is a research workspace centered on continuous paper discovery, article ingestion, repository analysis, memory, direction reports, and meeting material generation, delivered through a web console and WeChat channels.
 
 Chinese README: [README.md](./README.md)
+
+## Preview
+
+![ReAgent Console](./docs/reagent-console.png)
 
 ## Table of Contents
 

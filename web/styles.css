@@ -1,37 +1,39 @@
 :root {
-  --bg: #0e1015;
-  --bg-accent: #13151b;
-  --bg-elevated: #191c24;
-  --bg-hover: #1f2330;
-  --bg-muted: #1b1f2a;
-  --card: #161920;
-  --card-foreground: #f0f0f2;
-  --chrome: rgba(14, 16, 21, 0.92);
-  --chrome-strong: rgba(14, 16, 21, 0.98);
-  --text: #d4d4d8;
-  --text-strong: #f4f4f5;
-  --muted: #838387;
-  --muted-strong: #a1a1aa;
-  --border: #1e2028;
-  --border-strong: #2e3040;
-  --accent: #ff5c5c;
-  --accent-hover: #ff7070;
-  --accent-subtle: rgba(255, 92, 92, 0.1);
-  --accent-glow: rgba(255, 92, 92, 0.24);
-  --accent-foreground: #fff;
-  --ok: #22c55e;
-  --warn: #f59e0b;
-  --danger: #ef4444;
-  --info: #3b82f6;
-  --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 18px 48px rgba(0, 0, 0, 0.32);
-  --shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.42);
+  --bg: #f1ece3;
+  --bg-accent: #ece5da;
+  --bg-elevated: #f8f4ec;
+  --bg-hover: #efe8db;
+  --bg-muted: #e7ded0;
+  --card: #fffdf9;
+  --card-foreground: #182230;
+  --chrome: rgba(246, 242, 235, 0.94);
+  --chrome-strong: rgba(246, 242, 235, 0.99);
+  --text: #334155;
+  --text-strong: #102033;
+  --muted: #6b7280;
+  --muted-strong: #4b5563;
+  --border: #d8cfbf;
+  --border-strong: #bfae92;
+  --accent: #315f85;
+  --accent-hover: #274d6b;
+  --accent-subtle: rgba(49, 95, 133, 0.1);
+  --accent-glow: rgba(49, 95, 133, 0.16);
+  --accent-foreground: #ffffff;
+  --ok: #2f7d4a;
+  --warn: #a56a1f;
+  --danger: #b54d3a;
+  --info: #315f85;
+  --shadow-sm: 0 10px 28px rgba(63, 49, 24, 0.06);
+  --shadow-md: 0 18px 42px rgba(63, 49, 24, 0.1);
+  --shadow-lg: 0 28px 64px rgba(63, 49, 24, 0.12);
+  --shadow-soft: 0 16px 36px rgba(63, 49, 24, 0.08);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-xl: 24px;
   --radius-full: 9999px;
-  --font-body: "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Source Han Serif SC", "Songti SC", serif;
+  --font-body: "Aptos", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 120ms;
@@ -39,7 +41,7 @@
   --shell-nav-width: 268px;
   --shell-nav-rail-width: 88px;
   --shell-topbar-height: 58px;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -58,13 +60,13 @@ body {
 body {
   margin: 0;
   font: 400 14px/1.6 var(--font-body);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.003em;
   color: var(--text);
   background:
-    radial-gradient(circle at 0% 0%, rgba(255, 92, 92, 0.14), transparent 24%),
-    radial-gradient(circle at 100% 0%, rgba(59, 130, 246, 0.08), transparent 26%),
-    radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.04), transparent 28%),
-    linear-gradient(180deg, #0a0c10 0%, #0e1015 100%);
+    radial-gradient(circle at 0% 0%, rgba(186, 160, 116, 0.12), transparent 28%),
+    radial-gradient(circle at 100% 0%, rgba(49, 95, 133, 0.08), transparent 26%),
+    radial-gradient(circle at 50% 100%, rgba(140, 114, 70, 0.05), transparent 30%),
+    linear-gradient(180deg, #ece6db 0%, #f3eee5 52%, #f7f3ec 100%);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
@@ -75,12 +77,12 @@ body::before {
   position: fixed;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: radial-gradient(circle at center, black, transparent 78%);
+    linear-gradient(rgba(113, 94, 64, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(113, 94, 64, 0.03) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(circle at center, black, transparent 84%);
   pointer-events: none;
-  opacity: 0.45;
+  opacity: 0.34;
 }
 
 button,
@@ -172,9 +174,9 @@ svg {
   align-items: center;
   min-height: var(--shell-topbar-height);
   padding: 0 22px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  background: color-mix(in srgb, var(--chrome) 92%, transparent);
-  backdrop-filter: blur(14px) saturate(1.5);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 66%, transparent);
+  background: color-mix(in srgb, var(--chrome) 96%, transparent);
+  backdrop-filter: blur(10px) saturate(1.05);
 }
 
 .topnav-shell {
@@ -229,15 +231,17 @@ svg {
 
 .dashboard-header__title-row h1 {
   margin: 0;
+  font-family: var(--font-display);
   font-size: 25px;
-  letter-spacing: -0.04em;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   color: var(--text-strong);
 }
 
 .dashboard-header__title-row p {
   margin: 0;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--muted-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -250,9 +254,9 @@ svg {
   min-height: 40px;
   min-width: 220px;
   padding: 0 14px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
   border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
   color: var(--muted);
   cursor: pointer;
   transition:
@@ -262,8 +266,8 @@ svg {
 }
 
 .topbar-search:hover {
-  border-color: color-mix(in srgb, var(--border-strong) 92%, transparent);
-  background: color-mix(in srgb, var(--bg-hover) 90%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border) 68%);
+  background: color-mix(in srgb, var(--bg-hover) 88%, transparent);
   color: var(--text);
 }
 
@@ -290,9 +294,9 @@ svg {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 253, 249, 0.72);
 }
 
 .lang-switch__btn {
@@ -317,7 +321,7 @@ svg {
 .lang-switch__btn--active {
   color: var(--text-strong);
   background: var(--accent-subtle);
-  border-color: rgba(255, 92, 92, 0.26);
+  border-color: rgba(49, 95, 133, 0.22);
 }
 
 .topbar-status {
@@ -330,7 +334,7 @@ svg {
   grid-area: nav;
   display: flex;
   min-height: 100%;
-  border-right: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
   overflow: hidden;
 }
 
@@ -339,7 +343,8 @@ svg {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  background: color-mix(in srgb, var(--bg) 96%, black 4%);
+  background:
+    linear-gradient(180deg, #24374a 0%, #213143 48%, #1d2a39 100%);
 }
 
 .sidebar-shell {
@@ -383,17 +388,17 @@ svg {
   display: grid;
   place-items: center;
   background:
-    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.2), transparent 48%),
-    linear-gradient(135deg, #ff7b72 0%, #ff5c5c 40%, #c93c4f 100%);
+    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.28), transparent 44%),
+    linear-gradient(135deg, #f6f0e5 0%, #e8dcc6 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 12px 24px rgba(255, 92, 92, 0.24);
+    inset 0 1px 0 rgba(255, 255, 255, 0.64),
+    0 10px 20px rgba(7, 17, 29, 0.22);
 }
 
 .sidebar-brand__logo-mark {
-  font-size: 18px;
+  font: 700 18px/1 var(--font-display);
   font-weight: 800;
-  color: #fff;
+  color: #1d3248;
 }
 
 .sidebar-brand__copy {
@@ -408,14 +413,13 @@ svg {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: rgba(232, 226, 214, 0.66);
 }
 
 .sidebar-brand__title {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--text-strong);
+  font: 700 16px/1.1 var(--font-display);
+  letter-spacing: -0.02em;
+  color: #f6f2eb;
 }
 
 .sidebar-nav {
@@ -483,7 +487,7 @@ svg {
 .nav-collapse-toggle:hover,
 .btn:hover {
   border-color: var(--border-strong);
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--bg-hover) 92%, transparent);
   color: var(--text);
 }
 
@@ -518,7 +522,7 @@ svg {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--muted) 78%, var(--text) 22%);
+  color: rgba(222, 214, 200, 0.62);
 }
 
 .nav-item {
@@ -529,7 +533,7 @@ svg {
   padding: 0 10px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  color: var(--muted);
+  color: rgba(228, 222, 211, 0.76);
   cursor: pointer;
   transition:
     border-color var(--duration-fast) ease,
@@ -538,22 +542,22 @@ svg {
 }
 
 .nav-item:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--bg-hover) 84%, transparent);
-  border-color: color-mix(in srgb, var(--border) 72%, transparent);
+  color: #fffdf8;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .nav-item--active {
-  color: var(--text-strong);
-  background: color-mix(in srgb, var(--accent-subtle) 88%, var(--bg-elevated) 12%);
-  border-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: #fffdf8;
+  background: rgba(232, 220, 198, 0.12);
+  border-color: rgba(232, 220, 198, 0.22);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 24px rgba(0, 0, 0, 0.18);
+    0 10px 24px rgba(7, 17, 29, 0.18);
 }
 
 .nav-item--active .nav-item__icon {
-  color: var(--accent);
+  color: #ecd4a8;
 }
 
 .nav-item__text {
@@ -595,10 +599,10 @@ svg {
 }
 
 .card {
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), transparent 24%),
     var(--card);
   box-shadow: var(--shadow-sm);
   transition:
@@ -608,7 +612,7 @@ svg {
 
 .card:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-soft);
 }
 
 .panel-card,
@@ -618,7 +622,7 @@ svg {
 }
 
 .panel-card--selected {
-  border-color: rgba(255, 92, 92, 0.28);
+  border-color: rgba(49, 95, 133, 0.24);
   background: var(--accent-subtle);
 }
 
@@ -643,16 +647,17 @@ svg {
 .card-title {
   margin: 0;
   color: var(--text-strong);
+  font-family: var(--font-display);
 }
 
 .page-title {
   font-size: 24px;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
 }
 
 .card-title {
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .card-title--lg {
@@ -682,7 +687,7 @@ svg {
 
 .section-kicker {
   margin: 0 0 8px;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--muted-strong) 76%, var(--accent) 24%);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -696,12 +701,12 @@ svg {
   min-height: 36px;
   padding: 7px 12px;
   border-radius: var(--radius-full);
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid color-mix(in srgb, var(--border) 96%, transparent);
+  background: rgba(255, 253, 249, 0.8);
 }
 
 .pill--health {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 253, 249, 0.92);
 }
 
 .pill strong {
@@ -718,7 +723,7 @@ svg {
   height: 8px;
   border-radius: var(--radius-full);
   background: var(--danger);
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 10px rgba(181, 77, 58, 0.2);
 }
 
 .statusDot.ok {
@@ -738,7 +743,7 @@ svg {
 
 .statusDot.accent {
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(255, 92, 92, 0.4);
+  box-shadow: 0 0 10px rgba(49, 95, 133, 0.2);
 }
 
 .sidebar-version {
@@ -747,9 +752,9 @@ svg {
   gap: 10px;
   min-height: 42px;
   padding: 0 12px;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .sidebar-version__label {
@@ -757,12 +762,12 @@ svg {
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: rgba(232, 226, 214, 0.66);
 }
 
 .sidebar-version__text {
   font-size: 13px;
-  color: var(--text);
+  color: #f6f2eb;
   font-weight: 600;
 }
 
@@ -839,9 +844,9 @@ svg {
   justify-content: center;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 96%, transparent);
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 251, 245, 0.72);
   color: var(--muted);
   cursor: pointer;
   transition:
@@ -858,7 +863,7 @@ svg {
 
 .agent-panel-tab--active {
   color: var(--text-strong);
-  border-color: rgba(255, 92, 92, 0.28);
+  border-color: rgba(49, 95, 133, 0.22);
   background: var(--accent-subtle);
 }
 
@@ -867,9 +872,9 @@ svg {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 96%, transparent);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 252, 246, 0.76);
 }
 
 .agent-skill input {
@@ -899,9 +904,9 @@ svg {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 96%, transparent);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 252, 246, 0.76);
 }
 
 .route-chip__copy {
@@ -954,9 +959,9 @@ input,
 textarea,
 select {
   width: 100%;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 98%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
   padding: 10px 12px;
   outline: none;
   transition:
@@ -968,9 +973,9 @@ select {
 input:focus,
 textarea:focus,
 select:focus {
-  border-color: rgba(255, 92, 92, 0.38);
+  border-color: rgba(49, 95, 133, 0.34);
   background: var(--bg-hover);
-  box-shadow: 0 0 0 3px rgba(255, 92, 92, 0.12);
+  box-shadow: 0 0 0 3px rgba(49, 95, 133, 0.1);
 }
 
 textarea {
@@ -993,7 +998,7 @@ select {
 .btn {
   min-height: 40px;
   padding: 8px 14px;
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
   color: var(--text);
 }
 
@@ -1001,14 +1006,14 @@ select {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-foreground);
-  box-shadow: 0 1px 3px var(--accent-subtle);
+  box-shadow: 0 8px 18px rgba(49, 95, 133, 0.16);
 }
 
 .btn.primary:hover {
   border-color: var(--accent-hover);
   background: var(--accent-hover);
   color: #fff;
-  box-shadow: 0 10px 28px rgba(255, 92, 92, 0.24);
+  box-shadow: 0 12px 24px rgba(49, 95, 133, 0.18);
 }
 
 .btn--ghost {
@@ -1018,7 +1023,7 @@ select {
 
 .btn--ghost:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(49, 95, 133, 0.06);
 }
 
 .btn--icon {
@@ -1145,8 +1150,8 @@ select {
 }
 
 .message--assistant .message__avatar {
-  background: linear-gradient(135deg, rgba(255, 92, 92, 0.28), rgba(255, 92, 92, 0.12));
-  border-color: rgba(255, 92, 92, 0.22);
+  background: linear-gradient(135deg, rgba(49, 95, 133, 0.18), rgba(193, 169, 124, 0.12));
+  border-color: rgba(49, 95, 133, 0.18);
 }
 
 .message--user .message__avatar {
@@ -1193,7 +1198,7 @@ select {
 }
 
 .message--assistant .bubble {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  background: linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(247, 242, 233, 0.82));
 }
 
 .message--system {
@@ -1231,7 +1236,7 @@ select {
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
   border-radius: var(--radius-xl);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+  background: linear-gradient(180deg, rgba(255, 251, 245, 0.88), rgba(248, 243, 235, 0.72));
 }
 
 .chat-compose__toolbar {
@@ -1300,9 +1305,9 @@ select {
   justify-content: center;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 96%, transparent);
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 251, 245, 0.76);
   color: var(--muted);
   cursor: pointer;
   transition:
@@ -1313,8 +1318,8 @@ select {
 
 .quick-command:hover {
   color: var(--text);
-  border-color: var(--border-strong);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border-strong) 74%);
+  background: rgba(49, 95, 133, 0.06);
 }
 
 .agent-chat__welcome {
@@ -1330,7 +1335,7 @@ select {
   width: 320px;
   height: 320px;
   transform: translateX(-50%);
-  background: radial-gradient(circle, rgba(255, 92, 92, 0.2), transparent 68%);
+  background: radial-gradient(circle, rgba(49, 95, 133, 0.16), transparent 68%);
   pointer-events: none;
 }
 
@@ -1340,8 +1345,9 @@ select {
 
 .agent-chat__welcome h2 {
   margin: 0;
+  font-family: var(--font-display);
   font-size: 34px;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.035em;
   color: var(--text-strong);
 }
 
@@ -1349,7 +1355,7 @@ select {
   display: inline-flex;
   margin-top: 12px;
   padding: 8px 12px;
-  border: 1px solid rgba(255, 92, 92, 0.22);
+  border: 1px solid rgba(49, 95, 133, 0.18);
   border-radius: var(--radius-full);
   background: var(--accent-subtle);
   color: var(--muted-strong);
@@ -1387,16 +1393,16 @@ select {
   align-items: center;
   min-height: 38px;
   padding: 0 14px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 96%, transparent);
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 251, 245, 0.82);
   color: var(--text);
   cursor: pointer;
 }
 
 .agent-chat__suggestion:hover {
-  border-color: rgba(255, 92, 92, 0.26);
-  background: rgba(255, 92, 92, 0.08);
+  border-color: rgba(49, 95, 133, 0.24);
+  background: rgba(49, 95, 133, 0.08);
 }
 
 .detail-row,
@@ -1409,9 +1415,9 @@ select {
 .pairing-card,
 .code-panel,
 .ov-card {
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 96%, transparent);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 252, 247, 0.78);
 }
 
 .detail-row,
@@ -1557,10 +1563,10 @@ select {
   border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 28%),
-    radial-gradient(circle at top left, rgba(255, 92, 92, 0.08), transparent 24%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 30%),
-    rgba(255, 255, 255, 0.03);
+    radial-gradient(circle at top right, rgba(49, 95, 133, 0.08), transparent 30%),
+    radial-gradient(circle at top left, rgba(193, 169, 124, 0.1), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.6), transparent 30%),
+    rgba(255, 252, 247, 0.84);
 }
 
 .report-hero__head {
@@ -1572,9 +1578,10 @@ select {
 
 .report-hero__head h3 {
   margin: 0;
+  font-family: var(--font-display);
   color: var(--text-strong);
   font-size: 24px;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
 }
 
 .report-hero__head p {
@@ -1670,16 +1677,16 @@ select {
 .ov-card:hover {
   transform: translateY(-1px);
   border-color: var(--border-strong);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(49, 95, 133, 0.05);
 }
 
 .file-item.is-active {
-  border-color: rgba(255, 92, 92, 0.24);
+  border-color: rgba(49, 95, 133, 0.22);
   background: var(--accent-subtle);
 }
 
 .session-item--current {
-  border-color: rgba(255, 92, 92, 0.26);
+  border-color: rgba(49, 95, 133, 0.22);
   background: var(--accent-subtle);
 }
 
@@ -2168,8 +2175,8 @@ select {
 
 .graph-related-chip:hover,
 .graph-inline-link:hover {
-  border-color: rgba(255, 92, 92, 0.4);
-  background: rgba(255, 92, 92, 0.1);
+  border-color: rgba(49, 95, 133, 0.32);
+  background: rgba(49, 95, 133, 0.08);
   color: var(--text-strong);
   transform: translateY(-1px);
 }
@@ -2216,7 +2223,7 @@ select {
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 252, 247, 0.8);
 }
 
 .graph-conclusion p {
@@ -2235,9 +2242,10 @@ select {
   border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
   border-radius: var(--radius-md);
   background:
-    radial-gradient(circle at top left, rgba(255, 92, 92, 0.08), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 36%),
-    color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+    radial-gradient(circle at top left, rgba(193, 169, 124, 0.1), transparent 32%),
+    radial-gradient(circle at top right, rgba(49, 95, 133, 0.07), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.44), transparent 36%),
+    color-mix(in srgb, var(--bg-elevated) 94%, transparent);
   overflow: auto;
 }
 
@@ -2247,19 +2255,19 @@ select {
 }
 
 .graph-lane__rail {
-  fill: rgba(255, 255, 255, 0.02);
-  stroke: rgba(255, 255, 255, 0.06);
+  fill: rgba(49, 95, 133, 0.03);
+  stroke: rgba(49, 95, 133, 0.08);
   stroke-width: 1;
 }
 
 .graph-link {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.12);
+  stroke: rgba(49, 95, 133, 0.14);
   stroke-width: 1.4;
 }
 
 .graph-link--active {
-  stroke: rgba(255, 92, 92, 0.34);
+  stroke: rgba(49, 95, 133, 0.34);
   stroke-width: 2;
 }
 
@@ -2268,7 +2276,7 @@ select {
 }
 
 .graph-node {
-  stroke: rgba(255, 255, 255, 0.24);
+  stroke: rgba(49, 95, 133, 0.2);
   stroke-width: 1.5;
   fill: color-mix(in srgb, var(--bg-muted) 84%, transparent);
   transition:
@@ -2279,8 +2287,8 @@ select {
 
 .graph-node-group:hover .graph-node,
 .graph-node-group--active .graph-node {
-  stroke: rgba(255, 92, 92, 0.46);
-  filter: drop-shadow(0 8px 22px rgba(255, 92, 92, 0.16));
+  stroke: rgba(49, 95, 133, 0.42);
+  filter: drop-shadow(0 8px 22px rgba(49, 95, 133, 0.14));
 }
 
 .graph-node-group--active .graph-node-label {

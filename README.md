@@ -1,15 +1,25 @@
 # ReAgent
 
+<p align="center">
+  <img src="./docs/reagent-mark.svg" alt="ReAgent logo" width="96" />
+</p>
+
+<p align="center">
+  面向研究工作的智能体控制台。
+</p>
+
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![CI](https://github.com/Sinlair/reagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Sinlair/reagent/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-面向研究工作的智能体控制台。
-
 ReAgent 的目标不是做一个“通用聊天机器人”，而是做一个以研究流程为中心的个人研究操作台：发现论文、解析文章、分析代码仓库、沉淀记忆、生成方向报告和组会材料，并通过网页控制台和微信通道把这些能力串起来。
 
 英文版说明见：[README.en.md](./README.en.md)
+
+## 界面预览
+
+![ReAgent Console](./docs/reagent-console.png)
 
 ## 目录
 
