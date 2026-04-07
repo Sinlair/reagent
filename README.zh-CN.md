@@ -4,16 +4,16 @@
   <p><strong>把持续科研工作变成可复用流程，而不是一次性对话。</strong></p>
   <p>🧠 面向论文发现、证据整理、研究笔记与结果交付的本地优先研究工作台。</p>
   <p>
-    <a href="./README.md">English</a>
+    <a href="./README.md">🇺🇸 English</a>
     <span>&nbsp;|&nbsp;</span>
-    <a href="./README.zh-CN.md"><strong>简体中文</strong></a>
+    <a href="./README.zh-CN.md"><strong>🇨🇳 简体中文</strong></a>
   </p>
   <p>
-    <a href="./ROADMAP.md">路线图</a>
+    <a href="./ROADMAP.md">🛣️ 路线图</a>
     <span>&nbsp;•&nbsp;</span>
-    <a href="./CONTRIBUTING.md">贡献指南</a>
+    <a href="./CONTRIBUTING.md">🤝 贡献指南</a>
     <span>&nbsp;•&nbsp;</span>
-    <a href="./OPERATIONS.md">运维说明</a>
+    <a href="./OPERATIONS.md">🛠️ 运维说明</a>
   </p>
 </div>
 
@@ -38,6 +38,13 @@
 <p align="center">
   <img src="./docs/reagent-console-zh.png" alt="ReAgent 中文首页截图" width="100%" />
 </p>
+
+## ⚡ 快速概览
+
+- 🧭 先用研究模板固定目标、背景和成功标准，再开始研究。
+- 🔬 在同一个工作区里发起任务、查看证据和阅读输出。
+- 🧠 用文件、索引、召回和压缩机制建立可持续维护的知识库。
+- 📦 产出报告、幻灯片、模块文件等可复用成果。
 
 ## 📌 ReAgent 是什么
 
@@ -108,18 +115,18 @@ npm run db:push
 npm run dev
 ```
 
-打开 `http://127.0.0.1:3000/`。
+🌐 打开 `http://127.0.0.1:3000/`。
 
-最小本地配置：
+🧪 最小本地配置：
 
 ```env
 LLM_PROVIDER=fallback
 WECHAT_PROVIDER=mock
 ```
 
-如果 PowerShell 阻止 `npm`，可以直接使用 `npm.cmd`。
+🪟 如果 PowerShell 阻止 `npm`，可以直接使用 `npm.cmd`。
 
-全局 CLI 安装方式：
+🧰 全局 CLI 安装方式：
 
 ```bash
 npm install -g @sinlair/reagent
@@ -127,9 +134,9 @@ reagent init
 reagent gateway
 ```
 
-发布包名是 `@sinlair/reagent`，安装后的命令是 `reagent`。
+🏷️ 发布包名是 `@sinlair/reagent`，安装后的命令是 `reagent`。
 
-常驻 gateway 相关命令：
+🔁 常驻 gateway 相关命令：
 
 ```bash
 reagent gateway install

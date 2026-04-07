@@ -4,16 +4,16 @@
   <p><strong>Turn ongoing research into a reusable workflow, not a one-off conversation.</strong></p>
   <p>🧠 Local-first research workspace for paper discovery, evidence review, research notes, and delivery.</p>
   <p>
-    <a href="./README.md"><strong>English</strong></a>
+    <a href="./README.md"><strong>🇺🇸 English</strong></a>
     <span>&nbsp;|&nbsp;</span>
-    <a href="./README.zh-CN.md">简体中文</a>
+    <a href="./README.zh-CN.md">🇨🇳 简体中文</a>
   </p>
   <p>
-    <a href="./ROADMAP.md">Roadmap</a>
+    <a href="./ROADMAP.md">🛣️ Roadmap</a>
     <span>&nbsp;•&nbsp;</span>
-    <a href="./CONTRIBUTING.md">Contributing</a>
+    <a href="./CONTRIBUTING.md">🤝 Contributing</a>
     <span>&nbsp;•&nbsp;</span>
-    <a href="./OPERATIONS.md">Operations</a>
+    <a href="./OPERATIONS.md">🛠️ Operations</a>
   </p>
 </div>
 
@@ -38,6 +38,13 @@
 <p align="center">
   <img src="./docs/reagent-console.png" alt="English screenshot of the ReAgent workbench home page" width="100%" />
 </p>
+
+## ⚡ At A Glance
+
+- 🧭 Plan research around reusable templates instead of ad-hoc prompts.
+- 🔬 Run tasks, inspect evidence, and review outputs in one workspace.
+- 🧠 Build a file-backed knowledge base with indexing, recall, and compaction.
+- 📦 Ship reusable outputs such as reports, slides, and module files.
 
 ## 📌 What ReAgent Is
 
@@ -108,18 +115,18 @@ npm run db:push
 npm run dev
 ```
 
-Open `http://127.0.0.1:3000/`.
+🌐 Open `http://127.0.0.1:3000/`.
 
-Minimal local setup:
+🧪 Minimal local setup:
 
 ```env
 LLM_PROVIDER=fallback
 WECHAT_PROVIDER=mock
 ```
 
-If PowerShell blocks `npm`, use `npm.cmd` instead.
+🪟 If PowerShell blocks `npm`, use `npm.cmd` instead.
 
-Global CLI install:
+🧰 Global CLI install:
 
 ```bash
 npm install -g @sinlair/reagent
@@ -127,9 +134,9 @@ reagent init
 reagent gateway
 ```
 
-The published package name is `@sinlair/reagent`, while the installed command is `reagent`.
+🏷️ The published package name is `@sinlair/reagent`, while the installed command is `reagent`.
 
-Always-on gateway lifecycle:
+🔁 Always-on gateway lifecycle:
 
 ```bash
 reagent gateway install
