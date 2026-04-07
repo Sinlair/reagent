@@ -1,0 +1,33 @@
+{
+  "name": "@sinlair/reagent-core",
+  "version": "0.1.0",
+  "description": "Core research workflow utilities for ReAgent",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "jsdom": "^29.0.1"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -27,7 +27,6 @@
   },
   "dependencies": {
     "qrcode-terminal": "0.12.0",
-    "reagent": "file:..",
     "zod": "4.3.6"
   },
   "devDependencies": {

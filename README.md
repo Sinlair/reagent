@@ -247,6 +247,7 @@ npm.cmd run db:studio
 ├─ web/                  # 控制台前端静态资源
 ├─ prisma/               # 数据库 schema
 ├─ tests/                # 根项目测试
+├─ packages/             # 插件化与核心能力拆分中的包目录
 ├─ workspace/            # 运行期工作区
 ├─ package/              # OpenClaw 微信插件子包
 ├─ agent.md              # 产品和能力规划
@@ -345,6 +346,7 @@ ReAgent 会把长期状态保存在 `workspace/` 下，常见内容包括：
 
 - 运维说明：[OPERATIONS.md](./OPERATIONS.md)
 - 产品规划：[agent.md](./agent.md)
+- 路线图：[ROADMAP.md](./ROADMAP.md)
 - 贡献指南：[CONTRIBUTING.md](./CONTRIBUTING.md)
 - 安全策略：[SECURITY.md](./SECURITY.md)
 - OpenClaw 微信插件子包：[package/](./package)

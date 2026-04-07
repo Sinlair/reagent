@@ -191,6 +191,7 @@ npm.cmd run db:studio
 ├─ web/
 ├─ prisma/
 ├─ tests/
+├─ packages/
 ├─ workspace/
 ├─ package/
 ├─ agent.md
@@ -271,6 +272,7 @@ It is better described as a working research console under active iteration than
 
 - Operations: [OPERATIONS.md](./OPERATIONS.md)
 - Product plan: [agent.md](./agent.md)
+- Roadmap: [ROADMAP.md](./ROADMAP.md)
 - Contribution guide: [CONTRIBUTING.md](./CONTRIBUTING.md)
 - Security policy: [SECURITY.md](./SECURITY.md)
 - OpenClaw WeChat plugin package: [package/](./package)
