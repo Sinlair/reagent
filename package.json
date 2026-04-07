@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "prestart": "npm run build",
+    "prebuild": "npm run db:generate",
     "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json",
     "build:core-package": "npm --prefix packages/reagent-core run build",
     "build:openclaw-package": "npm --prefix packages/reagent-openclaw run build",
     "build:packages": "npm run build:core-package && npm run build:openclaw-package",
+    "precheck": "npm run db:generate",
     "check": "tsc --noEmit",
     "check:core-package": "npm --prefix packages/reagent-core run typecheck",
     "check:openclaw-package": "npm --prefix packages/reagent-openclaw run typecheck",

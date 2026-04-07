@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { ResearchService } from "./researchService.js";
+import { ResearchMemoryFlushService } from "./researchMemoryFlushService.js";
 import type { ResearchRequest } from "../types/research.js";
 import type {
   ResearchTaskProgressUpdate,
@@ -97,6 +98,7 @@ function toSummary(record: ResearchTaskRecord): ResearchTaskSummary {
 
 export class ResearchTaskService {
   private readonly storePath: string;
+  private readonly memoryFlushService: ResearchMemoryFlushService;
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -104,6 +106,7 @@ export class ResearchTaskService {
     private readonly researchService: ResearchService
   ) {
     this.storePath = path.join(workspaceDir, STORE_FILE);
+    this.memoryFlushService = new ResearchMemoryFlushService(workspaceDir);
   }
 
   private async readStore(): Promise<ResearchTaskStore> {
@@ -268,6 +271,8 @@ export class ResearchTaskService {
           await this.updateTaskState(taskId, update.state, update.message);
         }
       });
+
+      await this.memoryFlushService.flushResearchReport(report).catch(() => {});
 
       await this.updateTaskState(taskId, "completed", "Research task completed.", {
         reportReady: true,

@@ -1,4 +1,6 @@
 export * from "./types.js";
+export * from "./memory.js";
+export * from "./memoryService.js";
 export * from "./paperRanker.js";
 export * from "./researchDirectionService.js";
 export * from "./researchFeedbackService.js";
@@ -8,6 +10,7 @@ export * from "./researchAnalysis.js";
 export * from "./researchBaselineService.js";
 export * from "./researchDirectionReport.js";
 export * from "./researchDirectionReportService.js";
+export * from "./researchMemoryFlushService.js";
 export * from "./researchLinkIngestionService.js";
 export * from "./researchModuleAssetService.js";
 export * from "./researchNovelty.js";

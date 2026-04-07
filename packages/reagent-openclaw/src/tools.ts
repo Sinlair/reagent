@@ -1,6 +1,6 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
 
-import { createPluginServices } from "./services.js";
+import { createPluginMemoryService, createPluginServices } from "./services.js";
 
 function textToolResult(text: string, details?: unknown) {
   return {
@@ -11,6 +11,44 @@ function textToolResult(text: string, details?: unknown) {
       }
     ],
     details: details ?? {}
+  };
+}
+
+function clipText(text: string, maxLength = 1200): string {
+  const normalized = text.trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength).trimEnd()}...`;
+}
+
+function normalizeMemoryScope(raw: unknown): "workspace" | "conversation" {
+  return raw === "conversation" ? "conversation" : "workspace";
+}
+
+function formatMemoryScopeLabel(scope: "workspace" | "conversation", scopeKey?: string): string {
+  return scope === "conversation" && scopeKey ? `conversation:${scopeKey}` : "workspace";
+}
+
+function resolveMemoryToolAccess(api: OpenClawPluginApi, params: Record<string, unknown>) {
+  const scope = normalizeMemoryScope(params.scope);
+  const scopeKey = typeof params.scopeKey === "string" && params.scopeKey.trim()
+    ? params.scopeKey.trim()
+    : undefined;
+
+  if (scope === "conversation" && !scopeKey) {
+    return {
+      ok: false as const,
+      message: "Conversation-scoped memory requires a non-empty scopeKey.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    scope,
+    scopeKey,
+    scopeLabel: formatMemoryScopeLabel(scope, scopeKey),
+    memoryService: createPluginMemoryService(api, { scope, scopeKey }),
   };
 }
 
@@ -40,6 +78,233 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
         { count: directions.length, directions }
       );
     }
+  });
+
+  api.registerTool({
+    name: "reagent_memory_status",
+    label: "ReAgent Memory Status",
+    description: "Inspect ReAgent memory status for shared workspace memory or one conversation scope.",
+    parameters: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["workspace", "conversation"],
+        },
+        scopeKey: { type: "string", minLength: 1 },
+      },
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params) {
+      const resolved = resolveMemoryToolAccess(api, params);
+      if (!resolved.ok) {
+        return textToolResult(resolved.message, { ok: false });
+      }
+
+      const status = await resolved.memoryService.getStatus();
+      return textToolResult(
+        [
+          `Memory scope: ${resolved.scopeLabel}`,
+          `Files: ${status.files}`,
+          `Search mode: ${status.searchMode}`,
+          `Scope root: ${status.scopeRootDir}`,
+          `Last updated: ${status.lastUpdatedAt ?? "never"}`,
+        ].join("\n"),
+        status,
+      );
+    },
+  });
+
+  api.registerTool({
+    name: "reagent_memory_files",
+    label: "ReAgent Memory Files",
+    description: "List memory files from shared workspace memory or one conversation scope.",
+    parameters: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["workspace", "conversation"],
+        },
+        scopeKey: { type: "string", minLength: 1 },
+      },
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params) {
+      const resolved = resolveMemoryToolAccess(api, params);
+      if (!resolved.ok) {
+        return textToolResult(resolved.message, { ok: false });
+      }
+
+      const files = await resolved.memoryService.listFiles();
+      if (files.length === 0) {
+        return textToolResult(`No memory files found in ${resolved.scopeLabel}.`, {
+          count: 0,
+          scope: resolved.scope,
+          scopeKey: resolved.scopeKey,
+        });
+      }
+
+      return textToolResult(
+        [
+          `Memory files in ${resolved.scopeLabel}:`,
+          "",
+          ...files.map((file) => `- ${file.path} | ${file.kind} | ${file.updatedAt}`),
+        ].join("\n"),
+        {
+          count: files.length,
+          scope: resolved.scope,
+          scopeKey: resolved.scopeKey,
+          files,
+        },
+      );
+    },
+  });
+
+  api.registerTool({
+    name: "reagent_memory_get",
+    label: "ReAgent Memory Get",
+    description: "Load one memory file from shared workspace memory or one conversation scope.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", minLength: 1 },
+        scope: {
+          type: "string",
+          enum: ["workspace", "conversation"],
+        },
+        scopeKey: { type: "string", minLength: 1 },
+      },
+      required: ["path"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params) {
+      const resolved = resolveMemoryToolAccess(api, params);
+      if (!resolved.ok) {
+        return textToolResult(resolved.message, { ok: false });
+      }
+
+      const file = await resolved.memoryService.getFile(String(params.path));
+      return textToolResult(
+        [
+          `Memory file: ${file.path}`,
+          `Scope: ${resolved.scopeLabel}`,
+          "",
+          clipText(file.content, 1600),
+        ].join("\n"),
+        {
+          scope: resolved.scope,
+          scopeKey: resolved.scopeKey,
+          file,
+        },
+      );
+    },
+  });
+
+  api.registerTool({
+    name: "reagent_memory_search",
+    label: "ReAgent Memory Search",
+    description: "Search shared workspace memory or one conversation scope using hybrid memory retrieval.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", minLength: 1 },
+        limit: { type: "integer", minimum: 1, maximum: 10 },
+        scope: {
+          type: "string",
+          enum: ["workspace", "conversation"],
+        },
+        scopeKey: { type: "string", minLength: 1 },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params) {
+      const resolved = resolveMemoryToolAccess(api, params);
+      if (!resolved.ok) {
+        return textToolResult(resolved.message, { ok: false });
+      }
+
+      const query = String(params.query).trim();
+      const results = await resolved.memoryService.search(
+        query,
+        typeof params.limit === "number" ? params.limit : 4,
+      );
+
+      if (results.length === 0) {
+        return textToolResult(`No memory hits found for "${query}" in ${resolved.scopeLabel}.`, {
+          count: 0,
+          scope: resolved.scope,
+          scopeKey: resolved.scopeKey,
+          query,
+        });
+      }
+
+      return textToolResult(
+        [
+          `Memory hits for "${query}" in ${resolved.scopeLabel}:`,
+          "",
+          ...results.map(
+            (item) =>
+              `- ${item.path}:${item.startLine}-${item.endLine} | ${item.title}\n  ${item.snippet}`,
+          ),
+        ].join("\n"),
+        {
+          count: results.length,
+          scope: resolved.scope,
+          scopeKey: resolved.scopeKey,
+          query,
+          results,
+        },
+      );
+    },
+  });
+
+  api.registerTool({
+    name: "reagent_memory_remember",
+    label: "ReAgent Memory Remember",
+    description: "Write a note into shared workspace memory or one conversation-scoped memory.",
+    parameters: {
+      type: "object",
+      properties: {
+        content: { type: "string", minLength: 1 },
+        title: { type: "string", minLength: 1 },
+        targetScope: {
+          type: "string",
+          enum: ["daily", "long-term"],
+        },
+        source: { type: "string", minLength: 1 },
+        scope: {
+          type: "string",
+          enum: ["workspace", "conversation"],
+        },
+        scopeKey: { type: "string", minLength: 1 },
+      },
+      required: ["content"],
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params) {
+      const resolved = resolveMemoryToolAccess(api, params);
+      if (!resolved.ok) {
+        return textToolResult(resolved.message, { ok: false });
+      }
+
+      const saved = await resolved.memoryService.remember({
+        scope: params.targetScope === "long-term" ? "long-term" : "daily",
+        title: typeof params.title === "string" && params.title.trim() ? params.title.trim() : undefined,
+        content: String(params.content),
+        source: typeof params.source === "string" && params.source.trim() ? params.source.trim() : undefined,
+      });
+
+      return textToolResult(
+        `Saved memory note to ${resolved.scopeLabel}: ${saved.path}`,
+        {
+          scope: resolved.scope,
+          scopeKey: resolved.scopeKey,
+          file: saved,
+        },
+      );
+    },
   });
 
   api.registerTool({

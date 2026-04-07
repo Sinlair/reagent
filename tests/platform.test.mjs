@@ -303,12 +303,14 @@ async function main() {
       const status = await memory.getStatus();
       const files = await memory.listFiles();
       const results = await memory.search("TypeScript backend", 5);
+      const dailyResults = await memory.search("WeChat integration", 5);
 
-      assert.equal(status.searchMode, "keyword");
+      assert.equal(status.searchMode, "hybrid");
       assert.equal(files.length >= 2, true);
       assert.equal(results.length >= 1, true);
       assert.equal(results[0].path, "MEMORY.md");
       assert.ok(results[0].snippet.includes("TypeScript"));
+      assert.equal(dailyResults.some((item) => item.path.startsWith("memory/")), true);
     });
   });
 

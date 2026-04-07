@@ -7,6 +7,7 @@ import { ResearchBaselineService } from "./researchBaselineService.js";
 import { ResearchDirectionService } from "./researchDirectionService.js";
 import { ResearchDiscoveryService } from "./researchDiscoveryService.js";
 import { ResearchPaperAnalysisService } from "./researchPaperAnalysisService.js";
+import { ResearchMemoryFlushService } from "./researchMemoryFlushService.js";
 import { ResearchRepoAnalysisService } from "./researchRepoAnalysisService.js";
 
 const STORE_FILE = "research/direction-reports.json";
@@ -162,6 +163,7 @@ export class ResearchDirectionReportService {
   private readonly paperAnalysisService: ResearchPaperAnalysisService;
   private readonly repoAnalysisService: ResearchRepoAnalysisService;
   private readonly baselineService: ResearchBaselineService;
+  private readonly memoryFlushService: ResearchMemoryFlushService;
 
   constructor(
     private readonly workspaceDir: string,
@@ -181,6 +183,7 @@ export class ResearchDirectionReportService {
     this.baselineService = new ResearchBaselineService(workspaceDir, {
       crossrefMailto: options.crossrefMailto,
     });
+    this.memoryFlushService = new ResearchMemoryFlushService(workspaceDir);
   }
 
   private async readStore(): Promise<ResearchDirectionReportStore> {
@@ -360,6 +363,8 @@ export class ResearchDirectionReportService {
       ...store,
       reports: [report, ...store.reports].slice(0, MAX_REPORTS),
     });
+
+    await this.memoryFlushService.flushDirectionReport(report).catch(() => {});
 
     return report;
   }

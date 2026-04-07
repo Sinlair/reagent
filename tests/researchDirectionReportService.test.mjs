@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { ResearchDirectionService } from "../dist/services/researchDirectionService.js";
 import { ResearchDirectionReportService } from "../dist/services/researchDirectionReportService.js";
+import { MemoryService } from "../dist/services/memoryService.js";
 
 async function runTest(name, fn) {
   try {
@@ -34,6 +35,7 @@ async function main() {
   await runTest("ResearchDirectionReportService generates a reusable direction report from stored signals", async () => {
     await withTempDir(async (dir) => {
       const directionService = new ResearchDirectionService(dir);
+      const memory = new MemoryService(dir);
       await directionService.upsertProfile({
         id: "multimodal-rag",
         label: "Multimodal RAG",
@@ -173,6 +175,13 @@ async function main() {
       const recent = await service.listRecent();
       assert.equal(recent.length, 1);
       assert.equal(recent[0]?.id, report.id);
+
+      const memoryFiles = await memory.listFiles();
+      const dailyFile = memoryFiles.find((file) => file.path.startsWith("memory/"));
+      assert.ok(dailyFile);
+      const dailyContent = await memory.getFile(dailyFile.path);
+      assert.equal(dailyContent.content.includes("Direction report generated."), true);
+      assert.equal(dailyContent.content.includes("Multimodal RAG"), true);
     });
   });
 }

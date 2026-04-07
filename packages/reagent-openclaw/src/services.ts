@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import {
+  MemoryService,
   ResearchBaselineService,
   ResearchDirectionService,
   ResearchDirectionReportService,
@@ -17,13 +18,35 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
 
 import type { ReAgentPluginConfig } from "./config.js";
 
+export type ReAgentMemoryScope = "workspace" | "conversation";
+
+export interface ReAgentMemoryScopeOptions {
+  scope?: ReAgentMemoryScope | undefined;
+  scopeKey?: string | undefined;
+}
+
 export function resolvePluginStateDir(api: OpenClawPluginApi): string {
   return path.join(api.runtime.state.resolveStateDir(process.env), "plugins", "reagent-openclaw");
+}
+
+export function resolveConversationMemoryScopeKey(senderId: string): string {
+  return `openclaw-peer:${senderId.trim()}`;
+}
+
+export function createPluginMemoryService(
+  api: OpenClawPluginApi,
+  options: ReAgentMemoryScopeOptions = {},
+): MemoryService {
+  const workspaceDir = resolvePluginStateDir(api);
+  const scope = options.scope ?? "workspace";
+  const scopeKey = scope === "conversation" ? options.scopeKey?.trim() || undefined : undefined;
+  return new MemoryService(workspaceDir, scopeKey ? { scopeKey } : {});
 }
 
 export function createPluginServices(api: OpenClawPluginApi): {
   workspaceDir: string;
   config: ReAgentPluginConfig;
+  memoryService: MemoryService;
   baselineService: ResearchBaselineService;
   directionService: ResearchDirectionService;
   directionReportService: ResearchDirectionReportService;
@@ -38,6 +61,7 @@ export function createPluginServices(api: OpenClawPluginApi): {
 } {
   const workspaceDir = resolvePluginStateDir(api);
   const config = (api.pluginConfig ?? {}) as ReAgentPluginConfig;
+  const memoryService = createPluginMemoryService(api);
   const baselineService = new ResearchBaselineService(workspaceDir, {
     crossrefMailto: config.crossrefMailto,
   });
@@ -66,6 +90,7 @@ export function createPluginServices(api: OpenClawPluginApi): {
   return {
     workspaceDir,
     config,
+    memoryService,
     baselineService,
     directionService,
     directionReportService,

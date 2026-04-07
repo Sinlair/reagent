@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -6,12 +7,14 @@ import type {
   MemoryFileKind,
   MemoryFileSummary,
   MemorySearchResult,
+  MemoryServiceOptions,
   MemoryStatus,
-  RememberRequest
-} from "../types/memory.js";
+  RememberRequest,
+} from "./memory.js";
 
 const LONG_TERM_FILE = "MEMORY.md";
 const DAILY_DIR = "memory";
+const SCOPE_ROOT_DIR = "memory-scopes";
 const CHUNK_TARGET_WORDS = 220;
 const CHUNK_OVERLAP_LINES = 4;
 const DEFAULT_SEARCH_LIMIT = 6;
@@ -47,6 +50,18 @@ function formatTimestamp(date: Date): string {
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/u).filter(Boolean).length;
+}
+
+function buildScopeDirName(scopeKey: string): string {
+  const trimmed = scopeKey.trim();
+  const normalized = trimmed
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/gu, "-")
+    .replace(/-+/gu, "-")
+    .replace(/^-|-$/gu, "")
+    .slice(0, 48);
+  const digest = createHash("sha1").update(trimmed).digest("hex").slice(0, 8);
+  return `${normalized || "scope"}-${digest}`;
 }
 
 function buildCjkTokens(text: string): string[] {
@@ -194,7 +209,7 @@ function buildChunks(relativePath: string, content: string): MemoryChunk[] {
         title: resolveTitle(lines, start, relativePath),
         text,
         startLine: start + 1,
-        endLine: end
+        endLine: end,
       });
     }
 
@@ -300,22 +315,44 @@ function scoreChunk(
     recencyBonus = Math.max(0, 1.2 - ageDays * 0.08);
   }
 
-  return bm25 + phraseBonus + titlePhraseBonus + titleBonus + pathBonus + coverageBonus + kindBonus + recencyBonus;
+  return (
+    bm25 +
+    phraseBonus +
+    titlePhraseBonus +
+    titleBonus +
+    pathBonus +
+    coverageBonus +
+    kindBonus +
+    recencyBonus
+  );
 }
 
 export class MemoryService {
-  constructor(private readonly workspaceDir: string) {}
+  constructor(
+    private readonly workspaceDir: string,
+    private readonly options: MemoryServiceOptions = {},
+  ) {}
+
+  private get scopeKey(): string | undefined {
+    return this.options.scopeKey?.trim() || undefined;
+  }
+
+  private get scopeRootDir(): string {
+    return this.scopeKey
+      ? path.join(this.workspaceDir, SCOPE_ROOT_DIR, buildScopeDirName(this.scopeKey))
+      : this.workspaceDir;
+  }
 
   private get longTermPath(): string {
-    return path.join(this.workspaceDir, LONG_TERM_FILE);
+    return path.join(this.scopeRootDir, LONG_TERM_FILE);
   }
 
   private get dailyDirPath(): string {
-    return path.join(this.workspaceDir, DAILY_DIR);
+    return path.join(this.scopeRootDir, DAILY_DIR);
   }
 
   async ensureWorkspace(): Promise<void> {
-    await mkdir(this.workspaceDir, { recursive: true });
+    await mkdir(this.scopeRootDir, { recursive: true });
     await mkdir(this.dailyDirPath, { recursive: true });
   }
 
@@ -328,9 +365,13 @@ export class MemoryService {
       await writeFile(
         this.longTermPath,
         "# Memory\n\nLong-term preferences, decisions, and durable facts live here.\n",
-        "utf8"
+        "utf8",
       );
     }
+  }
+
+  private withScope<T extends object>(value: T): T & { scopeKey?: string | undefined } {
+    return this.scopeKey ? { ...value, scopeKey: this.scopeKey } : { ...value };
   }
 
   private async readAllowedFile(relativePath: string): Promise<MemoryFileContent> {
@@ -342,16 +383,16 @@ export class MemoryService {
       throw new Error("Unsupported memory path");
     }
 
-    const absolutePath = path.join(this.workspaceDir, normalized);
+    const absolutePath = path.join(this.scopeRootDir, normalized);
     const fileStat = await stat(absolutePath);
     const content = await readFile(absolutePath, "utf8");
 
-    return {
+    return this.withScope({
       path: normalized,
       kind: inferKind(normalized),
       content,
-      updatedAt: fileStat.mtime.toISOString()
-    };
+      updatedAt: fileStat.mtime.toISOString(),
+    });
   }
 
   async listFiles(): Promise<MemoryFileSummary[]> {
@@ -359,12 +400,14 @@ export class MemoryService {
 
     const files: MemoryFileSummary[] = [];
     const longTermStat = await stat(this.longTermPath);
-    files.push({
-      path: LONG_TERM_FILE,
-      kind: "long-term",
-      size: longTermStat.size,
-      updatedAt: longTermStat.mtime.toISOString()
-    });
+    files.push(
+      this.withScope({
+        path: LONG_TERM_FILE,
+        kind: "long-term" as const,
+        size: longTermStat.size,
+        updatedAt: longTermStat.mtime.toISOString(),
+      }),
+    );
 
     const dailyEntries = await readdir(this.dailyDirPath, { withFileTypes: true });
 
@@ -375,12 +418,14 @@ export class MemoryService {
 
       const absolutePath = path.join(this.dailyDirPath, entry.name);
       const fileStat = await stat(absolutePath);
-      files.push({
-        path: `${DAILY_DIR}/${entry.name}`,
-        kind: "daily",
-        size: fileStat.size,
-        updatedAt: fileStat.mtime.toISOString()
-      });
+      files.push(
+        this.withScope({
+          path: `${DAILY_DIR}/${entry.name}`,
+          kind: "daily" as const,
+          size: fileStat.size,
+          updatedAt: fileStat.mtime.toISOString(),
+        }),
+      );
     }
 
     return files.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
@@ -390,9 +435,11 @@ export class MemoryService {
     const files = await this.listFiles();
     return {
       workspaceDir: this.workspaceDir,
+      scopeRootDir: this.scopeRootDir,
       files: files.length,
       searchMode: "hybrid",
-      lastUpdatedAt: files[0]?.updatedAt ?? null
+      lastUpdatedAt: files[0]?.updatedAt ?? null,
+      ...(this.scopeKey ? { scopeKey: this.scopeKey } : {}),
     };
   }
 
@@ -404,7 +451,8 @@ export class MemoryService {
     await this.ensureLongTermFile();
 
     const now = new Date();
-    const title = input.title?.trim() || (input.scope === "long-term" ? "Remembered Note" : "Daily Note");
+    const title =
+      input.title?.trim() || (input.scope === "long-term" ? "Remembered Note" : "Daily Note");
     const sourceSuffix = input.source?.trim() ? ` [source: ${input.source.trim()}]` : "";
     const entry =
       input.scope === "long-term"
@@ -415,7 +463,7 @@ export class MemoryService {
       input.scope === "long-term"
         ? LONG_TERM_FILE
         : `${DAILY_DIR}/${now.toISOString().slice(0, 10)}.md`;
-    const absolutePath = path.join(this.workspaceDir, relativePath);
+    const absolutePath = path.join(this.scopeRootDir, relativePath);
 
     await mkdir(path.dirname(absolutePath), { recursive: true });
 
@@ -423,7 +471,10 @@ export class MemoryService {
     try {
       existing = await readFile(absolutePath, "utf8");
     } catch {
-      existing = input.scope === "long-term" ? "# Memory\n" : `# Daily Memory ${now.toISOString().slice(0, 10)}\n`;
+      existing =
+        input.scope === "long-term"
+          ? "# Memory\n"
+          : `# Daily Memory ${now.toISOString().slice(0, 10)}\n`;
     }
 
     const separator = existing.endsWith("\n") ? "" : "\n";
@@ -457,15 +508,17 @@ export class MemoryService {
         continue;
       }
 
-      results.push({
-        path: prepared.chunk.path,
-        kind: prepared.chunk.kind,
-        title: prepared.chunk.title,
-        snippet: buildContextSnippet(prepared.chunk.text, trimmed),
-        score: Math.round(score * 100) / 100,
-        startLine: prepared.chunk.startLine,
-        endLine: prepared.chunk.endLine
-      });
+      results.push(
+        this.withScope({
+          path: prepared.chunk.path,
+          kind: prepared.chunk.kind,
+          title: prepared.chunk.title,
+          snippet: buildContextSnippet(prepared.chunk.text, trimmed),
+          score: Math.round(score * 100) / 100,
+          startLine: prepared.chunk.startLine,
+          endLine: prepared.chunk.endLine,
+        }),
+      );
     }
 
     return results

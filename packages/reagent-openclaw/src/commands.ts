@@ -1,6 +1,11 @@
+import type { MemorySearchResult } from "@sinlair/reagent-core";
 import type { OpenClawPluginApi, PluginCommandContext } from "openclaw/plugin-sdk/core";
 
-import { createPluginServices } from "./services.js";
+import {
+  createPluginMemoryService,
+  createPluginServices,
+  resolveConversationMemoryScopeKey,
+} from "./services.js";
 
 function textReply(text: string) {
   return { text };
@@ -14,14 +19,52 @@ function blockToText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function buildMemoryScopeLabel(scope: "workspace" | "conversation", senderId?: string): string {
+  return scope === "conversation" && senderId?.trim()
+    ? `conversation:${senderId.trim()}`
+    : "workspace";
+}
+
+function buildMemorySearchReply(scopeLabel: string, query: string, hits: MemorySearchResult[]): string {
+  if (hits.length === 0) {
+    return `No memory hits found for "${query}" in ${scopeLabel}.`;
+  }
+
+  return [
+    `Memory hits for "${query}" in ${scopeLabel}:`,
+    "",
+    ...hits.map(
+      (item) =>
+        `- ${item.path}:${item.startLine}-${item.endLine} | ${item.title}\n  ${item.snippet}`,
+    ),
+  ].join("\n");
+}
+
+function resolveConversationScopeKey(ctx: PluginCommandContext): string | null {
+  const senderId = ctx.senderId?.trim();
+  if (!senderId) {
+    return null;
+  }
+
+  const accountId =
+    typeof (ctx as { accountId?: unknown }).accountId === "string" &&
+    (ctx as { accountId?: string }).accountId?.trim()
+      ? (ctx as { accountId?: string }).accountId?.trim()
+      : undefined;
+
+  return resolveConversationMemoryScopeKey(accountId ? `${accountId}:${senderId}` : senderId);
+}
+
 export function registerReAgentCommands(api: OpenClawPluginApi): void {
   api.registerCommand({
     name: "reagent-status",
     description: "Show ReAgent plugin status.",
     acceptsArgs: false,
     handler: async () => {
-      const { workspaceDir, directionService, feedbackService, discoveryService } = createPluginServices(api);
-      const [directions, feedback, runs] = await Promise.all([
+      const { workspaceDir, memoryService, directionService, feedbackService, discoveryService } =
+        createPluginServices(api);
+      const [memoryStatus, directions, feedback, runs] = await Promise.all([
+        memoryService.getStatus(),
         directionService.listProfiles(),
         feedbackService.getSummary(5),
         discoveryService.listRecentRuns(5),
@@ -30,11 +73,106 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
       return textReply([
         "ReAgent plugin status",
         `Workspace: ${workspaceDir}`,
+        `Workspace memory files: ${memoryStatus.files}`,
         `Directions: ${directions.length}`,
         `Feedback items: ${feedback.total}`,
         `Recent discovery runs: ${runs.length}`,
       ].join("\n"));
     }
+  });
+
+  api.registerCommand({
+    name: "reagent-memory",
+    description: "Search conversation-scoped ReAgent memory for the current sender.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const query = ctx.args?.trim();
+      if (!query) {
+        return textReply("Usage: /reagent-memory <query>");
+      }
+
+      const scopeKey = resolveConversationScopeKey(ctx);
+      if (!scopeKey) {
+        return textReply("Conversation-scoped memory requires a sender context.");
+      }
+
+      const memoryService = createPluginMemoryService(api, {
+        scope: "conversation",
+        scopeKey,
+      });
+      const hits = await memoryService.search(query, 4);
+      return textReply(buildMemorySearchReply(buildMemoryScopeLabel("conversation", ctx.senderId), query, hits));
+    },
+  });
+
+  api.registerCommand({
+    name: "reagent-memory-workspace",
+    description: "Search shared ReAgent workspace memory.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const query = ctx.args?.trim();
+      if (!query) {
+        return textReply("Usage: /reagent-memory-workspace <query>");
+      }
+
+      const memoryService = createPluginMemoryService(api);
+      const hits = await memoryService.search(query, 4);
+      return textReply(buildMemorySearchReply(buildMemoryScopeLabel("workspace"), query, hits));
+    },
+  });
+
+  api.registerCommand({
+    name: "reagent-remember",
+    description: "Save a note into conversation-scoped ReAgent memory for the current sender.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const content = ctx.args?.trim();
+      if (!content) {
+        return textReply("Usage: /reagent-remember <note>");
+      }
+
+      const scopeKey = resolveConversationScopeKey(ctx);
+      if (!scopeKey) {
+        return textReply("Conversation-scoped memory requires a sender context.");
+      }
+
+      const memoryService = createPluginMemoryService(api, {
+        scope: "conversation",
+        scopeKey,
+      });
+      const saved = await memoryService.remember({
+        scope: "daily",
+        title: "Conversation Note",
+        content,
+        source: "openclaw-command:conversation",
+      });
+
+      return textReply(
+        `Saved to ${buildMemoryScopeLabel("conversation", ctx.senderId)} memory: ${saved.path}`,
+      );
+    },
+  });
+
+  api.registerCommand({
+    name: "reagent-remember-workspace",
+    description: "Save a note into shared ReAgent workspace memory.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const content = ctx.args?.trim();
+      if (!content) {
+        return textReply("Usage: /reagent-remember-workspace <note>");
+      }
+
+      const memoryService = createPluginMemoryService(api);
+      const saved = await memoryService.remember({
+        scope: "daily",
+        title: "Workspace Note",
+        content,
+        source: "openclaw-command:workspace",
+      });
+
+      return textReply(`Saved to workspace memory: ${saved.path}`);
+    },
   });
 
   api.registerCommand({

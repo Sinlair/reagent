@@ -4,6 +4,7 @@ OpenClaw plugin package for ReAgent research workflows.
 
 Current first-phase capabilities:
 
+- conversation-scoped and workspace-scoped memory
 - manage research directions
 - run paper discovery
 - record feedback
@@ -27,6 +28,10 @@ openclaw plugins install @sinlair/reagent-openclaw --yes
 ## Commands
 
 - `/reagent-status`
+- `/reagent-memory <query>`
+- `/reagent-memory-workspace <query>`
+- `/reagent-remember <note>`
+- `/reagent-remember-workspace <note>`
 - `/reagent-directions`
 - `/reagent-direction-add <label>`
 - `/reagent-direction-remove <directionId>`
@@ -53,6 +58,11 @@ openclaw plugins install @sinlair/reagent-openclaw --yes
 The plugin also registers these host-side tools:
 
 - `reagent_direction_list`
+- `reagent_memory_status`
+- `reagent_memory_files`
+- `reagent_memory_get`
+- `reagent_memory_search`
+- `reagent_memory_remember`
 - `reagent_discovery_run`
 - `reagent_baseline_suggest`
 - `reagent_feedback_record`
@@ -69,3 +79,15 @@ The plugin also registers these host-side tools:
 - `reagent_presentation_generate`
 - `reagent_presentation_recent`
 - `reagent_presentation_get`
+
+## Memory Scopes
+
+The plugin exposes two durable memory scopes:
+
+- `workspace`: shared research memory for the whole plugin workspace
+- `conversation`: isolated memory keyed by one OpenClaw sender / peer
+
+The slash commands default to conversation-scoped memory, which lines up with
+OpenClaw's per-peer context isolation. Tool calls can choose either scope by
+passing `scope: "workspace"` or `scope: "conversation"`. When using
+conversation-scoped tools, pass a stable `scopeKey` such as a sender id.

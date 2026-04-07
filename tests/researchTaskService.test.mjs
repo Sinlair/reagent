@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { MemoryService } from "../dist/services/memoryService.js";
 import { ResearchTaskService } from "../dist/services/researchTaskService.js";
 
 async function runTest(name, fn) {
@@ -86,6 +87,7 @@ async function main() {
   await runTest("ResearchTaskService enqueues tasks and persists progress transitions", async () => {
     await withTempDir(async (dir) => {
       const service = new ResearchTaskService(dir, buildStubResearchService());
+      const memory = new MemoryService(dir);
       const task = await service.enqueueTask({ topic: "agentic rag", question: "What changed?" });
 
       assert.equal(task.state, "queued");
@@ -98,6 +100,13 @@ async function main() {
       assert.equal(completed.report?.taskId, task.taskId);
       assert.equal(completed.transitions.some((entry) => entry.state === "planning"), true);
       assert.equal(completed.transitions.some((entry) => entry.state === "persisting"), true);
+
+      const memoryFiles = await memory.listFiles();
+      const dailyFile = memoryFiles.find((file) => file.path.startsWith("memory/"));
+      assert.ok(dailyFile);
+      const dailyContent = await memory.getFile(dailyFile.path);
+      assert.equal(dailyContent.content.includes("Research task completed."), true);
+      assert.equal(dailyContent.content.includes("Summary for agentic rag"), true);
     });
   });
 
