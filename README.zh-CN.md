@@ -1,8 +1,8 @@
 <div align="center">
   <img src="./docs/reagent-mark.svg" alt="ReAgent 标志" width="108" />
-  <h1>ReAgent</h1>
+  <h1>🧭 ReAgent</h1>
   <p><strong>把持续科研工作变成可复用流程，而不是一次性对话。</strong></p>
-  <p>面向论文发现、证据整理、研究记忆与结果交付的本地优先研究工作台。</p>
+  <p>🧠 面向论文发现、证据整理、研究笔记与结果交付的本地优先研究工作台。</p>
   <p>
     <a href="./README.md">English</a>
     <span>&nbsp;|&nbsp;</span>
@@ -36,87 +36,71 @@
 </p>
 
 <p align="center">
-  <img src="./docs/reagent-console.png" alt="ReAgent 控制台截图" width="100%" />
+  <img src="./docs/reagent-console-zh.png" alt="ReAgent 中文首页截图" width="100%" />
 </p>
 
-<a id="目录"></a>
-## 目录
+## 📌 ReAgent 是什么
 
-- [为什么是 ReAgent](#为什么是-reagent)
-- [核心亮点](#核心亮点)
-- [工作流](#工作流)
-- [快速开始](#快速开始)
-- [运行模式](#运行模式)
-- [仓库结构](#仓库结构)
-- [开发校验](#开发校验)
-- [OpenClaw 插件](#openclaw-插件)
-- [相关文档](#相关文档)
-- [参考项目](#参考项目)
-- [许可证](#许可证)
+ReAgent 不是“外挂了几个研究按钮的聊天机器人”，而是一个本地研究工作台，适合那些需要反复跟进主题、检查证据、保留上下文并输出可复用成果的人。
 
-<a id="为什么是-reagent"></a>
-## 为什么是 ReAgent
+它主要解决这些问题：
 
-> ReAgent 不是“外挂了几个研究按钮的聊天机器人”，它更接近一个本地化的 `Research Workspace / Research OS`。
+- 🧭 先把研究目标、背景和成功标准固定下来，再开始做研究。
+- 🔎 持续跟踪同一个主题，而不是每周从零开始重新搜索。
+- 📚 把论文、仓库发现、反馈和笔记放进同一个工作区。
+- 🧠 让关键上下文跨任务保留下来，而不是淹没在聊天记录里。
+- 🧾 把研究结果沉淀成报告、汇报材料、幻灯片和可复用产物。
 
-它适合那些不满足于一次性回答、而是需要完整研究闭环的人：
+## ✨ 项目亮点
 
-- 🧭 用结构化 `Research Brief` 固定研究目标、baseline、约束条件和评估标准。
-- 🔎 持续做 discovery，而不是每周从零开始重新搜索。
-- 🧠 把论文、仓库、证据、反馈和记忆放进同一个 workspace。
-- 🧾 把分析沉淀成报告、briefing、deck 和可复用模块笔记。
-- 🌐 通过 Web 控制台、WeChat 和 OpenClaw 插件继续推进下一轮研究。
+| 图标 | 亮点 | 价值 |
+| --- | --- | --- |
+| 🧭 | 研究模板 | 先保存目标、背景和成功标准，再围绕同一主题重复使用。 |
+| 🔬 | 研究工作区 | 在一个页面里发起任务、跟踪进度、阅读报告和管理输出。 |
+| 🧠 | 研究笔记 | 把上下文放到文件里保存，不再依赖聊天窗口记忆。 |
+| 🗺️ | 研究地图 | 看到主题、证据、报告和文件之间是怎么连接的。 |
+| 📦 | 可复用输出 | 生成主题报告、幻灯片、模块文件和其他可分享成果。 |
+| 🔌 | 多入口协同 | 同一套工作流可以同时通过 Web、WeChat 和 OpenClaw 插件使用。 |
+| ⚙️ | 本地运行可见 | 可直接查看渠道、会话、模型、技能、日志和运行状态。 |
 
-更适合这些场景：
+## 🧠 知识库是怎么建立的
 
-- 长期跟踪一个或多个研究方向的个人研究者
-- 需要把读论文、看 repo、做组会材料串成同一套流程的实验室成员
-- 想验证 `research agent + workspace memory + delivery` 产品形态的团队
-- 想在本地搭一套可控、可改、可扩展研究工作台的开发者
+ReAgent 的知识库不是“凭空记住”，而是先把内容落到本地文件里，再建立索引和召回层。
 
-<a id="核心亮点"></a>
-## 核心亮点
+- 📝 长期笔记写入 `MEMORY.md`。
+- 🗓️ 每日笔记写入 `memory/YYYY-MM-DD.md`。
+- 🗂️ 每次保存笔记时，系统都会把标题、摘要、来源、置信度、标签、实体 ID 和时间戳写入 `memory-index.json`。
+- 🔎 搜索不是简单字符串匹配。笔记页会直接检索真实文件，召回层还可以把“工作区记忆”与“研究产物”一起合并检索。
+- ♻️ 方向报告可以自动回写到记忆里，让高价值摘要在后续任务中继续被召回。
+- 🧹 记忆策略保存在 `memory-policy.json`，较早的每日笔记可以按策略压缩成长时段总结。
+- 🧾 每次压缩都会记录到 `memory-compactions.json`，所以“哪些笔记被合并、为什么被合并”是可追踪的。
 
-| 模块 | 你能得到什么 |
-| --- | --- |
-| 🔎 Brief 驱动 discovery | 检索始终围绕明确的目标、baseline 和评估标准展开，而不是松散 prompt。 |
-| 📄 论文与仓库分析 | 在同一个闭环里做论文分析、repo 检查和可复用模块提取。 |
-| 🧠 可积累研究记忆 | 通过文件化 memory 和可建图的数据结构沉淀 artifacts、报告与反馈。 |
-| 🧾 面向交付的输出 | 生成方向报告、baseline 建议、日报摘要和组会 deck 材料。 |
-| 🔌 多入口协同 | Web 工作台、WeChat 通道和 OpenClaw 插件共享同一套研究流程。 |
-| ⚙️ 本地优先运行时 | 可以本地运行、后台常驻，并且保留对运行状态的可见性与可检查性。 |
+从效果上看，这套知识库由四层组成：
 
-<a id="工作流"></a>
-## 工作流
+- 📄 原始 Markdown 笔记，方便直接查看和编辑。
+- 🗃️ 索引后的元数据，方便快速召回。
+- 📚 可参与召回的研究产物，比如研究模板、主题报告和演示材料。
+- 🧹 可追踪的压缩历史和策略，避免记忆无限膨胀。
 
-```text
-Research Brief
-  -> Discovery
-  -> Paper / Repo Analysis
-  -> Synthesis
-  -> Report / Deck / Briefing
-  -> Feedback
-  -> Memory
-  -> Next Research Round
-```
+## 🖥️ 主要界面
 
-当前工作台主要界面包括：
+当前 Web 界面主要由这些工作面组成：
 
-- `Home`：看 workspace 脉搏、最新产出和快速入口
-- `Command Center`：看健康状态、近期活动、交付态势和运行时可见性
-- `Agent Desk`：用自然语言和 slash commands 驱动研究动作
-- `Evidence Workspace`：管理 briefs、任务、scheduler、报告和 artifacts
-- `Research Map`：查看方向、论文、仓库、模块和演示材料之间的关系
-- `Knowledge Vault`：搜索、写入和预览 file-backed memory
-- `Channels`：查看 WeChat / OpenClaw 状态、pairing、生命周期审计和恢复情况
+- 🏠 `工作台`：看当前进度、最新结果和常用下一步动作。
+- 💬 `主工作区`：聊天、快速发起研究、查看最近任务和当前工作区信息。
+- 📈 `状态`：查看近期活动、最新输出和系统健康情况。
+- 🔬 `研究工作区`：管理模板、任务列表、报告、定时任务、主题报告、幻灯片和模块文件。
+- 🗺️ `研究地图`：查看主题、证据、报告和文件之间的连接关系。
+- 🧠 `研究笔记`：搜索、保存和重新打开文件型笔记。
+- 🔌 `渠道`：查看 WeChat 登录、连接状态、状态变化和渠道事件。
+- 🤖 `智能体设置` 与 `技能`：控制聊天使用的角色、模型和工具访问权限。
 
-<a id="快速开始"></a>
-## 快速开始
+## 🚀 快速开始
 
-1. 由 `.env.example` 创建本地 `.env` 文件。
-2. 安装依赖。
-3. 将 Prisma schema push 到默认 SQLite 数据库。
-4. 启动开发服务。
+1. 📄 从 `.env.example` 复制一份本地配置文件。
+2. 📦 安装依赖。
+3. 🗃️ 把 Prisma schema 推到默认 SQLite 数据库。
+4. ▶️ 启动开发服务。
 
 ```bash
 npm install
@@ -126,16 +110,16 @@ npm run dev
 
 打开 `http://127.0.0.1:3000/`。
 
-如果只是想先本地跑通最小闭环，可以使用：
+最小本地配置：
 
 ```env
 LLM_PROVIDER=fallback
 WECHAT_PROVIDER=mock
 ```
 
-如果 PowerShell 对 `npm` 有执行限制，请改用 `npm.cmd`。
+如果 PowerShell 阻止 `npm`，可以直接使用 `npm.cmd`。
 
-全局 CLI 安装：
+全局 CLI 安装方式：
 
 ```bash
 npm install -g @sinlair/reagent
@@ -143,9 +127,9 @@ reagent init
 reagent gateway
 ```
 
-发布到 npm 的包名是 `@sinlair/reagent`，安装后的命令名是 `reagent`。
+发布包名是 `@sinlair/reagent`，安装后的命令是 `reagent`。
 
-常驻 gateway 生命周期：
+常驻 gateway 相关命令：
 
 ```bash
 reagent gateway install
@@ -154,54 +138,45 @@ reagent gateway restart
 reagent gateway stop
 ```
 
-<a id="运行模式"></a>
-## 运行模式
+## 🔄 运行模式
 
-根应用既可以前台开发运行，也可以后台常驻。
+根应用既可以作为前台开发进程运行，也可以作为后台常驻服务运行。
 
-| 模式 | 命令 | 说明 |
+| 图标 | 模式 | 命令 | 说明 |
+| --- | --- | --- | --- |
+| 🧪 | 开发模式 | `npm run dev` | 本地开发与实时刷新 |
+| ♾️ | PM2 | `npm run pm2:start` / `npm run pm2:restart` / `npm run pm2:logs` | 适合后台持续运行 |
+| 🪟 | Windows 服务 | `npm run service:install` / `npm run service:status` / `npm run service:start` / `npm run service:stop` | 适合 Windows 机器级常驻 |
+
+更多部署和维护说明见 [OPERATIONS.md](./OPERATIONS.md)。
+
+## 🗂️ 仓库结构
+
+| 图标 | 路径 | 作用 |
 | --- | --- | --- |
-| 🧪 开发模式 | `npm run dev` | 本地实时开发 |
-| ♻️ PM2 | `npm run pm2:start` / `npm run pm2:restart` / `npm run pm2:logs` | 适合后台常驻 |
-| 🪟 Windows 服务 | `npm run service:install` / `npm run service:status` / `npm run service:start` / `npm run service:stop` | 适合 Windows 机器级常驻 |
+| 🧩 | `./` | ReAgent 根应用、Web 界面、API 服务和运行时 |
+| 🧠 | [`packages/reagent-core/`](./packages/reagent-core) | 可复用的核心研究逻辑 |
+| 🔌 | [`packages/reagent-openclaw/`](./packages/reagent-openclaw) | 可安装的 OpenClaw 插件包 |
+| 🧪 | [`package/`](./package) | 仓库内的 OpenClaw WeChat 参考包，用于兼容和集成 |
+| 🖼️ | [`docs/`](./docs) | 产品截图和相关说明文档 |
 
-部署和维护细节见 [OPERATIONS.md](./OPERATIONS.md)。
+## ✅ 开发校验
 
-<a id="仓库结构"></a>
-## 仓库结构
-
-| 路径 | 作用 |
-| --- | --- |
-| `./` | ReAgent 根应用、Web 控制台、API 服务和完整运行时 |
-| [`packages/reagent-core/`](./packages/reagent-core) | 可复用的核心研究逻辑 |
-| [`packages/reagent-openclaw/`](./packages/reagent-openclaw) | 可安装的 OpenClaw 插件包 |
-| [`package/`](./package) | 为兼容和联调保留在仓库内的 OpenClaw WeChat 参考包 |
-| [`docs/`](./docs) | 产品截图、发行说明和补充文档 |
-
-补充说明：
-
-- 根应用现在可以作为 `@sinlair/reagent` 发布，并安装出全局 `reagent` 命令。
-- 真正面向发布复用的包在 `packages/reagent-core` 和 `packages/reagent-openclaw`。
-
-<a id="开发校验"></a>
-## 开发校验
-
-完整校验：
+建议执行：
 
 ```bash
 npm run check:all
 npm run test
 ```
 
-如果你只想验证可发布的 packages：
+如果你只想校验可发布的包：
 
 ```bash
 npm run build:packages
 npm run check:packages
 ```
 
-<a id="openclaw-插件"></a>
-## OpenClaw 插件
+## 🔌 OpenClaw 插件
 
 安装 ReAgent 的 OpenClaw 插件：
 
@@ -211,32 +186,29 @@ openclaw plugins install @sinlair/reagent-openclaw --yes
 
 插件源码位于 [packages/reagent-openclaw/](./packages/reagent-openclaw)。
 
-<a id="相关文档"></a>
-## 相关文档
+## 📚 相关文档
 
 - 📘 English README: [README.md](./README.md)
 - 🧭 产品蓝图: [agent.md](./agent.md)
-- 🗺️ 路线图: [ROADMAP.md](./ROADMAP.md)
+- 🛣️ 路线图: [ROADMAP.md](./ROADMAP.md)
 - 🛠️ 运维说明: [OPERATIONS.md](./OPERATIONS.md)
 - 🤝 贡献指南: [CONTRIBUTING.md](./CONTRIBUTING.md)
-- 🔐 安全策略: [SECURITY.md](./SECURITY.md)
+- 🔒 安全说明: [SECURITY.md](./SECURITY.md)
 
-<a id="参考项目"></a>
-## 参考项目
+## 🙌 参考项目
 
-ReAgent 的定位和路线主要受这些 research-agent / research-workspace 项目影响：
+ReAgent 的产品形态参考了这些研究代理和研究工作区项目：
 
-- [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
-- [deer-flow](https://github.com/bytedance/deer-flow)
-- [PASA](https://github.com/bytedance/pasa)
-- [Paper2Agent](https://github.com/jmiao24/Paper2Agent)
-- [enterprise-deep-research](https://github.com/SalesforceAIResearch/enterprise-deep-research)
-- [InternAgent](https://github.com/InternScience/InternAgent)
-- [OpenClaw](https://github.com/openclaw/openclaw)
+- 🧪 [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
+- 🌊 [deer-flow](https://github.com/bytedance/deer-flow)
+- 🧭 [PASA](https://github.com/bytedance/pasa)
+- 📄 [Paper2Agent](https://github.com/jmiao24/Paper2Agent)
+- 🏢 [enterprise-deep-research](https://github.com/SalesforceAIResearch/enterprise-deep-research)
+- 🤖 [InternAgent](https://github.com/InternScience/InternAgent)
+- 🔓 [OpenClaw](https://github.com/openclaw/openclaw)
 
-更细的对比见 [docs/research-agent-landscape.md](./docs/research-agent-landscape.md)。
+更具体的对比见 [docs/research-agent-landscape.md](./docs/research-agent-landscape.md)。
 
-<a id="许可证"></a>
-## 许可证
+## 📄 许可证
 
-本仓库基于 [MIT License](./LICENSE) 发布。
+项目采用 [MIT License](./LICENSE)。

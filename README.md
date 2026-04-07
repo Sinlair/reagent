@@ -1,8 +1,8 @@
 <div align="center">
   <img src="./docs/reagent-mark.svg" alt="ReAgent logo" width="108" />
-  <h1>ReAgent</h1>
+  <h1>🧭 ReAgent</h1>
   <p><strong>Turn ongoing research into a reusable workflow, not a one-off conversation.</strong></p>
-  <p>Local-first research workspace for paper discovery, evidence review, research notes, and delivery.</p>
+  <p>🧠 Local-first research workspace for paper discovery, evidence review, research notes, and delivery.</p>
   <p>
     <a href="./README.md"><strong>English</strong></a>
     <span>&nbsp;|&nbsp;</span>
@@ -36,55 +36,71 @@
 </p>
 
 <p align="center">
-  <img src="./docs/reagent-console.png" alt="Screenshot of the ReAgent workbench home view" width="100%" />
+  <img src="./docs/reagent-console.png" alt="English screenshot of the ReAgent workbench home page" width="100%" />
 </p>
 
-## Table of Contents
+## 📌 What ReAgent Is
 
-- [Why ReAgent](#why-reagent)
-- [Product Surfaces](#product-surfaces)
-- [Quick Start](#quick-start)
-- [Run Modes](#run-modes)
-- [Repository Layout](#repository-layout)
-- [Development](#development)
-- [OpenClaw Plugin](#openclaw-plugin)
-- [Documentation](#documentation)
-- [Inspiration](#inspiration)
-- [License](#license)
+ReAgent is not a chatbot with a few research buttons attached. It is a local research workspace for people who need to revisit topics, inspect evidence, preserve context, and ship useful outputs.
 
-## Why ReAgent
+It is designed for workflows such as:
 
-ReAgent is not a chatbot with a few research buttons attached. It is a local research workspace designed for people who need to revisit topics, review evidence, save context, and ship useful outputs.
+- 🧭 Defining reusable research templates with goals, background, and success criteria.
+- 🔎 Running repeated discovery instead of restarting the same search every week.
+- 📚 Reviewing papers, repo findings, feedback, and notes in one place.
+- 🧠 Preserving working context across tasks instead of losing it inside chat history.
+- 🧾 Turning research into reports, briefings, slides, and reusable artifacts.
 
-It is built for workflows such as:
+## ✨ Highlights
 
-- Defining reusable research templates with goals, background, and success criteria.
-- Running repeated discovery instead of restarting the same search every week.
-- Reviewing papers, repo findings, and feedback in one place.
-- Saving notes so context survives across tasks and sessions.
-- Turning research into reports, briefings, slides, and reusable artifacts.
+| Icon | Highlight | Why it matters |
+| --- | --- | --- |
+| 🧭 | Research templates | Save a reusable setup for a topic before spending time or compute. |
+| 🔬 | Research workspace | Run tasks, inspect progress, read reports, and manage outputs in one page. |
+| 🧠 | Research notes | Keep durable notes outside chat so context survives across sessions. |
+| 🗺️ | Research map | Trace how topics, evidence, reports, and files connect. |
+| 📦 | Reusable outputs | Produce topic reports, slides, module files, and other shareable artifacts. |
+| 🔌 | Multi-surface access | Use the web UI, WeChat, and OpenClaw plugin without splitting the workflow. |
+| ⚙️ | Local runtime control | Inspect channels, sessions, models, skills, logs, and deployment posture locally. |
 
-It fits best when you need a controllable, inspectable workspace rather than a black-box assistant.
+## 🧠 How The Knowledge Base Is Built
 
-## Product Surfaces
+ReAgent's knowledge base is file-backed first, then indexed for recall.
+
+- 📝 Long-term notes are stored in `MEMORY.md`.
+- 🗓️ Daily notes are stored in `memory/YYYY-MM-DD.md`.
+- 🗂️ Every saved note is indexed into `memory-index.json` with title, snippet, source, confidence, tags, entity IDs, and timestamps.
+- 🔎 Search works on real workspace files, while recall can merge indexed workspace memory with durable artifacts such as research templates, topic reports, and presentations.
+- ♻️ Direction reports can flush high-signal summaries back into memory, so later tasks can recall them as context.
+- 🧹 Memory policy lives in `memory-policy.json`, and older daily notes can be compacted into long-term summaries.
+- 🧾 Every compaction is recorded in `memory-compactions.json`, so the history of what was folded and why remains visible.
+
+The practical result is a local knowledge base with four layers working together:
+
+- 📄 Raw Markdown notes for direct inspection.
+- 🗃️ Indexed metadata for fast recall.
+- 📚 Durable research artifacts that can also be recalled.
+- 🧹 Compaction history and policy so memory does not become unmanageable over time.
+
+## 🖥️ Product Surfaces
 
 The current web UI is organized around a small set of working surfaces:
 
-- `Workbench` for current progress, latest results, and common next actions.
-- `Main Workspace` for chat, quick research actions, recent tasks, and current workspace context.
-- `Status` for activity, latest outputs, and system health.
-- `Research Workspace` for templates, task lists, reports, schedules, topic reports, slides, and module files.
-- `Research Map` for seeing how topics, evidence, reports, and files connect.
-- `Research Notes` for searching, saving, and reopening file-backed notes.
-- `Channels` for WeChat login, connection status, lifecycle changes, and channel events.
-- `Agent Settings` and `Skills` for choosing the role, model, and tools used by chat.
+- 🏠 `Workbench`: current progress, latest results, and common next actions.
+- 💬 `Main Workspace`: chat, quick research actions, recent tasks, and current workspace context.
+- 📈 `Status`: activity, latest outputs, and system health.
+- 🔬 `Research Workspace`: templates, task lists, reports, schedules, topic reports, slides, and module files.
+- 🗺️ `Research Map`: how topics, evidence, reports, and files connect.
+- 🧠 `Research Notes`: search, save, and reopen file-backed notes.
+- 🔌 `Channels`: WeChat login, connection status, lifecycle changes, and channel events.
+- 🤖 `Agent Settings` and `Skills`: choose the role, model, and tool access used by chat.
 
-## Quick Start
+## 🚀 Quick Start
 
-1. Create a local env file from `.env.example`.
-2. Install dependencies.
-3. Push the Prisma schema to the default SQLite database.
-4. Start the dev server.
+1. 📄 Create a local env file from `.env.example`.
+2. 📦 Install dependencies.
+3. 🗃️ Push the Prisma schema to the default SQLite database.
+4. ▶️ Start the dev server.
 
 ```bash
 npm install
@@ -122,29 +138,29 @@ reagent gateway restart
 reagent gateway stop
 ```
 
-## Run Modes
+## 🔄 Run Modes
 
 The root app can run as a foreground dev process or as an always-on background service.
 
-| Mode | Commands | Notes |
-| --- | --- | --- |
-| Development | `npm run dev` | Local development with live reload |
-| PM2 | `npm run pm2:start` / `npm run pm2:restart` / `npm run pm2:logs` | Keep the app running in the background |
-| Windows Service | `npm run service:install` / `npm run service:status` / `npm run service:start` / `npm run service:stop` | Machine-level runtime on Windows |
+| Icon | Mode | Commands | Notes |
+| --- | --- | --- | --- |
+| 🧪 | Development | `npm run dev` | Local development with live reload |
+| ♾️ | PM2 | `npm run pm2:start` / `npm run pm2:restart` / `npm run pm2:logs` | Keep the app running in the background |
+| 🪟 | Windows Service | `npm run service:install` / `npm run service:status` / `npm run service:start` / `npm run service:stop` | Machine-level runtime on Windows |
 
 See [OPERATIONS.md](./OPERATIONS.md) for deployment and maintenance details.
 
-## Repository Layout
+## 🗂️ Repository Layout
 
-| Path | Purpose |
-| --- | --- |
-| `./` | Root ReAgent app, web UI, API server, and runtime |
-| [`packages/reagent-core/`](./packages/reagent-core) | Reusable core research logic |
-| [`packages/reagent-openclaw/`](./packages/reagent-openclaw) | Installable OpenClaw plugin package |
-| [`package/`](./package) | In-repo OpenClaw WeChat reference package kept for compatibility work |
-| [`docs/`](./docs) | Product visuals and supporting docs |
+| Icon | Path | Purpose |
+| --- | --- | --- |
+| 🧩 | `./` | Root ReAgent app, web UI, API server, and runtime |
+| 🧠 | [`packages/reagent-core/`](./packages/reagent-core) | Reusable core research logic |
+| 🔌 | [`packages/reagent-openclaw/`](./packages/reagent-openclaw) | Installable OpenClaw plugin package |
+| 🧪 | [`package/`](./package) | In-repo OpenClaw WeChat reference package kept for compatibility work |
+| 🖼️ | [`docs/`](./docs) | Product visuals and supporting docs |
 
-## Development
+## ✅ Development
 
 Validation:
 
@@ -160,7 +176,7 @@ npm run build:packages
 npm run check:packages
 ```
 
-## OpenClaw Plugin
+## 🔌 OpenClaw Plugin
 
 Install the ReAgent OpenClaw plugin with:
 
@@ -170,29 +186,29 @@ openclaw plugins install @sinlair/reagent-openclaw --yes
 
 Plugin source lives in [packages/reagent-openclaw/](./packages/reagent-openclaw).
 
-## Documentation
+## 📚 Documentation
 
-- Chinese README: [README.zh-CN.md](./README.zh-CN.md)
-- Product blueprint: [agent.md](./agent.md)
-- Roadmap: [ROADMAP.md](./ROADMAP.md)
-- Operations: [OPERATIONS.md](./OPERATIONS.md)
-- Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
-- Security: [SECURITY.md](./SECURITY.md)
+- 📘 Chinese README: [README.zh-CN.md](./README.zh-CN.md)
+- 🧭 Product blueprint: [agent.md](./agent.md)
+- 🛣️ Roadmap: [ROADMAP.md](./ROADMAP.md)
+- 🛠️ Operations: [OPERATIONS.md](./OPERATIONS.md)
+- 🤝 Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
+- 🔒 Security: [SECURITY.md](./SECURITY.md)
 
-## Inspiration
+## 🙌 Inspiration
 
 ReAgent is shaped by research-agent and research-workspace projects such as:
 
-- [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
-- [deer-flow](https://github.com/bytedance/deer-flow)
-- [PASA](https://github.com/bytedance/pasa)
-- [Paper2Agent](https://github.com/jmiao24/Paper2Agent)
-- [enterprise-deep-research](https://github.com/SalesforceAIResearch/enterprise-deep-research)
-- [InternAgent](https://github.com/InternScience/InternAgent)
-- [OpenClaw](https://github.com/openclaw/openclaw)
+- 🧪 [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
+- 🌊 [deer-flow](https://github.com/bytedance/deer-flow)
+- 🧭 [PASA](https://github.com/bytedance/pasa)
+- 📄 [Paper2Agent](https://github.com/jmiao24/Paper2Agent)
+- 🏢 [enterprise-deep-research](https://github.com/SalesforceAIResearch/enterprise-deep-research)
+- 🤖 [InternAgent](https://github.com/InternScience/InternAgent)
+- 🔓 [OpenClaw](https://github.com/openclaw/openclaw)
 
 For a closer comparison, see [docs/research-agent-landscape.md](./docs/research-agent-landscape.md).
 
-## License
+## 📄 License
 
 Released under the [MIT License](./LICENSE).
