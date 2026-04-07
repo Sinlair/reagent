@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f172a" />
-    <title>ReAgent Console</title>
+    <title>ReAgent Workbench</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -39,13 +39,13 @@
                 <span class="dashboard-header__breadcrumb-link">ReAgent</span>
                 <span class="dashboard-header__breadcrumb-sep">/</span>
                 <span id="current-tab-label" class="dashboard-header__breadcrumb-current"
-                  >Home</span
+                  >Workbench</span
                 >
               </div>
               <div class="dashboard-header__title-row">
-                <h1 id="page-title">ReAgent Research Workspace</h1>
+                <h1 id="page-title">ReAgent Workbench</h1>
                 <p id="page-subtitle">
-                  Research operations, evidence synthesis, memory, and delivery in one product surface.
+                  See what is in progress, the latest results, and the next action in one place.
                 </p>
               </div>
             </div>
@@ -90,17 +90,17 @@
                 <span id="health-dot" class="statusDot"></span>
                 <span id="health-chip">Loading</span>
               </div>
-              <div class="pill">
+              <div id="topbar-delivery-pill" class="pill" hidden>
                 <span
                   id="wechat-pill-label"
                   class="pill__label"
-                  data-i18n="common.wechat"
-                  >WeChat</span
+                  data-i18n="common.delivery"
+                  >Delivery</span
                 >
                 <strong id="wechat-connection">-</strong>
                 <span id="wechat-mode" class="pill__meta">provider</span>
               </div>
-              <div class="pill">
+              <div class="pill" hidden>
                 <span
                   id="memory-pill-label"
                   class="pill__label"
@@ -110,7 +110,7 @@
                 <strong id="memory-file-count">-</strong>
                 <span id="memory-mode" class="pill__meta">mode</span>
               </div>
-              <div class="pill">
+              <div class="pill" hidden>
                 <span
                   id="sessions-pill-label"
                   class="pill__label"
@@ -138,7 +138,7 @@
                     id="sidebar-brand-eyebrow"
                     class="sidebar-brand__eyebrow"
                     data-i18n="shell.brandEyebrow"
-                    >Control UI</span
+                  >Research Workspace</span
                   >
                   <span class="sidebar-brand__title">ReAgent</span>
                 </div>
@@ -176,7 +176,7 @@
                         <path d="M5 10v10h14V10"></path>
                       </svg>
                     </span>
-                    <span class="nav-item__text" data-i18n="tabs.landing">Home</span>
+                    <span class="nav-item__text" data-i18n="tabs.landing">Console</span>
                   </button>
                   <button class="nav-item" data-tab="overview" type="button">
                     <span class="nav-item__icon" aria-hidden="true">
@@ -348,193 +348,57 @@
 
       <main id="content-root" class="content">
         <div id="product-alerts" class="content-alerts" hidden></div>
-        <section class="workspace-pulse" aria-label="Workspace pulse">
-          <div class="workspace-pulse__spotlight">
-            <div id="workspace-pulse-kicker" class="workspace-pulse__kicker">Workspace Pulse</div>
-            <div id="workspace-pulse-headline" class="workspace-pulse__headline">
-              ReAgent is preparing your next research move.
-            </div>
-            <p id="workspace-pulse-subtitle" class="workspace-pulse__subtitle">
-              Live runtime health, delivery posture, and the freshest output stay visible across every surface.
-            </p>
-          </div>
-          <div id="workspace-pulse-metrics" class="workspace-pulse__metrics"></div>
-          <div id="workspace-pulse-actions" class="workspace-pulse__actions"></div>
-        </section>
         <section class="workspace-panel workspace-panel--active" data-panel="landing">
           <div class="landing-shell">
-            <article class="card landing-hero">
-              <div class="landing-hero__copy">
-                <div class="section-kicker" data-i18n="landing.kicker">Research OS</div>
-                <h2 class="page-title landing-hero__title" data-i18n="landing.heading">
-                  ReAgent turns ongoing research into a repeatable product workflow.
-                </h2>
-                <p class="panel-sub landing-hero__subtitle" data-i18n="landing.sub">
-                  Discover papers, inspect evidence, preserve memory, and ship usable reports from one integrated workspace.
-                </p>
-                <div class="landing-badge-list">
-                  <span class="report-pill report-pill--info" data-i18n="landing.badgeEvidence">Evidence-first</span>
-                  <span class="report-pill" data-i18n="landing.badgeMemory">Workspace memory</span>
-                  <span class="report-pill report-pill--ok" data-i18n="landing.badgeDelivery">Delivery-ready</span>
+            <article class="card panel-card landing-console">
+              <div class="landing-console__head">
+                <div class="landing-console__copy">
+                  <div class="section-kicker" data-i18n="landing.kicker">Workbench</div>
+                  <h2 class="card-title card-title--lg landing-console__title" data-i18n="landing.heading">
+                    ReAgent Workbench
+                  </h2>
+                  <p class="card-sub landing-console__sub" data-i18n="landing.sub">
+                    Check what is running, open recent results, and jump straight to the next task.
+                  </p>
                 </div>
-                <div id="landing-command-bar" class="landing-command-bar"></div>
-                <div class="landing-hero__actions">
-                  <button class="btn primary" type="button" data-open-tab="research" data-i18n="landing.ctaPrimary">
-                    Open evidence workspace
+                <div class="landing-console__actions">
+                  <button class="btn primary" type="button" data-open-tab="chat" data-i18n="landing.ctaPrimary">
+                    Open main workspace
                   </button>
-                  <button class="btn" type="button" data-open-tab="overview" data-i18n="landing.ctaSecondary">
-                    View command center
+                  <button class="btn" type="button" data-open-tab="research" data-i18n="landing.ctaSecondary">
+                    Open research page
                   </button>
-                  <button class="btn btn--ghost" type="button" data-open-tab="graph" data-i18n="landing.ctaTertiary">
-                    Explore research map
+                  <button class="btn btn--ghost" type="button" data-open-tab="graph" data-i18n="landing.consoleSecondary">
+                    Open map
                   </button>
                 </div>
               </div>
-
-              <aside class="landing-hero__proof">
-                <div class="landing-hero__proof-head">
-                  <div class="card-title" data-i18n="landing.proofTitle">Live Product Signals</div>
-                  <div class="card-sub" data-i18n="landing.proofSub">
-                    These signals come from the workspace itself, not a mock marketing screenshot.
-                  </div>
-                </div>
-                <div id="landing-live-cards" class="ov-cards ov-cards--landing" data-card-variant="landing"></div>
-              </aside>
+              <div id="landing-live-cards" class="ov-cards ov-cards--landing" data-card-variant="landing"></div>
             </article>
 
-            <article class="card landing-showcase">
-              <div class="landing-showcase__copy">
-                <div class="section-kicker" data-i18n="landing.showcaseKicker">Workspace Tour</div>
-                <div class="card-title landing-showcase__title" data-i18n="landing.showcaseTitle">
-                  One product, four coordinated surfaces.
-                </div>
-                <div class="card-sub landing-showcase__sub" data-i18n="landing.showcaseSub">
-                  ReAgent is not a chatbot with extra panels. It is a connected workspace where command, evidence, provenance, and memory reinforce one another.
-                </div>
-                <div class="landing-showcase__feature-list">
-                  <div class="detail-row">
-                    <span data-i18n="landing.showcaseFeatureOneTitle">Command Center</span>
-                    <strong data-i18n="landing.showcaseFeatureOneSub">Orchestrate what matters next.</strong>
-                  </div>
-                  <div class="detail-row">
-                    <span data-i18n="landing.showcaseFeatureTwoTitle">Evidence Workspace</span>
-                    <strong data-i18n="landing.showcaseFeatureTwoSub">Turn raw sources into supported findings.</strong>
-                  </div>
-                  <div class="detail-row">
-                    <span data-i18n="landing.showcaseFeatureThreeTitle">Research Map</span>
-                    <strong data-i18n="landing.showcaseFeatureThreeSub">Trace provenance across reports, modules, and artifacts.</strong>
-                  </div>
-                  <div class="detail-row">
-                    <span data-i18n="landing.showcaseFeatureFourTitle">Knowledge Vault</span>
-                    <strong data-i18n="landing.showcaseFeatureFourSub">Carry context forward instead of starting over.</strong>
-                  </div>
-                </div>
-                <div class="landing-showcase__actions">
-                  <button class="btn primary" type="button" data-open-tab="overview" data-i18n="landing.showcasePrimary">
-                    Open command center
-                  </button>
-                  <button class="btn" type="button" data-open-tab="research" data-i18n="landing.showcaseSecondary">
-                    Open evidence workspace
-                  </button>
-                </div>
-              </div>
-
-              <div class="showcase-composite" aria-hidden="true">
-                <article class="showcase-window showcase-window--main">
-                  <div class="showcase-window__topbar">
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__label" data-i18n="landing.mockWorkspaceLabel">Evidence Workspace</span>
-                  </div>
-                  <div class="showcase-window__body">
-                    <div class="showcase-stat-grid">
-                      <div class="showcase-stat">
-                        <span data-i18n="landing.mockStatEvidence">Evidence</span>
-                        <strong>18</strong>
-                      </div>
-                      <div class="showcase-stat">
-                        <span data-i18n="landing.mockStatCoverage">Coverage</span>
-                        <strong>0.83</strong>
-                      </div>
-                      <div class="showcase-stat">
-                        <span data-i18n="landing.mockStatVerdict">Verdict</span>
-                        <strong>STRONG</strong>
-                      </div>
-                    </div>
-                    <div class="showcase-window__section">
-                      <div class="showcase-window__section-title" data-i18n="landing.mockExecutiveTitle">Executive Findings</div>
-                      <div class="showcase-list">
-                        <div class="showcase-list__item" data-i18n="landing.mockExecutiveOne">
-                          Retrieval modules remain the most reusable leverage point across recent runs.
-                        </div>
-                        <div class="showcase-list__item" data-i18n="landing.mockExecutiveTwo">
-                          Citation coverage is strong enough to package into a short team briefing.
-                        </div>
-                      </div>
-                    </div>
-                    <div class="showcase-window__section">
-                      <div class="showcase-window__section-title" data-i18n="landing.mockEvidenceTitle">Evidence Ledger</div>
-                      <div class="showcase-evidence-card">
-                        <div class="showcase-evidence-card__head">
-                          <strong data-i18n="landing.mockEvidenceClaim">Claim is linked to reusable retrieval patterns.</strong>
-                          <span class="report-pill report-pill--ok">high</span>
-                        </div>
-                        <p data-i18n="landing.mockEvidenceSupport">
-                          PDF-backed evidence confirms the module design appears across multiple representative papers.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-
-                <article class="showcase-window showcase-window--floating showcase-window--map">
-                  <div class="showcase-window__topbar">
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__label" data-i18n="landing.mockMapLabel">Research Map</span>
-                  </div>
-                  <div class="showcase-map">
-                    <span class="showcase-map__node showcase-map__node--accent">Direction</span>
-                    <span class="showcase-map__node">Paper</span>
-                    <span class="showcase-map__node">Report</span>
-                    <span class="showcase-map__node showcase-map__node--soft">Module</span>
-                  </div>
-                </article>
-
-                <article class="showcase-window showcase-window--floating showcase-window--vault">
-                  <div class="showcase-window__topbar">
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__dot"></span>
-                    <span class="showcase-window__label" data-i18n="landing.mockVaultLabel">Knowledge Vault</span>
-                  </div>
-                  <div class="showcase-vault">
-                    <div class="showcase-vault__file">
-                      <strong>workspace/research/direction.md</strong>
-                      <span data-i18n="landing.mockVaultOne">Updated with latest judgment and next actions.</span>
-                    </div>
-                    <div class="showcase-vault__file">
-                      <strong>workspace/memory/notes.md</strong>
-                      <span data-i18n="landing.mockVaultTwo">Stores the working context that survives across runs.</span>
-                    </div>
-                  </div>
-                </article>
-              </div>
-            </article>
-
-            <div class="landing-grid">
+            <div class="landing-console-grid">
               <article class="card panel-card landing-section landing-section--latest">
                 <div class="card-head">
                   <div>
-                    <div class="card-title" data-i18n="landing.latestTitle">Latest Deliverable</div>
+                    <div class="card-title" data-i18n="landing.latestTitle">Latest Report</div>
                     <div class="card-sub" data-i18n="landing.latestSub">
-                      The most recent report or synthesis generated from the active workspace.
+                      The newest report or summary in the current workspace.
                     </div>
                   </div>
                 </div>
                 <div id="landing-latest-report" class="empty-state">No report yet.</div>
+              </article>
+
+              <article class="card panel-card launch-actions-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title" data-i18n="landing.launchActionsTitle">Choose The Next Move</div>
+                    <div class="card-sub" data-i18n="landing.launchActionsSub">
+                      Enter through the surface that matches the job instead of navigating the whole stack.
+                    </div>
+                  </div>
+                </div>
+                <div id="landing-command-bar" class="landing-command-bar landing-command-bar--launch"></div>
               </article>
 
               <article class="card panel-card landing-section landing-section--runs">
@@ -548,76 +412,19 @@
                 </div>
                 <div id="landing-session-list" class="empty-state compact-empty">No sessions yet.</div>
               </article>
-            </div>
 
-            <div class="landing-story-grid">
-              <article class="card panel-card landing-story-card">
-                <div class="section-kicker" data-i18n="landing.storyDiscoverKicker">Discover</div>
-                <div class="card-title" data-i18n="landing.storyDiscoverTitle">Continuous paper discovery</div>
-                <div class="card-sub" data-i18n="landing.storyDiscoverSub">
-                  Keep tracking target directions instead of restarting the search every week.
+              <article class="card panel-card launch-checklist-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title" data-i18n="landing.launchChecklistTitle">Workspace Tasks</div>
+                    <div class="card-sub" data-i18n="landing.launchChecklistSub">
+                      The shortest path from an empty workspace to a useful research output.
+                    </div>
+                  </div>
                 </div>
-              </article>
-              <article class="card panel-card landing-story-card">
-                <div class="section-kicker" data-i18n="landing.storyEvidenceKicker">Evidence</div>
-                <div class="card-title" data-i18n="landing.storyEvidenceTitle">Evidence-backed synthesis</div>
-                <div class="card-sub" data-i18n="landing.storyEvidenceSub">
-                  Separate claims, support, critique, and open gaps so outputs stay trustworthy.
-                </div>
-              </article>
-              <article class="card panel-card landing-story-card">
-                <div class="section-kicker" data-i18n="landing.storyMemoryKicker">Memory</div>
-                <div class="card-title" data-i18n="landing.storyMemoryTitle">Reusable workspace memory</div>
-                <div class="card-sub" data-i18n="landing.storyMemorySub">
-                  Preserve judgments, notes, and directions across runs inside a local file-backed vault.
-                </div>
-              </article>
-              <article class="card panel-card landing-story-card">
-                <div class="section-kicker" data-i18n="landing.storyDeliveryKicker">Delivery</div>
-                <div class="card-title" data-i18n="landing.storyDeliveryTitle">Reports that can leave the tool</div>
-                <div class="card-sub" data-i18n="landing.storyDeliverySub">
-                  Turn discovery and evidence into direction reports, briefings, and team-ready outputs.
-                </div>
+                <div id="launch-checklist" class="launch-checklist"></div>
               </article>
             </div>
-
-            <div class="landing-audience-grid">
-              <article class="card panel-card landing-audience-card">
-                <div class="card-title" data-i18n="landing.audienceResearchersTitle">For researchers</div>
-                <div class="card-sub" data-i18n="landing.audienceResearchersSub">
-                  Track evolving directions, compare evidence, and keep working context stable.
-                </div>
-              </article>
-              <article class="card panel-card landing-audience-card">
-                <div class="card-title" data-i18n="landing.audienceLabsTitle">For labs and teams</div>
-                <div class="card-sub" data-i18n="landing.audienceLabsSub">
-                  Share research outputs, keep reusable modules visible, and maintain a common evidence base.
-                </div>
-              </article>
-              <article class="card panel-card landing-audience-card">
-                <div class="card-title" data-i18n="landing.audienceBuildersTitle">For AI product builders</div>
-                <div class="card-sub" data-i18n="landing.audienceBuildersSub">
-                  Validate a product shape where research agents, memory, and delivery are one workflow.
-                </div>
-              </article>
-            </div>
-
-            <article class="card landing-cta-banner">
-              <div>
-                <div class="card-title" data-i18n="landing.bannerTitle">Start in the workspace that matches the job.</div>
-                <div class="card-sub" data-i18n="landing.bannerSub">
-                  Use Command Center for orchestration, Evidence Workspace for investigation, Research Map for provenance, and Knowledge Vault for long-term memory.
-                </div>
-              </div>
-              <div class="landing-cta-banner__actions">
-                <button class="btn primary" type="button" data-open-tab="overview" data-i18n="landing.bannerPrimary">
-                  Open command center
-                </button>
-                <button class="btn" type="button" data-open-tab="memory" data-i18n="landing.bannerSecondary">
-                  Open knowledge vault
-                </button>
-              </div>
-            </article>
           </div>
         </section>
 
@@ -651,11 +458,11 @@
                 <div class="chat-stage__meta">
                   <span class="pill">
                     <span class="statusDot muted"></span>
-                    <span id="chat-transport-pill">Transport</span>
+                    <span id="chat-transport-pill">Channel</span>
                   </span>
                   <span class="pill">
                     <span class="statusDot accent"></span>
-                    <span id="chat-memory-pill">Memory</span>
+                    <span id="chat-memory-pill">Notes</span>
                   </span>
                 </div>
               </div>
@@ -722,44 +529,81 @@
                 <div class="card-head">
                   <div>
                     <div
-                      id="workspace-status-title"
+                      id="chat-activity-title"
                       class="card-title"
-                      data-i18n="chat.workspaceStatusTitle"
+                      data-i18n="overview.activityTitle"
                     >
-                      Workspace Status
+                      Recent Activity
                     </div>
                     <div
-                      id="workspace-status-sub"
+                      id="chat-activity-sub"
                       class="card-sub"
-                      data-i18n="chat.workspaceStatusSub"
+                      data-i18n="overview.activitySub"
                     >
-                      Live channel and workspace summary.
+                      Latest inbound, outbound, and system events.
                     </div>
                   </div>
                 </div>
-                <div class="detail-list">
-                  <div class="detail-row">
-                    <span id="workspace-path-label" data-i18n="chat.workspaceLabel"
-                      >Workspace</span
-                    >
-                    <strong id="workspace-path">-</strong>
+                <div id="chat-activity" class="empty-state compact-empty">No activity yet.</div>
+              </article>
+
+              <article class="card side-card chat-workspace-card">
+                <div class="card-head">
+                  <div>
+                    <div class="card-title" data-i18n="chat.quickResearchTitle">
+                      Start Research
+                    </div>
+                    <div class="card-sub" data-i18n="chat.quickResearchSub">
+                      Create a task or reopen a report without leaving this page.
+                    </div>
                   </div>
-                  <div class="detail-row">
-                    <span
-                      id="wechat-provider-overview-label"
-                      data-i18n="chat.wechatProviderLabel"
-                      >WeChat provider</span
+                </div>
+
+                <form id="chat-research-form" class="stack-form chat-research-form">
+                  <input
+                    id="chat-research-topic"
+                    data-i18n-placeholder="chat.quickResearchTopic"
+                    placeholder="Topic"
+                  />
+                  <input
+                    id="chat-research-question"
+                    data-i18n-placeholder="chat.quickResearchQuestion"
+                    placeholder="Question (optional)"
+                  />
+                  <div class="button-row">
+                    <button
+                      id="chat-run-research"
+                      class="btn primary"
+                      type="submit"
+                      data-i18n="chat.quickResearchRun"
                     >
-                    <strong id="wechat-provider-overview">-</strong>
-                  </div>
-                  <div class="detail-row">
-                    <span
-                      id="memory-mode-overview-label"
-                      data-i18n="chat.memoryModeLabel"
-                      >Memory search</span
+                      Start research
+                    </button>
+                    <button
+                      class="btn btn--ghost"
+                      type="button"
+                      data-open-tab="research"
+                      data-i18n="chat.quickResearchOpen"
                     >
-                    <strong id="memory-mode-overview">-</strong>
+                      Open research page
+                    </button>
                   </div>
+                </form>
+
+                <div class="inline-form">
+                  <input
+                    id="chat-report-task-id"
+                    data-i18n-placeholder="chat.quickResearchTaskId"
+                    placeholder="Open report by task number"
+                  />
+                  <button
+                    id="chat-load-report"
+                    class="btn btn--ghost"
+                    type="button"
+                    data-i18n="chat.quickResearchLoad"
+                  >
+                    Load
+                  </button>
                 </div>
               </article>
 
@@ -771,7 +615,7 @@
                       class="card-title"
                       data-i18n="chat.latestResearchTitle"
                     >
-                      Latest Research
+                      Latest Report
                     </div>
                     <div
                       id="latest-research-sub"
@@ -793,7 +637,7 @@
                       class="card-title"
                       data-i18n="chat.recentSessionsTitle"
                     >
-                      Recent Sessions
+                      Recent Tasks
                     </div>
                     <div
                       id="recent-sessions-sub"
@@ -811,49 +655,22 @@
                 <div class="card-head">
                   <div>
                     <div
-                      id="command-model-title"
+                      id="chat-notes-title"
                       class="card-title"
-                      data-i18n="chat.commandModelTitle"
+                      data-i18n="overview.notesTitle"
                     >
-                      Command Model
+                      Current Workspace
                     </div>
                     <div
-                      id="command-model-sub"
+                      id="chat-notes-sub"
                       class="card-sub"
-                      data-i18n="chat.commandModelSub"
+                      data-i18n="overview.notesSub"
                     >
-                      Plain text chats. Slash commands control the workspace.
+                      Key operational details from the current workspace.
                     </div>
                   </div>
                 </div>
-                <div class="command-list">
-                  <div class="command-item">
-                    <code>/research topic</code>
-                    <span id="command-research-desc" data-i18n="chat.commandResearchDesc"
-                      >Run the research workflow.</span
-                    >
-                  </div>
-                  <div class="command-item">
-                    <code>/memory query</code>
-                    <span id="command-memory-desc" data-i18n="chat.commandMemoryDesc"
-                      >Search file-backed memory.</span
-                    >
-                  </div>
-                  <div class="command-item">
-                    <code>/remember fact</code>
-                    <span id="command-remember-desc" data-i18n="chat.commandRememberDesc"
-                      >Write a note into memory.</span
-                    >
-                  </div>
-                  <div class="command-item">
-                    <code>/role researcher</code>
-                    <span>Switch the active runtime role for this chat session.</span>
-                  </div>
-                  <div class="command-item">
-                    <code>/skills</code>
-                    <span>Inspect the skills currently enabled for the runtime.</span>
-                  </div>
-                </div>
+                <div id="chat-notes" class="detail-list"></div>
               </article>
             </aside>
           </div>
@@ -861,141 +678,71 @@
 
         <section class="workspace-panel" data-panel="overview">
           <div class="overview-shell">
-            <article class="card overview-hero">
-              <div class="overview-hero__main">
-                <div class="overview-hero__copy">
-                  <div id="overview-kicker" class="section-kicker" data-i18n="overview.kicker">
-                    Research OS
-                  </div>
-                  <h2
-                    id="overview-heading"
-                    class="overview-hero__title page-title"
-                    data-i18n="overview.heading"
-                  >
-                    Command Center
-                  </h2>
-                  <p
-                    id="overview-subtitle"
-                    class="overview-hero__subtitle panel-sub"
-                    data-i18n="overview.sub"
-                  >
-                    Move from discovery to evidence to deliverable in one repeatable research workspace.
-                  </p>
+            <div class="panel-head">
+              <div>
+                <div id="overview-kicker" class="section-kicker" data-i18n="overview.kicker">
+                  Operations
                 </div>
-
-                <div class="overview-hero__actions">
-                  <button
-                    class="btn primary"
-                    type="button"
-                    data-open-tab="research"
-                    data-i18n="overview.launchResearch"
-                  >
-                    Queue research
-                  </button>
-                  <button
-                    class="btn"
-                    type="button"
-                    data-open-tab="chat"
-                    data-i18n="overview.openDesk"
-                  >
-                    Open agent desk
-                  </button>
-                  <button
-                    class="btn btn--ghost"
-                    type="button"
-                    data-open-tab="graph"
-                    data-i18n="overview.openGraph"
-                  >
-                    Inspect graph
-                  </button>
-                  <button
-                    id="refresh-overview"
-                    class="btn btn--ghost"
-                    type="button"
-                    data-i18n="common.refresh"
-                  >
-                    Refresh
-                  </button>
-                </div>
-
-                <div class="workflow-lane">
-                  <button class="workflow-step" type="button" data-open-tab="research">
-                    <span class="workflow-step__index">01</span>
-                    <strong data-i18n="overview.stepDiscoverTitle">Discover</strong>
-                    <span data-i18n="overview.stepDiscoverSub"
-                      >Track fresh papers and queue research runs.</span
-                    >
-                  </button>
-                  <button class="workflow-step" type="button" data-open-tab="graph">
-                    <span class="workflow-step__index">02</span>
-                    <strong data-i18n="overview.stepMapTitle">Map</strong>
-                    <span data-i18n="overview.stepMapSub"
-                      >Inspect directions, links, and reusable modules.</span
-                    >
-                  </button>
-                  <button class="workflow-step" type="button" data-open-tab="chat">
-                    <span class="workflow-step__index">03</span>
-                    <strong data-i18n="overview.stepSynthesizeTitle">Synthesize</strong>
-                    <span data-i18n="overview.stepSynthesizeSub"
-                      >Use the agent desk to turn evidence into judgment.</span
-                    >
-                  </button>
-                  <button class="workflow-step" type="button" data-open-tab="memory">
-                    <span class="workflow-step__index">04</span>
-                    <strong data-i18n="overview.stepDeliverTitle">Deliver</strong>
-                    <span data-i18n="overview.stepDeliverSub"
-                      >Persist memory and package outputs for the team.</span
-                    >
-                  </button>
-                </div>
+                <h2
+                  id="overview-heading"
+                  class="page-title"
+                  data-i18n="overview.heading"
+                >
+                  Workspace Overview
+                </h2>
+                <p
+                  id="overview-subtitle"
+                  class="panel-sub"
+                  data-i18n="overview.sub"
+                >
+                  A secondary systems view for activity, recent outputs, and operational context.
+                </p>
               </div>
+              <div class="panel-actions">
+                <button
+                  class="btn"
+                  type="button"
+                  data-open-tab="channels"
+                  data-i18n="overview.openChannels"
+                >
+                  Open channels
+                </button>
+                <button
+                  class="btn btn--ghost"
+                  type="button"
+                  data-open-tab="settings"
+                  data-i18n="overview.openSettings"
+                >
+                  Open settings
+                </button>
+                <button
+                  id="refresh-overview"
+                  class="btn btn--ghost"
+                  type="button"
+                  data-i18n="common.refresh"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
 
-              <aside class="overview-hero__aside">
-                <div class="overview-hero__aside-head">
-                  <div
-                    class="card-title"
-                    data-i18n="overview.liveSignalsTitle"
-                  >
-                    Live Signals
-                  </div>
-                  <div
-                    class="card-sub"
-                    data-i18n="overview.liveSignalsSub"
-                  >
+            <article class="card panel-card overview-signals-card">
+              <div class="card-head">
+                <div>
+                  <div class="card-title" data-i18n="overview.liveSignalsTitle">Live Signals</div>
+                  <div class="card-sub" data-i18n="overview.liveSignalsSub">
                     Use these signals to decide what to investigate next.
                   </div>
                 </div>
-                <div
-                  id="overview-cards"
-                  class="ov-cards ov-cards--hero"
-                  data-card-variant="hero"
-                ></div>
-              </aside>
+              </div>
+              <div
+                id="overview-cards"
+                class="ov-cards ov-cards--hero"
+                data-card-variant="hero"
+              ></div>
             </article>
 
             <div class="grid grid--overview-product">
-              <article class="card panel-card overview-panel overview-panel--latest">
-                <div class="card-head">
-                  <div>
-                    <div
-                      id="overview-latest-research-title"
-                      class="card-title"
-                      data-i18n="overview.latestResearchTitle"
-                    >
-                      Latest Research
-                    </div>
-                    <div
-                      id="overview-latest-research-sub"
-                      class="card-sub"
-                      data-i18n="overview.latestResearchSub"
-                    >
-                      The most recent report snapshot in this workspace.
-                    </div>
-                  </div>
-                </div>
-                <div id="overview-latest-report" class="empty-state">No report yet.</div>
-              </article>
-
               <article class="card panel-card overview-panel overview-panel--activity">
                 <div class="card-head">
                   <div>
@@ -1018,26 +765,26 @@
                 <div id="overview-activity" class="empty-state">No activity yet.</div>
               </article>
 
-              <article class="card panel-card overview-panel overview-panel--sessions">
+              <article class="card panel-card overview-panel overview-panel--latest">
                 <div class="card-head">
                   <div>
                     <div
-                      id="overview-session-title"
+                      id="overview-latest-research-title"
                       class="card-title"
-                      data-i18n="overview.sessionsTitle"
+                      data-i18n="overview.latestResearchTitle"
                     >
-                      Recent Sessions
+                      Latest Report
                     </div>
                     <div
-                      id="overview-session-sub"
+                      id="overview-latest-research-sub"
                       class="card-sub"
-                      data-i18n="overview.sessionsSub"
+                      data-i18n="overview.latestResearchSub"
                     >
-                      Jump back into recent research runs.
+                      The most recent report snapshot in this workspace.
                     </div>
                   </div>
                 </div>
-                <div id="overview-session-list" class="empty-state">No sessions yet.</div>
+                <div id="overview-latest-report" class="empty-state">No report yet.</div>
               </article>
 
               <article class="card panel-card overview-panel overview-panel--notes">
@@ -1048,7 +795,7 @@
                       class="card-title"
                       data-i18n="overview.notesTitle"
                     >
-                      Workspace Snapshot
+                      Current Workspace
                     </div>
                     <div
                       id="overview-notes-sub"
@@ -1061,6 +808,28 @@
                 </div>
                 <div id="overview-notes" class="detail-list"></div>
               </article>
+
+              <article class="card panel-card overview-panel overview-panel--sessions">
+                <div class="card-head">
+                  <div>
+                    <div
+                      id="overview-session-title"
+                      class="card-title"
+                      data-i18n="overview.sessionsTitle"
+                    >
+                      Recent Tasks
+                    </div>
+                    <div
+                      id="overview-session-sub"
+                      class="card-sub"
+                      data-i18n="overview.sessionsSub"
+                    >
+                      Jump back into recent research runs.
+                    </div>
+                  </div>
+                </div>
+                <div id="overview-session-list" class="empty-state">No sessions yet.</div>
+              </article>
             </div>
           </div>
         </section>
@@ -1072,7 +841,7 @@
                 Channels
               </div>
               <h2 id="channels-heading" class="page-title" data-i18n="channels.heading">
-                WeChat Transport
+                WeChat Channel
               </h2>
               <p id="channels-subtitle" class="panel-sub" data-i18n="channels.sub">
                 Pairing, provider state, connection control, and transport flow.
@@ -1135,7 +904,7 @@
               <div class="pairing-card">
                 <div id="pairing-code" class="pairing-code">-</div>
                 <img id="pairing-qr" class="pairing-qr" alt="WeChat QR" hidden />
-                <p id="pairing-hint" class="hint">Pairing details will show here.</p>
+                <p id="pairing-hint" class="hint" data-i18n="channels.pairingHint">Login details will show here.</p>
               </div>
               <div class="stack-form">
                 <input
@@ -1187,7 +956,7 @@
                     class="card-sub"
                     data-i18n="channels.messageFlowSub"
                   >
-                    Transport-side WeChat and system events live here.
+                    Recent channel messages and system events.
                   </div>
                 </div>
               </div>
@@ -1221,9 +990,9 @@
             <article class="card panel-card">
               <div class="card-head">
                 <div>
-                  <div class="card-title">Lifecycle Audit</div>
+                  <div class="card-title" data-i18n="channels.lifecycleTitle">Recent Status Changes</div>
                   <div class="card-sub">
-                    Recent service starts, transitions, and auto-restart events for the current channel runtime.
+                    <span data-i18n="channels.lifecycleSub">Service starts, reconnects, and restarts for this channel.</span>
                   </div>
                 </div>
               </div>
@@ -1271,10 +1040,10 @@
                 Agents
               </div>
               <h2 id="agents-heading" class="page-title" data-i18n="agents.heading">
-                Agent Workspaces
+                Agent Settings
               </h2>
               <p id="agents-subtitle" class="panel-sub" data-i18n="agents.sub">
-                Configure the active runtime role and workspace skills for chat.
+                Choose the role, model, and tools used in chat.
               </p>
             </div>
           </div>
@@ -1283,9 +1052,9 @@
             <article class="card panel-card">
               <div class="card-head">
                 <div>
-                  <div class="card-title" data-i18n="chat.agentTitle">Agent Runtime</div>
+                  <div class="card-title" data-i18n="chat.agentTitle">Agent Settings</div>
                   <div class="card-sub" data-i18n="chat.agentSub">
-                    Switch the active role and enabled skills for this chat session.
+                    Choose the role and tools used in this chat.
                   </div>
                 </div>
               </div>
@@ -1296,35 +1065,35 @@
                   <select id="agent-role-select"></select>
                 </label>
                 <div class="field">
-                  <span>Model Selection</span>
+                  <span data-i18n="agents.modelLabel">Model</span>
                   <select id="agent-model-select"></select>
-                  <div id="agent-model-hint" class="card-sub">
-                    Switch the active model route for this chat session, or inherit the registry default.
+                  <div id="agent-model-hint" class="card-sub" data-i18n="agents.modelHint">
+                    Choose the model used in this chat, or keep the default route.
                   </div>
                   <div class="inline-form">
-                    <button id="agent-model-reset" class="btn btn--ghost" type="button">
-                      Use Default Route
+                    <button id="agent-model-reset" class="btn btn--ghost" type="button" data-i18n="agents.modelReset">
+                      Use default route
                     </button>
                   </div>
                 </div>
                 <div class="field">
-                  <span>Fallbacks</span>
+                  <span data-i18n="agents.fallbackLabel">Backup Models</span>
                   <div id="agent-fallbacks-list" class="fallback-route-list"></div>
                   <div class="inline-form">
                     <select id="agent-fallbacks-select"></select>
-                    <button id="agent-fallbacks-add" class="btn btn--ghost" type="button">
-                      Add Fallback
+                    <button id="agent-fallbacks-add" class="btn btn--ghost" type="button" data-i18n="agents.fallbackAdd">
+                      Add backup
                     </button>
-                    <button id="agent-fallbacks-clear" class="btn btn--ghost" type="button">
-                      Clear Fallbacks
+                    <button id="agent-fallbacks-clear" class="btn btn--ghost" type="button" data-i18n="agents.fallbackClear">
+                      Clear backups
                     </button>
                   </div>
                 </div>
                 <div class="field">
-                  <span>Reasoning</span>
+                  <span data-i18n="agents.reasoningLabel">Reasoning Level</span>
                   <select id="agent-reasoning-select"></select>
-                  <div id="agent-reasoning-hint" class="card-sub">
-                    Set the reasoning effort for the active chat session.
+                  <div id="agent-reasoning-hint" class="card-sub" data-i18n="agents.reasoningHint">
+                    Set how much reasoning effort this chat should use.
                   </div>
                 </div>
                 <div class="field">
@@ -1340,9 +1109,9 @@
             <article class="card panel-card">
               <div class="card-head">
                 <div>
-                  <div class="card-title">Runtime Notes</div>
-                  <div class="card-sub">
-                    The current chat session behaves like a host workspace: role and skills change tool access immediately.
+                  <div class="card-title" data-i18n="agents.notesTitle">Runtime Notes</div>
+                  <div class="card-sub" data-i18n="agents.notesSub">
+                    Role and enabled skills change what the current chat can do.
                   </div>
                 </div>
               </div>
@@ -1358,22 +1127,22 @@
                 Skills
               </div>
               <h2 id="skills-heading" class="page-title" data-i18n="skills.heading">
-                Skill Registry
+                Available Skills
               </h2>
               <p id="skills-subtitle" class="panel-sub" data-i18n="skills.sub">
-                See which skills are available and whether the current session enables them.
+                See which skills are available in this session.
               </p>
             </div>
           </div>
 
           <div class="stack">
             <div class="inline-form inline-form--equal">
-              <input id="skills-filter-input" placeholder="Search skills" />
+              <input id="skills-filter-input" data-i18n-placeholder="skills.searchPlaceholder" placeholder="Search skills" />
               <select id="skills-status-filter">
-                <option value="all">All</option>
-                <option value="ready">Ready</option>
-                <option value="needs-setup">Needs Setup</option>
-                <option value="disabled">Disabled</option>
+                <option value="all" data-i18n="skills.filterAll">All</option>
+                <option value="ready" data-i18n="skills.filterReady">Ready</option>
+                <option value="needs-setup" data-i18n="skills.filterNeedsSetup">Needs setup</option>
+                <option value="disabled" data-i18n="skills.filterDisabled">Disabled</option>
               </select>
             </div>
             <div id="skills-catalog"></div>
@@ -1411,10 +1180,10 @@
                 <label class="field graph-toolbar__range">
                   <span data-i18n="graph.windowLabel">Time Window</span>
                   <select id="graph-date-range">
-                    <option value="all">All time</option>
-                    <option value="7d">Last 7 days</option>
-                    <option value="30d">Last 30 days</option>
-                    <option value="90d">Last 90 days</option>
+                    <option value="all" data-i18n="graph.rangeAll">All time</option>
+                    <option value="7d" data-i18n="graph.range7d">Last 7 days</option>
+                    <option value="30d" data-i18n="graph.range30d">Last 30 days</option>
+                    <option value="90d" data-i18n="graph.range90d">Last 90 days</option>
                   </select>
                 </label>
               </div>
@@ -1440,14 +1209,14 @@
                     </div>
                   </div>
                   <div id="graph-summary" class="detail-list empty-state compact-empty">
-                    Loading graph...
+                    <span data-i18n="graph.loading">Loading map...</span>
                   </div>
                 </article>
 
                 <article class="card panel-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="graph.focusTitle">Map Workflow</div>
+                      <div class="card-title" data-i18n="graph.focusTitle">How to use</div>
                       <div class="card-sub" data-i18n="graph.focusSub">
                         Filter first, then inspect nodes, relationships, and attached artifacts.
                       </div>
@@ -1472,13 +1241,13 @@
                 <article class="card panel-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="graph.connectionsTitle">Map Canvas</div>
+                      <div class="card-title" data-i18n="graph.connectionsTitle">Map</div>
                       <div class="card-sub" data-i18n="graph.connectionsSub">
                         Explore visible nodes and inspect provenance from the graph itself.
                       </div>
                     </div>
                   </div>
-                  <div id="graph-canvas" class="graph-canvas empty-state compact-empty">No graph yet.</div>
+                  <div id="graph-canvas" class="graph-canvas empty-state compact-empty" data-i18n="graph.empty">No map data yet.</div>
                 </article>
 
                 <article class="card panel-card">
@@ -1490,7 +1259,7 @@
                       </div>
                     </div>
                   </div>
-                  <div id="graph-edges" class="result-stack empty-state compact-empty">No graph yet.</div>
+                  <div id="graph-edges" class="result-stack empty-state compact-empty" data-i18n="graph.empty">No map data yet.</div>
                 </article>
               </div>
 
@@ -1498,14 +1267,14 @@
                 <article class="card panel-card graph-detail-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="graph.detailTitle">Node Detail</div>
+                      <div class="card-title" data-i18n="graph.detailTitle">Details</div>
                       <div class="card-sub" data-i18n="graph.detailSub">
                         Metadata, related nodes, structured conclusions, and raw artifacts.
                       </div>
                     </div>
                   </div>
                   <div id="graph-detail" class="empty-state compact-empty">
-                    Select a node to inspect it.
+                    <span data-i18n="graph.selectNode">Select a node to inspect it.</span>
                   </div>
                 </article>
               </aside>
@@ -1521,7 +1290,7 @@
                   Research
                 </div>
                 <h2 id="research-heading" class="page-title" data-i18n="research.heading">
-                  Evidence Workspace
+                  Research Workspace
                 </h2>
                 <p id="research-subtitle" class="panel-sub" data-i18n="research.sub">
                   Run a new investigation, inspect task progress, and shape evidence into reusable deliverables.
@@ -1581,7 +1350,7 @@
                       type="submit"
                       data-i18n="research.runButton"
                     >
-                      Queue research
+                      Start research
                     </button>
                   </form>
                 </article>
@@ -1602,7 +1371,7 @@
                     <input
                       id="report-task-id"
                       data-i18n-placeholder="research.taskId"
-                      placeholder="Load report by taskId"
+                      placeholder="Open report by task number"
                     />
                     <button
                       id="load-report"
@@ -1643,11 +1412,20 @@
               </div>
 
               <aside class="research-workspace__rail">
+                <details class="research-rail-group" open>
+                  <summary class="research-rail-group__summary">
+                    <div class="research-rail-group__copy">
+                      <span class="research-rail-group__eyebrow" data-i18n="research.groupCoreEyebrow">Core</span>
+                      <strong data-i18n="research.groupCoreTitle">Scope and active work</strong>
+                      <span data-i18n="research.groupCoreSub">Briefs, task queue, and recent runs stay expanded by default.</span>
+                    </div>
+                  </summary>
+                  <div class="research-rail-group__body">
                 <article class="card panel-card research-rail-card research-rail-card--briefs">
                   <div class="card-head">
                     <div>
                       <div class="card-title" data-i18n="research.briefTitle">
-                        Research Briefs
+                        Research Templates
                       </div>
                       <div class="card-sub" data-i18n="research.briefSub">
                         Define structured research briefs, edit them directly, and import or export markdown.
@@ -1657,124 +1435,172 @@
 
                   <div id="research-brief-status" class="brief-status" hidden></div>
 
-                  <form id="research-brief-form" class="stack-form">
-                    <input
-                      id="research-brief-id"
-                      data-i18n-placeholder="research.briefId"
-                      placeholder="Brief ID (optional)"
-                    />
-                    <input
-                      id="research-brief-label"
-                      data-i18n-placeholder="research.briefLabel"
-                      placeholder="Brief label"
-                    />
-                    <textarea
-                      id="research-brief-summary"
-                      rows="3"
-                      data-i18n-placeholder="research.briefSummary"
-                      placeholder="Summary"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-tldr"
-                      rows="2"
-                      data-i18n-placeholder="research.briefTlDr"
-                      placeholder="TL;DR"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-background"
-                      rows="3"
-                      data-i18n-placeholder="research.briefBackground"
-                      placeholder="Background"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-target-problem"
-                      rows="3"
-                      data-i18n-placeholder="research.briefTargetProblem"
-                      placeholder="Target problem"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-current-goals"
-                      rows="3"
-                      data-i18n-placeholder="research.briefCurrentGoals"
-                      placeholder="Current goals, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-open-questions"
-                      rows="3"
-                      data-i18n-placeholder="research.briefOpenQuestions"
-                      placeholder="Open questions, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-success-criteria"
-                      rows="3"
-                      data-i18n-placeholder="research.briefSuccessCriteria"
-                      placeholder="Success criteria, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-known-baselines"
-                      rows="3"
-                      data-i18n-placeholder="research.briefKnownBaselines"
-                      placeholder="Known baselines, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-evaluation-priorities"
-                      rows="3"
-                      data-i18n-placeholder="research.briefEvaluationPriorities"
-                      placeholder="Evaluation priorities, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-short-term-validation-targets"
-                      rows="3"
-                      data-i18n-placeholder="research.briefShortTermValidationTargets"
-                      placeholder="Short-term validation targets, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-query-hints"
-                      rows="3"
-                      data-i18n-placeholder="research.briefQueryHints"
-                      placeholder="Query hints, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-blocked-directions"
-                      rows="2"
-                      data-i18n-placeholder="research.briefBlockedDirections"
-                      placeholder="Blocked directions, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-preferred-venues"
-                      rows="2"
-                      data-i18n-placeholder="research.briefPreferredVenues"
-                      placeholder="Preferred venues, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-preferred-datasets"
-                      rows="2"
-                      data-i18n-placeholder="research.briefPreferredDatasets"
-                      placeholder="Preferred datasets, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-preferred-benchmarks"
-                      rows="2"
-                      data-i18n-placeholder="research.briefPreferredBenchmarks"
-                      placeholder="Preferred benchmarks, one per line"
-                    ></textarea>
-                    <textarea
-                      id="research-brief-preferred-paper-styles"
-                      rows="2"
-                      data-i18n-placeholder="research.briefPreferredPaperStyles"
-                      placeholder="Preferred paper styles: theory, engineering, reproducibility, application"
-                    ></textarea>
-                    <div class="inline-form inline-form--equal">
-                      <select id="research-brief-priority">
-                        <option value="primary">primary</option>
-                        <option value="secondary" selected>secondary</option>
-                        <option value="watchlist">watchlist</option>
-                      </select>
-                      <label class="checkbox-inline">
-                        <input id="research-brief-enabled" type="checkbox" checked />
-                        <span data-i18n="research.briefEnabled">Enabled</span>
-                      </label>
-                    </div>
+                  <form id="research-brief-form" class="stack-form research-brief-form">
+                    <details class="research-form-group" open>
+                      <summary class="research-form-group__summary">
+                        <div class="research-form-group__copy">
+                          <span class="research-form-group__eyebrow" data-i18n="research.briefGroupFoundationEyebrow">Foundation</span>
+                          <strong data-i18n="research.briefGroupFoundationTitle">Brief foundation</strong>
+                          <span data-i18n="research.briefGroupFoundationSub">Start with the label, summary, context, and target problem.</span>
+                        </div>
+                      </summary>
+                      <div class="research-form-group__body">
+                        <input
+                          id="research-brief-id"
+                          data-i18n-placeholder="research.briefId"
+                          placeholder="Brief ID (optional)"
+                        />
+                        <input
+                          id="research-brief-label"
+                          data-i18n-placeholder="research.briefLabel"
+                          placeholder="Brief label"
+                        />
+                        <textarea
+                          id="research-brief-summary"
+                          rows="3"
+                          data-i18n-placeholder="research.briefSummary"
+                          placeholder="Summary"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-tldr"
+                          rows="2"
+                          data-i18n-placeholder="research.briefTlDr"
+                          placeholder="TL;DR"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-background"
+                          rows="3"
+                          data-i18n-placeholder="research.briefBackground"
+                          placeholder="Background"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-target-problem"
+                          rows="3"
+                          data-i18n-placeholder="research.briefTargetProblem"
+                          placeholder="Target problem"
+                        ></textarea>
+                      </div>
+                    </details>
+
+                    <details class="research-form-group" open>
+                      <summary class="research-form-group__summary">
+                        <div class="research-form-group__copy">
+                          <span class="research-form-group__eyebrow" data-i18n="research.briefGroupGoalsEyebrow">Goals</span>
+                          <strong data-i18n="research.briefGroupGoalsTitle">Objectives and open questions</strong>
+                          <span data-i18n="research.briefGroupGoalsSub">Document what this brief is trying to answer right now.</span>
+                        </div>
+                      </summary>
+                      <div class="research-form-group__body">
+                        <textarea
+                          id="research-brief-current-goals"
+                          rows="3"
+                          data-i18n-placeholder="research.briefCurrentGoals"
+                          placeholder="Current goals, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-open-questions"
+                          rows="3"
+                          data-i18n-placeholder="research.briefOpenQuestions"
+                          placeholder="Open questions, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-success-criteria"
+                          rows="3"
+                          data-i18n-placeholder="research.briefSuccessCriteria"
+                          placeholder="Success criteria, one per line"
+                        ></textarea>
+                      </div>
+                    </details>
+
+                    <details class="research-form-group" open>
+                      <summary class="research-form-group__summary">
+                        <div class="research-form-group__copy">
+                          <span class="research-form-group__eyebrow" data-i18n="research.briefGroupEvaluationEyebrow">Evaluation</span>
+                          <strong data-i18n="research.briefGroupEvaluationTitle">Baselines and validation</strong>
+                          <span data-i18n="research.briefGroupEvaluationSub">Keep the evidence standard explicit before discovery expands.</span>
+                        </div>
+                      </summary>
+                      <div class="research-form-group__body">
+                        <textarea
+                          id="research-brief-known-baselines"
+                          rows="3"
+                          data-i18n-placeholder="research.briefKnownBaselines"
+                          placeholder="Known baselines, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-evaluation-priorities"
+                          rows="3"
+                          data-i18n-placeholder="research.briefEvaluationPriorities"
+                          placeholder="Evaluation priorities, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-short-term-validation-targets"
+                          rows="3"
+                          data-i18n-placeholder="research.briefShortTermValidationTargets"
+                          placeholder="Short-term validation targets, one per line"
+                        ></textarea>
+                        <div class="inline-form inline-form--equal">
+                          <select id="research-brief-priority">
+                            <option value="primary">primary</option>
+                            <option value="secondary" selected>secondary</option>
+                            <option value="watchlist">watchlist</option>
+                          </select>
+                          <label class="checkbox-inline">
+                            <input id="research-brief-enabled" type="checkbox" checked />
+                            <span data-i18n="research.briefEnabled">Enabled</span>
+                          </label>
+                        </div>
+                      </div>
+                    </details>
+
+                    <details class="research-form-group">
+                      <summary class="research-form-group__summary">
+                        <div class="research-form-group__copy">
+                          <span class="research-form-group__eyebrow" data-i18n="research.briefGroupSignalsEyebrow">Signals</span>
+                          <strong data-i18n="research.briefGroupSignalsTitle">Search hints and preferences</strong>
+                          <span data-i18n="research.briefGroupSignalsSub">Store hints, blocked directions, and preferred venues only when they matter.</span>
+                        </div>
+                      </summary>
+                      <div class="research-form-group__body">
+                        <textarea
+                          id="research-brief-query-hints"
+                          rows="3"
+                          data-i18n-placeholder="research.briefQueryHints"
+                          placeholder="Query hints, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-blocked-directions"
+                          rows="2"
+                          data-i18n-placeholder="research.briefBlockedDirections"
+                          placeholder="Blocked directions, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-preferred-venues"
+                          rows="2"
+                          data-i18n-placeholder="research.briefPreferredVenues"
+                          placeholder="Preferred venues, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-preferred-datasets"
+                          rows="2"
+                          data-i18n-placeholder="research.briefPreferredDatasets"
+                          placeholder="Preferred datasets, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-preferred-benchmarks"
+                          rows="2"
+                          data-i18n-placeholder="research.briefPreferredBenchmarks"
+                          placeholder="Preferred benchmarks, one per line"
+                        ></textarea>
+                        <textarea
+                          id="research-brief-preferred-paper-styles"
+                          rows="2"
+                          data-i18n-placeholder="research.briefPreferredPaperStyles"
+                          placeholder="Preferred paper styles: theory, engineering, reproducibility, application"
+                        ></textarea>
+                      </div>
+                    </details>
+
                     <div class="button-row">
                       <button
                         id="research-brief-save"
@@ -1803,32 +1629,43 @@
                     </div>
                   </form>
 
-                  <form id="research-brief-markdown-form" class="stack-form">
-                    <textarea
-                      id="research-brief-markdown"
-                      rows="8"
-                      data-i18n-placeholder="research.briefMarkdown"
-                      placeholder="Paste research brief markdown here"
-                    ></textarea>
-                    <div class="button-row">
-                      <button
-                        id="research-brief-import"
-                        class="btn btn--ghost"
-                        type="submit"
-                        data-i18n="research.briefImport"
-                      >
-                        Import markdown
-                      </button>
-                      <button
-                        id="research-brief-export"
-                        class="btn btn--ghost"
-                        type="button"
-                        data-i18n="research.briefExport"
-                      >
-                        Export selected
-                      </button>
+                  <details class="research-form-group research-form-group--markdown">
+                    <summary class="research-form-group__summary">
+                      <div class="research-form-group__copy">
+                        <span class="research-form-group__eyebrow" data-i18n="research.briefGroupMarkdownEyebrow">Markdown</span>
+                        <strong data-i18n="research.briefGroupMarkdownTitle">Import and export</strong>
+                        <span data-i18n="research.briefGroupMarkdownSub">Use markdown only when you need to move briefs across tools.</span>
+                      </div>
+                    </summary>
+                    <div class="research-form-group__body">
+                      <form id="research-brief-markdown-form" class="stack-form">
+                        <textarea
+                          id="research-brief-markdown"
+                          rows="8"
+                          data-i18n-placeholder="research.briefMarkdown"
+                          placeholder="Paste research brief markdown here"
+                        ></textarea>
+                        <div class="button-row">
+                          <button
+                            id="research-brief-import"
+                            class="btn btn--ghost"
+                            type="submit"
+                            data-i18n="research.briefImport"
+                          >
+                            Import markdown
+                          </button>
+                          <button
+                            id="research-brief-export"
+                            class="btn btn--ghost"
+                            type="button"
+                            data-i18n="research.briefExport"
+                          >
+                            Export selected
+                          </button>
+                        </div>
+                      </form>
                     </div>
-                  </form>
+                  </details>
 
                   <div id="research-brief-list" class="empty-state compact-empty">
                     No research briefs yet.
@@ -1867,7 +1704,7 @@
                         class="card-title"
                         data-i18n="research.recentTitle"
                       >
-                        Recent Runs
+                        Recent Tasks
                       </div>
                       <div
                         id="research-session-sub"
@@ -1882,13 +1719,24 @@
                     No sessions yet.
                   </div>
                 </article>
+                  </div>
+                </details>
 
+                <details class="research-rail-group">
+                  <summary class="research-rail-group__summary">
+                    <div class="research-rail-group__copy">
+                      <span class="research-rail-group__eyebrow" data-i18n="research.groupAutomationEyebrow">Automation</span>
+                      <strong data-i18n="research.groupAutomationTitle">Automation and outputs</strong>
+                      <span data-i18n="research.groupAutomationSub">Schedulers, direction reports, decks, and module assets live here.</span>
+                    </div>
+                  </summary>
+                  <div class="research-rail-group__body">
                 <article class="card panel-card research-rail-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title">Daily Discovery Scheduler</div>
+                      <div class="card-title" data-i18n="research.schedulerTitle">Daily Research Schedule</div>
                       <div class="card-sub">
-                        Configure an always-on daily discovery run, similar to a lightweight cron job surface.
+                        <span data-i18n="research.schedulerSub">Set a daily run so important topics keep updating automatically.</span>
                       </div>
                     </div>
                   </div>
@@ -1898,25 +1746,26 @@
                       <input id="discovery-scheduler-time" type="time" value="09:00" />
                       <label class="checkbox-inline">
                         <input id="discovery-scheduler-enabled" type="checkbox" />
-                        <span>Enabled</span>
+                        <span data-i18n="research.schedulerEnabled">Enabled</span>
                       </label>
                     </div>
-                    <input id="discovery-scheduler-sender-id" placeholder="WeChat sender id for scheduled pushes" />
-                    <input id="discovery-scheduler-sender-name" placeholder="Display name for scheduled pushes (optional)" />
+                    <input id="discovery-scheduler-sender-id" data-i18n-placeholder="research.schedulerSenderId" placeholder="WeChat sender ID for scheduled messages" />
+                    <input id="discovery-scheduler-sender-name" data-i18n-placeholder="research.schedulerSenderName" placeholder="Display name for scheduled messages (optional)" />
                     <textarea
                       id="discovery-scheduler-direction-ids"
                       rows="4"
-                      placeholder="Direction ids, one per line. Leave empty to use all enabled briefs."
+                      data-i18n-placeholder="research.schedulerDirectionIds"
+                      placeholder="Topic IDs, one per line. Leave empty to use all enabled templates."
                     ></textarea>
                     <div class="inline-form inline-form--equal">
-                      <input id="discovery-scheduler-topk" type="number" min="1" max="10" value="5" placeholder="Top K" />
-                      <input id="discovery-scheduler-max-papers" type="number" min="1" max="10" value="4" placeholder="Papers per query" />
+                      <input id="discovery-scheduler-topk" type="number" min="1" max="10" value="5" data-i18n-placeholder="research.schedulerTopK" placeholder="Top K" />
+                      <input id="discovery-scheduler-max-papers" type="number" min="1" max="10" value="4" data-i18n-placeholder="research.schedulerMaxPapers" placeholder="Papers per search" />
                     </div>
                     <div class="button-row">
-                      <button id="discovery-scheduler-save" class="btn primary" type="submit">
-                        Save scheduler
+                      <button id="discovery-scheduler-save" class="btn primary" type="submit" data-i18n="research.schedulerSave">
+                        Save schedule
                       </button>
-                      <button id="discovery-scheduler-run" class="btn btn--ghost" type="button">
+                      <button id="discovery-scheduler-run" class="btn btn--ghost" type="button" data-i18n="research.schedulerRunNow">
                         Run now
                       </button>
                     </div>
@@ -1924,7 +1773,7 @@
 
                   <div id="discovery-scheduler-status" class="detail-list"></div>
                   <div id="discovery-scheduler-runs" class="empty-state compact-empty">
-                    No discovery runs yet.
+                    <span data-i18n="research.schedulerEmpty">No scheduled runs yet.</span>
                   </div>
                 </article>
 
@@ -1932,7 +1781,7 @@
                   <div class="card-head">
                     <div>
                       <div class="card-title" data-i18n="research.directionTitle">
-                        Direction Reports
+                        Topic Reports
                       </div>
                       <div class="card-sub" data-i18n="research.directionSub">
                         Generate reusable direction summaries from recent papers, baselines, and modules.
@@ -1973,43 +1822,54 @@
                   </form>
 
                   <div id="direction-report-list" class="empty-state compact-empty">
-                    No direction reports yet.
+                    <span data-i18n="research.directionEmpty">No topic reports yet.</span>
                   </div>
                 </article>
 
                 <article class="card panel-card research-rail-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title">Presentations</div>
+                      <div class="card-title" data-i18n="research.presentationsTitle">Slides</div>
                       <div class="card-sub">
-                        Reopen recent markdown or pptx meeting decks without regenerating them.
+                        <span data-i18n="research.presentationsSub">Open recent Markdown or PPTX decks without creating them again.</span>
                       </div>
                     </div>
                   </div>
                   <div id="presentation-list" class="empty-state compact-empty">
-                    No presentations yet.
+                    <span data-i18n="research.presentationsEmpty">No slides yet.</span>
                   </div>
                 </article>
 
                 <article class="card panel-card research-rail-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title">Module Assets</div>
+                      <div class="card-title" data-i18n="research.modulesTitle">Module Files</div>
                       <div class="card-sub">
-                        Inspect reusable extracted modules and archived repository snapshots.
+                        <span data-i18n="research.modulesSub">Review reusable modules and archived repository snapshots.</span>
                       </div>
                     </div>
                   </div>
                   <div id="module-asset-list" class="empty-state compact-empty">
-                    No module assets yet.
+                    <span data-i18n="research.modulesEmpty">No module files yet.</span>
                   </div>
                 </article>
+                  </div>
+                </details>
 
+                <details class="research-rail-group">
+                  <summary class="research-rail-group__summary">
+                    <div class="research-rail-group__copy">
+                      <span class="research-rail-group__eyebrow" data-i18n="research.groupFeedbackEyebrow">Feedback</span>
+                      <strong data-i18n="research.groupFeedbackTitle">Quality signals</strong>
+                      <span data-i18n="research.groupFeedbackSub">Use feedback to steer discovery and future reports.</span>
+                    </div>
+                  </summary>
+                  <div class="research-rail-group__body">
                 <article class="card panel-card research-rail-card">
                   <div class="card-head">
                     <div>
                       <div class="card-title" data-i18n="research.feedbackTitle">
-                        Feedback Loop
+                        Feedback
                       </div>
                       <div class="card-sub" data-i18n="research.feedbackSub">
                         Record useful or negative feedback so discovery can adapt over time.
@@ -2056,9 +1916,11 @@
 
                   <div id="feedback-summary" class="detail-list"></div>
                   <div id="feedback-list" class="empty-state compact-empty">
-                    No feedback recorded yet.
+                    <span data-i18n="research.feedbackEmpty">No feedback yet.</span>
                   </div>
                 </article>
+                  </div>
+                </details>
               </aside>
             </div>
           </div>
@@ -2068,10 +1930,10 @@
             <article class="card memory-launchpad">
               <div class="memory-launchpad__copy">
                 <div id="memory-kicker" class="section-kicker" data-i18n="memory.kicker">
-                  Knowledge Vault
+                  Notes
                 </div>
                 <h2 id="memory-heading" class="page-title" data-i18n="memory.heading">
-                  Knowledge Vault
+                  Research Notes
                 </h2>
                 <p id="memory-subtitle" class="panel-sub" data-i18n="memory.sub">
                   Search, write, and inspect file-backed memory that carries research context forward.
@@ -2087,7 +1949,7 @@
                         class="card-title"
                         data-i18n="memory.searchWriteTitle"
                       >
-                        Query Workspace Memory
+                        Search Notes
                       </div>
                       <div
                         id="search-write-sub"
@@ -2121,7 +1983,7 @@
                 <article class="memory-launchpad__panel memory-launchpad__panel--write">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="memory.writeTitle">Write Memory</div>
+                      <div class="card-title" data-i18n="memory.writeTitle">Add Note</div>
                       <div class="card-sub" data-i18n="memory.writeSub">
                         Capture a new note, decision, or working conclusion into the vault.
                       </div>
@@ -2168,7 +2030,7 @@
                       class="card-title"
                       data-i18n="memory.filesTitle"
                     >
-                      Vault Files
+                      Saved Notes
                     </div>
                     <div
                       id="memory-files-sub"
@@ -2190,7 +2052,7 @@
                       class="card-title"
                       data-i18n="memory.viewerTitle"
                     >
-                      Document Preview
+                      Preview
                     </div>
                     <div
                       id="memory-viewer-sub"
@@ -2236,7 +2098,7 @@ Select a file to preview its content.</pre
             <div>
               <div id="logs-kicker" class="section-kicker" data-i18n="logs.kicker">Logs</div>
               <h2 id="logs-heading" class="page-title" data-i18n="logs.heading">
-                Runtime Log Tail
+                Runtime Logs
               </h2>
               <p id="logs-subtitle" class="panel-sub" data-i18n="logs.sub">
                 Inspect stdout and stderr from the current runtime.

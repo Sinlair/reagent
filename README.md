@@ -1,160 +1,187 @@
-# ReAgent
+<div align="center">
+  <img src="./docs/reagent-mark.svg" alt="ReAgent logo" width="108" />
+  <h1>ReAgent</h1>
+  <p><strong>Turn ongoing research into a reusable workflow, not a one-off conversation.</strong></p>
+  <p>Local-first research workspace for paper discovery, evidence review, research notes, and delivery.</p>
+  <p>
+    <a href="./README.md"><strong>English</strong></a>
+    <span>&nbsp;|&nbsp;</span>
+    <a href="./README.zh-CN.md">简体中文</a>
+  </p>
+  <p>
+    <a href="./ROADMAP.md">Roadmap</a>
+    <span>&nbsp;•&nbsp;</span>
+    <a href="./CONTRIBUTING.md">Contributing</a>
+    <span>&nbsp;•&nbsp;</span>
+    <a href="./OPERATIONS.md">Operations</a>
+  </p>
+</div>
 
 <p align="center">
-  <img src="./docs/reagent-mark.svg" alt="ReAgent logo" width="96" />
+  <a href="https://nodejs.org/">
+    <img src="https://img.shields.io/badge/Node.js-%3E%3D22-339933?logo=node.js&logoColor=white" alt="Node.js 22+" />
+  </a>
+  <a href="https://www.typescriptlang.org/">
+    <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  </a>
+  <a href="https://www.prisma.io/">
+    <img src="https://img.shields.io/badge/Prisma-2D3748?logo=prisma&logoColor=white" alt="Prisma" />
+  </a>
+  <a href="https://github.com/Sinlair/reagent/actions/workflows/ci.yml">
+    <img src="https://github.com/Sinlair/reagent/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" />
+  </a>
 </p>
 
 <p align="center">
-  把持续科研做成一套可复用工作流，而不是一次性对话。
+  <img src="./docs/reagent-console.png" alt="Screenshot of the ReAgent workbench home view" width="100%" />
 </p>
 
-<p align="center">
-  一个面向论文发现、证据整理、研究记忆和方向交付的本地研究工作台。
-</p>
+## Table of Contents
 
-<p align="center">
-  <a href="./README.en.md">English</a>
-</p>
+- [Why ReAgent](#why-reagent)
+- [Product Surfaces](#product-surfaces)
+- [Quick Start](#quick-start)
+- [Run Modes](#run-modes)
+- [Repository Layout](#repository-layout)
+- [Development](#development)
+- [OpenClaw Plugin](#openclaw-plugin)
+- [Documentation](#documentation)
+- [Inspiration](#inspiration)
+- [License](#license)
 
-[![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![CI](https://github.com/Sinlair/reagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Sinlair/reagent/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+## Why ReAgent
 
-![ReAgent Console](./docs/reagent-console.png)
+ReAgent is not a chatbot with a few research buttons attached. It is a local research workspace designed for people who need to revisit topics, review evidence, save context, and ship useful outputs.
 
-## 是什么
+It is built for workflows such as:
 
-ReAgent 不是“带几个研究按钮的聊天机器人”。
+- Defining reusable research templates with goals, background, and success criteria.
+- Running repeated discovery instead of restarting the same search every week.
+- Reviewing papers, repo findings, and feedback in one place.
+- Saving notes so context survives across tasks and sessions.
+- Turning research into reports, briefings, slides, and reusable artifacts.
 
-它更像一个本地 `Research Workspace / Research OS`：
+It fits best when you need a controllable, inspectable workspace rather than a black-box assistant.
 
-- 用 `Research Brief` 固定研究目标、约束、baseline 和验证标准
-- 持续做论文发现，而不是每周从零重搜
-- 把论文、仓库、证据、反馈和记忆放进同一个 workspace
-- 把输出沉淀成 report、briefing、deck 和 reusable module notes
-- 通过网页工作台、WeChat 和 OpenClaw 插件继续推进下一步
+## Product Surfaces
 
-## 适合谁
+The current web UI is organized around a small set of working surfaces:
 
-- 持续跟踪某个研究方向的个人研究者
-- 需要整理论文、仓库和组会材料的实验室成员
-- 想验证“研究 agent + workspace memory + delivery”产品形态的团队
-- 想在本地搭一套可控、可改、可扩展研究工作台的开发者
+- `Workbench` for current progress, latest results, and common next actions.
+- `Main Workspace` for chat, quick research actions, recent tasks, and current workspace context.
+- `Status` for activity, latest outputs, and system health.
+- `Research Workspace` for templates, task lists, reports, schedules, topic reports, slides, and module files.
+- `Research Map` for seeing how topics, evidence, reports, and files connect.
+- `Research Notes` for searching, saving, and reopening file-backed notes.
+- `Channels` for WeChat login, connection status, lifecycle changes, and channel events.
+- `Agent Settings` and `Skills` for choosing the role, model, and tools used by chat.
 
-## 当前能力
+## Quick Start
 
-- 结构化 `Research Brief`
-- brief 驱动的 discovery
-- 论文分析、仓库分析、模块提取
-- baseline suggestion 和 direction report
-- feedback loop
-- memory graph 和 file-backed memory
-- meeting deck 生成
-- WeChat / OpenClaw 运行时接入
-- scheduler、lifecycle audit、always-on 运行可见性
+1. Create a local env file from `.env.example`.
+2. Install dependencies.
+3. Push the Prisma schema to the default SQLite database.
+4. Start the dev server.
 
-## 工作台界面
-
-- `Home`
-  产品首页，展示 workspace pulse、最近产出和快速入口。
-- `Command Center`
-  看健康状态、近期活动、交付状态和最新输出。
-- `Agent Desk`
-  用自然语言和 slash commands 驱动研究、记忆和交付动作。
-- `Evidence Workspace`
-  管理 research brief、运行研究任务、配置 scheduler、查看报告和产物。
-- `Research Map`
-  看 direction、paper、repo、module、report、presentation 之间的关系。
-- `Knowledge Vault`
-  搜索、写入和预览 file-backed memory。
-- `Channels`
-  看 WeChat / OpenClaw 通道状态、pairing、lifecycle audit 和自动恢复。
-
-## 快速开始
-
-```powershell
-Copy-Item .env.example .env
-npm.cmd install
-npm.cmd run db:push
-npm.cmd run dev
+```bash
+npm install
+npm run db:push
+npm run dev
 ```
 
-打开：
+Open `http://127.0.0.1:3000/`.
 
-- `http://127.0.0.1:3000/`
-
-最小本地联调配置：
+Minimal local setup:
 
 ```env
 LLM_PROVIDER=fallback
 WECHAT_PROVIDER=mock
 ```
 
-如果你在 Windows PowerShell 下运行，建议直接使用 `npm.cmd`。
+If PowerShell blocks `npm`, use `npm.cmd` instead.
 
-## 常驻运行
+Global CLI install:
 
-根应用已经支持常驻运行，不需要一直挂着前台终端。
-
-可选方式：
-
-- PM2
-  - `npm.cmd run pm2:start`
-  - `npm.cmd run pm2:restart`
-  - `npm.cmd run pm2:logs`
-- Windows service
-  - `npm.cmd run service:install`
-  - `npm.cmd run service:status`
-  - `npm.cmd run service:start`
-  - `npm.cmd run service:stop`
-
-更多说明见 [OPERATIONS.md](./OPERATIONS.md)。
-
-## 仓库结构
-
-- 根目录
-  ReAgent root app，本地网页工作台和完整运行时都在这里。
-- [`packages/reagent-core/`](./packages/reagent-core)
-  ReAgent 的可复用核心研究逻辑包。
-- [`packages/reagent-openclaw/`](./packages/reagent-openclaw)
-  ReAgent 的 OpenClaw 插件包。
-- [`package/`](./package)
-  OpenClaw WeChat channel 参考包，用于兼容/联调这条链路。
-  它不是 ReAgent 主产品代码本体，保留它是为了和 OpenClaw WeChat 接入路径保持对齐。
-
-说明：
-
-- 根应用仓库是开源的，但根 `package.json` 仍保持 `private: true`，因为它不是面向 npm registry 发布的主包。
-- 真正面向包化复用的代码在 `packages/reagent-core` 和 `packages/reagent-openclaw`。
-
-## 开发与校验
-
-```powershell
-npm.cmd run check:all
-npm.cmd run test
+```bash
+npm install -g @sinlair/reagent
+reagent init
+reagent gateway
 ```
 
-如果你只想检查可发布包：
+The published package name is `@sinlair/reagent`, while the installed command is `reagent`.
 
-```powershell
-npm.cmd run build:packages
-npm.cmd run check:packages
+Always-on gateway lifecycle:
+
+```bash
+reagent gateway install
+reagent gateway status
+reagent gateway restart
+reagent gateway stop
 ```
 
-## OpenClaw 插件
+## Run Modes
 
-安装 ReAgent 的 OpenClaw 插件：
+The root app can run as a foreground dev process or as an always-on background service.
+
+| Mode | Commands | Notes |
+| --- | --- | --- |
+| Development | `npm run dev` | Local development with live reload |
+| PM2 | `npm run pm2:start` / `npm run pm2:restart` / `npm run pm2:logs` | Keep the app running in the background |
+| Windows Service | `npm run service:install` / `npm run service:status` / `npm run service:start` / `npm run service:stop` | Machine-level runtime on Windows |
+
+See [OPERATIONS.md](./OPERATIONS.md) for deployment and maintenance details.
+
+## Repository Layout
+
+| Path | Purpose |
+| --- | --- |
+| `./` | Root ReAgent app, web UI, API server, and runtime |
+| [`packages/reagent-core/`](./packages/reagent-core) | Reusable core research logic |
+| [`packages/reagent-openclaw/`](./packages/reagent-openclaw) | Installable OpenClaw plugin package |
+| [`package/`](./package) | In-repo OpenClaw WeChat reference package kept for compatibility work |
+| [`docs/`](./docs) | Product visuals and supporting docs |
+
+## Development
+
+Validation:
+
+```bash
+npm run check:all
+npm run test
+```
+
+If you only want to validate the publishable packages:
+
+```bash
+npm run build:packages
+npm run check:packages
+```
+
+## OpenClaw Plugin
+
+Install the ReAgent OpenClaw plugin with:
 
 ```bash
 openclaw plugins install @sinlair/reagent-openclaw --yes
 ```
 
-插件源码见 [packages/reagent-openclaw/](./packages/reagent-openclaw)。
+Plugin source lives in [packages/reagent-openclaw/](./packages/reagent-openclaw).
 
-## 参考项目
+## Documentation
 
-这些项目更直接影响了 ReAgent 的定位和路线：
+- Chinese README: [README.zh-CN.md](./README.zh-CN.md)
+- Product blueprint: [agent.md](./agent.md)
+- Roadmap: [ROADMAP.md](./ROADMAP.md)
+- Operations: [OPERATIONS.md](./OPERATIONS.md)
+- Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
+- Security: [SECURITY.md](./SECURITY.md)
+
+## Inspiration
+
+ReAgent is shaped by research-agent and research-workspace projects such as:
 
 - [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
 - [deer-flow](https://github.com/bytedance/deer-flow)
@@ -164,17 +191,8 @@ openclaw plugins install @sinlair/reagent-openclaw --yes
 - [InternAgent](https://github.com/InternScience/InternAgent)
 - [OpenClaw](https://github.com/openclaw/openclaw)
 
-更详细的比较见 [docs/research-agent-landscape.md](./docs/research-agent-landscape.md)。
+For a closer comparison, see [docs/research-agent-landscape.md](./docs/research-agent-landscape.md).
 
-## 相关文档
+## License
 
-- 英文说明：[README.en.md](./README.en.md)
-- 产品规划：[agent.md](./agent.md)
-- 路线图：[ROADMAP.md](./ROADMAP.md)
-- 运维说明：[OPERATIONS.md](./OPERATIONS.md)
-- 贡献指南：[CONTRIBUTING.md](./CONTRIBUTING.md)
-- 安全策略：[SECURITY.md](./SECURITY.md)
-
-## 许可证
-
-本仓库采用 [MIT License](./LICENSE)。
+Released under the [MIT License](./LICENSE).

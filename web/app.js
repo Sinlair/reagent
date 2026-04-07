@@ -61,10 +61,12 @@ const els = {
   shell: document.querySelector("#app-shell"),
   sidebar: document.querySelector("#sidebar"),
   content: document.querySelector("#content-root"),
+  workspacePulse: document.querySelector(".workspace-pulse"),
   currentTabLabel: document.querySelector("#current-tab-label"),
   pageTitle: document.querySelector("#page-title"),
   pageSubtitle: document.querySelector("#page-subtitle"),
   productAlerts: document.querySelector("#product-alerts"),
+  topbarDeliveryPill: document.querySelector("#topbar-delivery-pill"),
   healthChip: document.querySelector("#health-chip"),
   healthDot: document.querySelector("#health-dot"),
   wechatConnection: document.querySelector("#wechat-connection"),
@@ -104,6 +106,11 @@ const els = {
   settingsOverview: document.querySelector("#settings-overview"),
   chatLatestReport: document.querySelector("#chat-latest-report"),
   chatSessionList: document.querySelector("#chat-session-list"),
+  chatResearchTopic: document.querySelector("#chat-research-topic"),
+  chatResearchQuestion: document.querySelector("#chat-research-question"),
+  chatReportTaskId: document.querySelector("#chat-report-task-id"),
+  chatActivity: document.querySelector("#chat-activity"),
+  chatNotes: document.querySelector("#chat-notes"),
   workspacePulseKicker: document.querySelector("#workspace-pulse-kicker"),
   workspacePulseHeadline: document.querySelector("#workspace-pulse-headline"),
   workspacePulseSubtitle: document.querySelector("#workspace-pulse-subtitle"),
@@ -113,6 +120,7 @@ const els = {
   landingLiveCards: document.querySelector("#landing-live-cards"),
   landingLatestReport: document.querySelector("#landing-latest-report"),
   landingSessionList: document.querySelector("#landing-session-list"),
+  launchChecklist: document.querySelector("#launch-checklist"),
   overviewCards: document.querySelector("#overview-cards"),
   overviewActivity: document.querySelector("#overview-activity"),
   overviewLatestReport: document.querySelector("#overview-latest-report"),
@@ -391,6 +399,58 @@ async function requestText(url, options) {
   return response.text();
 }
 
+async function startResearchTask(topic, question, options = {}) {
+  const task = await requestJson("/api/research/tasks", {
+    method: "POST",
+    body: JSON.stringify({
+      topic,
+      question: question || undefined,
+      maxPapers: 10
+    })
+  });
+
+  clearResearchSelections();
+  state.selectedResearchTaskId = task.taskId;
+  state.selectedResearchTask = null;
+  if (els.reportTaskId) {
+    els.reportTaskId.value = task.taskId;
+  }
+  if (els.chatReportTaskId) {
+    els.chatReportTaskId.value = task.taskId;
+  }
+
+  await loadResearchTasks();
+  await hydrateResearchTask(task.taskId);
+
+  if (options.openResearch) {
+    window.location.hash = "research";
+    setActiveTab("research");
+  } else {
+    await refreshAll();
+  }
+
+  return task;
+}
+
+async function openResearchTaskOrReport(taskId, options = {}) {
+  if (!taskId) {
+    throw new Error(state.lang === "zh" ? "\u8bf7\u8f93\u5165\u4efb\u52a1\u7f16\u53f7\u3002" : "Please enter a task number.");
+  }
+
+  try {
+    await hydrateResearchTask(taskId);
+  } catch {
+    await hydrateReport(taskId);
+  }
+
+  if (options.openResearch) {
+    window.location.hash = "research";
+    setActiveTab("research");
+  } else {
+    await refreshAll();
+  }
+}
+
 function parseListInput(value) {
   if (!value) return [];
   return [
@@ -453,7 +513,7 @@ function getTransportStatus(status) {
     return { value: state.lang === "zh" ? "\u5361\u4f4f" : "Stuck", hint: status.lifecycleReason || status.providerMode, tone: "warn" };
   }
   if (status.lifecycleState === "waiting-human-action") {
-    return { value: state.lang === "zh" ? "\u7b49\u5f85\u5904\u7406" : "Waiting", hint: status.lifecycleReason || status.providerMode, tone: "warn" };
+    return { value: state.lang === "zh" ? "\u9700\u8981\u5173\u6ce8" : "Attention", hint: status.lifecycleReason || status.providerMode, tone: "warn" };
   }
   if (status.lifecycleState === "failed") {
     return { value: state.lang === "zh" ? "\u5df2\u5931\u8d25" : "Failed", hint: status.lifecycleReason || status.providerMode, tone: "danger" };
@@ -478,14 +538,14 @@ function renderOverviewCards(target, compact = false) {
   const cards = [
     {
       tab: "overview",
-      label: state.lang === "zh" ? "\u5de5\u4f5c\u533a\u5065\u5eb7" : "Workspace Health",
+      label: state.lang === "zh" ? "\u7cfb\u7edf\u5065\u5eb7" : "System Health",
       value: state.health?.status?.toUpperCase?.() || "-",
       hint: state.health?.agent || (state.lang === "zh" ? "\u7b49\u5f85\u5065\u5eb7\u68c0\u67e5" : "Waiting for health"),
       tone: state.health?.status === "ok" ? "ok" : ""
     },
     {
       tab: "channels",
-      label: state.lang === "zh" ? "\u4ea4\u4ed8\u6e20\u9053" : "Delivery Channel",
+      label: state.lang === "zh" ? "\u6e20\u9053\u72b6\u6001" : "Channel Status",
       value: transport.value,
       hint: transport.hint || "-",
       tone: transport.tone
@@ -502,7 +562,7 @@ function renderOverviewCards(target, compact = false) {
     },
     {
       tab: "research",
-      label: state.lang === "zh" ? "\u7814\u7a76\u4ea7\u51fa" : "Research Outputs",
+      label: state.lang === "zh" ? "\u62a5\u544a\u6570\u91cf" : "Reports",
       value: String(state.recentReports.length),
       hint: getLatestSummary()?.generatedAt ? formatRelativeTime(getLatestSummary().generatedAt) : t("empty.report", "No report yet."),
       tone: ""
@@ -562,15 +622,6 @@ function renderWorkspacePulse() {
       state.health?.agent ||
       state.health?.status ||
       (state.lang === "zh" ? "\u8bf7\u5148\u68c0\u67e5 runtime \u5065\u5eb7\u72b6\u6001\u3002" : "Inspect runtime health before continuing.");
-  } else if (transport.tone === "warn" || transport.tone === "danger") {
-    headline = state.lang === "zh"
-      ? "\u4ea4\u4ed8\u901a\u9053\u9700\u8981\u5904\u7406\uff0c\u907f\u514d\u7814\u7a76\u4ea7\u51fa\u5361\u5728\u6700\u540e\u4e00\u8df3\u3002"
-      : "Delivery channel needs attention before the next handoff.";
-    subtitle =
-      state.channels?.wechat?.lastError ||
-      state.channels?.wechat?.lastMessage ||
-      transport.hint ||
-      (state.lang === "zh" ? "\u8bf7\u68c0\u67e5\u914d\u5bf9\u3001\u8fde\u63a5\u6216 provider \u72b6\u6001\u3002" : "Check pairing, connectivity, or provider state.");
   } else if (activeTask) {
     headline = state.lang === "zh"
       ? "\u7814\u7a76\u8fd0\u884c\u8fdb\u884c\u4e2d\uff0c\u8bc1\u636e\u8fd8\u5728\u7d2f\u79ef\u3002"
@@ -680,7 +731,7 @@ function renderWorkspacePulse() {
   actions.push(
     transport.tone === "warn" || transport.tone === "danger"
       ? {
-          label: state.lang === "zh" ? "\u68c0\u67e5\u4ea4\u4ed8\u901a\u9053" : "Inspect delivery channel",
+          label: state.lang === "zh" ? "\u67e5\u770b\u4ea4\u4ed8\u72b6\u6001" : "Check delivery status",
           hint: transport.hint || state.channels?.wechat?.providerMode || "-",
           tab: "channels"
         }
@@ -724,58 +775,69 @@ function renderLandingCommandBar() {
   const cards = [
     summary?.taskId
       ? {
-          eyebrow: state.lang === "zh" ? "\u6700\u65b0\u4ea7\u51fa" : "Latest Output",
-          title: state.lang === "zh" ? "\u7ee7\u7eed\u9605\u8bfb\u6700\u65b0 synthesis" : "Review the latest synthesis",
+          eyebrow: t("landing.commandLatestEyebrow", "Latest Deliverable"),
+          title: t("landing.commandLatestTitle", "Review the latest deliverable"),
           meta: `${formatRelativeTime(summary.generatedAt)} · ${trimText(summary.topic || summary.taskId, 52)}`,
           taskId: summary.taskId,
           tone: "accent"
         }
-      : {
-          eyebrow: state.lang === "zh" ? "\u7814\u7a76\u5165\u53e3" : "Research Entry",
-          title: state.lang === "zh" ? "\u53d1\u8d77\u7b2c\u4e00\u6761 research run" : "Start the first research run",
-          meta: state.lang === "zh" ? "\u8fdb\u5165\u8bc1\u636e\u5de5\u4f5c\u53f0\uff0c\u63d0\u4ea4\u4e3b\u9898\u548c\u95ee\u9898" : "Open the evidence workspace and queue a topic.",
-          tab: "research",
-          tone: "accent"
-        },
+      : activeTask
+        ? {
+            eyebrow: t("landing.commandActiveEyebrow", "Active Investigation"),
+            title: t("landing.commandActiveTitle", "Continue the active investigation"),
+            meta: `${formatResearchTaskState(activeTask)} - ${trimText(activeTask.topic || activeTask.taskId || "-", 56)}`,
+            tab: "research",
+            tone: "accent"
+          }
+        : {
+            eyebrow: t("landing.commandStartEyebrow", "Start Research"),
+            title: t("landing.commandStartTitle", "Start the first scoped investigation"),
+            meta: t("landing.commandStartMeta", "Open the evidence workspace and queue the first topic."),
+            tab: "research",
+            tone: "accent"
+          },
     {
-      eyebrow: state.lang === "zh" ? "Research Briefs" : "Research Briefs",
+      eyebrow: t("landing.commandBriefEyebrow", "Research Briefs"),
       title: briefsCount
-        ? (state.lang === "zh" ? "\u7ef4\u62a4 structured brief \u5e93" : "Manage the structured brief library")
-        : (state.lang === "zh" ? "\u521b\u5efa\u7b2c\u4e00\u4e2a research brief" : "Create the first research brief"),
+        ? t("landing.commandBriefReadyTitle", "Maintain the brief library")
+        : t("landing.commandBriefEmptyTitle", "Create the first research brief"),
       meta: briefsCount
-        ? (state.lang === "zh" ? `${briefsCount} \u4e2a brief \u5df2\u53ef\u7528` : `${briefsCount} briefs are available`)
-        : (state.lang === "zh" ? "\u7528 brief \u628a\u76ee\u6807\u3001baseline \u548c\u9a8c\u8bc1\u6807\u51c6\u7a33\u5b9a\u4e0b\u6765" : "Stabilize goals, baselines, and evaluation criteria."),
+        ? t("landing.commandBriefReadyMeta", "{count} briefs are ready to reuse").replace("{count}", String(briefsCount))
+        : t("landing.commandBriefEmptyMeta", "Lock goals, baselines, and evaluation criteria first."),
       tab: "research"
     },
     {
-      eyebrow: state.lang === "zh" ? "\u77e5\u8bc6\u5e93" : "Knowledge Vault",
+      eyebrow: t("landing.commandMemoryEyebrow", "Knowledge Vault"),
       title: memoryFiles
-        ? (state.lang === "zh" ? "\u6253\u5f00\u5de5\u4f5c\u533a memory" : "Open workspace memory")
-        : (state.lang === "zh" ? "\u5199\u5165\u7b2c\u4e00\u6761 working memory" : "Write the first working memory"),
+        ? t("landing.commandMemoryReadyTitle", "Reuse workspace memory")
+        : t("landing.commandMemoryEmptyTitle", "Write the first working memory"),
       meta: state.memoryStatus?.searchMode
         ? `${memoryFiles} files · ${state.memoryStatus.searchMode}`
         : (state.lang === "zh" ? "\u67e5\u770b\u5df2\u4fdd\u5b58\u6587\u4ef6\u5e76\u6253\u5f00\u539f\u59cb\u4e0a\u4e0b\u6587" : "Inspect saved files and reopen raw context."),
       tab: "memory"
     },
     {
-      eyebrow: state.lang === "zh" ? "\u4ea4\u4ed8\u901a\u9053" : "Delivery Channel",
-      title: transport.tone === "warn" || transport.tone === "danger"
-        ? (state.lang === "zh" ? "\u901a\u9053\u9700\u8981\u5904\u7406" : "Channel needs attention")
-        : (state.lang === "zh" ? "\u901a\u9053\u5df2\u5c31\u7eea" : "Channel is ready"),
-      meta: activeTask
+      eyebrow: t("landing.commandDeliveryEyebrow", "Delivery"),
+      title: t("landing.commandDeliveryStatusTitle", "Delivery status"),
+      meta: transport.tone === "warn" || transport.tone === "danger"
         ? `${formatResearchTaskState(activeTask)} · ${transport.value}`
         : `${transport.value} · ${transport.hint || "-"}`,
       tab: "channels",
       tone: transport.tone === "warn" || transport.tone === "danger" ? "warn" : ""
     },
     {
-      eyebrow: state.lang === "zh" ? "\u5e38\u9a7b\u8fd0\u884c" : "Always-On",
-      title: state.lang === "zh" ? "\u6253\u5f00 npm / PM2 / OpenClaw \u90e8\u7f72\u5165\u53e3" : "Open npm / PM2 / OpenClaw deployment",
-      meta: deploymentMeta || (state.lang === "zh" ? "PM2 / Windows Service / OpenClaw Bridge" : "PM2 / Windows Service / OpenClaw Bridge"),
-      tab: "settings",
-      settingsPanel: "deployment"
+      eyebrow: t("landing.commandOverviewEyebrow", "Command Center"),
+      title: t("landing.commandOverviewTitle", "Review workspace status"),
+      meta: deploymentMeta || t("landing.commandOverviewMeta", "Health, delivery posture, memory mode, and runtime visibility."),
+      tab: "overview"
     }
   ];
+
+  const deliveryCard = cards.find((card) => card.tab === "channels");
+  if (deliveryCard) {
+    deliveryCard.title = t("landing.commandDeliveryStatusTitle", "Delivery status");
+    deliveryCard.meta = `${transport.value} - ${transport.hint || "-"}`;
+  }
 
   els.landingCommandBar.innerHTML = cards
     .map(
@@ -798,26 +860,119 @@ function renderLandingCommandBar() {
   bindReportButtons(els.landingCommandBar);
 }
 
+function renderLaunchChecklist() {
+  if (!els.launchChecklist) return;
+
+  const summary = getLatestSummary();
+  const briefsCount = state.researchBriefs.length;
+  const memoryFiles = state.memoryStatus?.files ?? 0;
+  const tasksCount = state.researchTasks.length;
+
+  const items = [
+    {
+      done: briefsCount > 0,
+      title: t("landing.checklistBriefTitle", "Define the first research brief"),
+      body: briefsCount > 0
+        ? t("landing.checklistBriefDone", "{count} briefs are already available for scoped runs.").replace("{count}", String(briefsCount))
+        : t("landing.checklistBriefTodo", "Lock scope, baselines, and evaluation criteria first."),
+      actionLabel: t("landing.checklistBriefAction", "Open Briefs"),
+      tab: "research"
+    },
+    {
+      done: tasksCount > 0,
+      title: t("landing.checklistRunTitle", "Launch the first research run"),
+      body: tasksCount > 0
+        ? t("landing.checklistRunDone", "{count} tasks have already been queued.").replace("{count}", String(tasksCount))
+        : t("landing.checklistRunTodo", "Start with a scoped topic and generate the first evidence pipeline."),
+      actionLabel: t("landing.checklistRunAction", "Open Research"),
+      tab: "research"
+    },
+    {
+      done: Boolean(summary?.taskId),
+      title: t("landing.checklistOutputTitle", "Generate the first deliverable"),
+      body: summary?.taskId
+        ? t("landing.checklistOutputDone", "{topic} is ready for review.").replace("{topic}", trimText(summary.topic || summary.taskId, 54))
+        : t("landing.checklistOutputTodo", "The goal is a report or synthesis, not just a chat exchange."),
+      actionLabel: summary?.taskId
+        ? t("landing.checklistOutputReadyAction", "Open Output")
+        : t("landing.checklistOutputTodoAction", "Review Research"),
+      ...(summary?.taskId ? { taskId: summary.taskId } : { tab: "research" })
+    },
+    {
+      done: memoryFiles > 0,
+      title: t("landing.checklistMemoryTitle", "Capture working memory"),
+      body: memoryFiles > 0
+        ? t("landing.checklistMemoryDone", "{count} memory files are preserving context across runs.").replace("{count}", String(memoryFiles))
+        : t("landing.checklistMemoryTodo", "Keep judgments, notes, and next actions inside the workspace."),
+      actionLabel: t("landing.checklistMemoryAction", "Open Memory"),
+      tab: "memory"
+    }
+  ];
+
+  const completedCount = items.filter((item) => item.done).length;
+
+  els.launchChecklist.innerHTML = `
+    <div class="launch-checklist__summary">
+      <span class="launch-checklist__summary-label">${escapeHtml(t("landing.checklistSummaryLabel", "Launch Path"))}</span>
+      <strong>${escapeHtml(t("landing.checklistSummaryValue", "{count}/4 completed").replace("{count}", String(completedCount)))}</strong>
+    </div>
+    <div class="launch-checklist__items">
+      ${items
+        .map(
+          (item, index) => `
+            <article class="launch-checklist__item ${item.done ? "launch-checklist__item--done" : ""}">
+              <div class="launch-checklist__index">${String(index + 1).padStart(2, "0")}</div>
+              <div class="launch-checklist__copy">
+                <strong>${escapeHtml(item.title)}</strong>
+                <p>${escapeHtml(item.body)}</p>
+              </div>
+              <div class="launch-checklist__action">
+                <span class="launch-checklist__state">${escapeHtml(item.done ? t("landing.checklistDone", "Done") : t("landing.checklistNext", "Next"))}</span>
+                <button
+                  class="btn btn--ghost"
+                  type="button"
+                  ${item.taskId ? `data-task-id="${escapeHtml(item.taskId)}"` : `data-open-tab="${escapeHtml(item.tab)}"`}
+                >
+                  ${escapeHtml(item.actionLabel)}
+                </button>
+              </div>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+
+  bindOpenTabButtons(els.launchChecklist);
+  bindReportButtons(els.launchChecklist);
+}
+
 function renderLandingSurfaces() {
-  renderWorkspacePulse();
   renderLandingCommandBar();
+  renderLaunchChecklist();
   renderOverviewCards(els.landingLiveCards, false);
   renderLatestReport(els.landingLatestReport, getLatestSummary());
   renderSessionCards(els.landingSessionList, state.recentReports.slice(0, 4), true);
 }
 
-function renderOverviewNotes() {
+function renderWorkspaceNotes(target) {
+  if (!target) return;
   const summary = getLatestSummary();
   const notes = [
     [t("chat.workspaceLabel", "Workspace"), state.memoryStatus?.workspaceDir || "-"],
-    [state.lang === "zh" ? "\u4ea4\u4ed8\u6e20\u9053" : "Delivery channel", state.channels?.wechat?.providerMode || "-"],
+    [state.lang === "zh" ? "\u6e20\u9053\u6a21\u5f0f" : "Channel mode", state.channels?.wechat?.providerMode || "-"],
     [state.lang === "zh" ? "\u5f53\u524d\u6a21\u5f0f" : "Active mode", state.agentSession?.roleLabel || state.agentSession?.roleId || "-"],
-    [state.lang === "zh" ? "\u6700\u65b0\u4ea7\u51fa" : "Latest output", summary ? `${summary.topic} - ${formatRelativeTime(summary.generatedAt)}` : t("empty.report", "No report yet.")]
+    [state.lang === "zh" ? "\u6700\u65b0\u62a5\u544a" : "Latest report", summary ? `${summary.topic} - ${formatRelativeTime(summary.generatedAt)}` : t("empty.report", "No report yet.")]
   ];
 
-  els.overviewNotes.innerHTML = notes
+  target.innerHTML = notes
     .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join("");
+}
+
+function renderOverviewNotes() {
+  renderWorkspaceNotes(els.overviewNotes);
+  renderWorkspaceNotes(els.chatNotes);
 }
 
 function renderSettingsTabs() {
@@ -860,11 +1015,11 @@ function bindSettingsTabs() {
 
 function renderAgentPanelTabs() {
   const tabs = [
-    ["overview", "Overview"],
-    ["skills", "Skills"],
-    ["tools", "Tools"],
-    ["channels", "Channels"],
-    ["cron", "Cron"]
+    ["overview", t("agents.panelOverview", "Overview")],
+    ["skills", t("agents.panelSkills", "Skills")],
+    ["tools", t("agents.panelTools", "Tools")],
+    ["channels", t("agents.panelChannels", "Channels")],
+    ["cron", t("agents.panelCron", "Scheduler")]
   ];
 
   return `
@@ -913,7 +1068,7 @@ function buildSkillsCatalogMarkup(session) {
   });
 
   if (skills.length === 0) {
-    return `<div class="empty-state">${escapeHtml("No skills match the current filter.")}</div>`;
+    return `<div class="empty-state">${escapeHtml(state.lang === "zh" ? "没有符合当前筛选条件的技能。" : "No skills match the current filter.")}</div>`;
   }
 
   return skills
@@ -934,7 +1089,7 @@ function buildSkillsCatalogMarkup(session) {
             <input data-agent-skill-toggle type="checkbox" value="${escapeHtml(skill.id)}" ${enabled ? "checked" : ""} />
             <span class="agent-skill__copy">
               <strong>${escapeHtml(skill.label)}</strong>
-              <span>${escapeHtml(enabled ? "Available to the runtime" : "Excluded from tool access")}</span>
+              <span>${escapeHtml(enabled ? (state.lang === "zh" ? "当前聊天可用" : "Available in this chat") : (state.lang === "zh" ? "当前聊天未启用" : "Not enabled in this chat"))}</span>
             </span>
           </label>
         </article>
@@ -954,13 +1109,13 @@ function renderSkillsCatalog(session) {
 function renderSkillDetail(session) {
   if (!els.skillDetail) return;
   if (!session || !state.selectedSkillId) {
-    els.skillDetail.innerHTML = `<div class="empty-state compact-empty">${escapeHtml("Select a skill to inspect its details.")}</div>`;
+    els.skillDetail.innerHTML = `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "选择一个技能后，可在这里查看详情。" : "Select a skill to inspect its details.")}</div>`;
     return;
   }
 
   const skill = (session.availableSkills || []).find((item) => item.id === state.selectedSkillId);
   if (!skill) {
-    els.skillDetail.innerHTML = `<div class="empty-state compact-empty">${escapeHtml("Select a skill to inspect its details.")}</div>`;
+    els.skillDetail.innerHTML = `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "选择一个技能后，可在这里查看详情。" : "Select a skill to inspect its details.")}</div>`;
     return;
   }
 
@@ -1120,10 +1275,10 @@ function renderAgentSessionsList(sessions) {
           <div class="message__meta">
             <span>${escapeHtml(session.roleLabel)} (${escapeHtml(session.roleId)})</span>
             <span>${escapeHtml(session.activeEntrySource || "-")}</span>
-            <span>${escapeHtml(String(session.turnCount))} turns</span>
+            <span>${escapeHtml(state.lang === "zh" ? `${String(session.turnCount)} 轮对话` : `${String(session.turnCount)} turns`)}</span>
             <span>${escapeHtml(`${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}`)}</span>
             <span>${escapeHtml(session.skillLabels.join(", ") || "-")}</span>
-            ${isCurrent ? `<span>Current chat</span>` : ""}
+            ${isCurrent ? `<span>${escapeHtml(state.lang === "zh" ? "当前聊天" : "Current chat")}</span>` : ""}
           </div>
         </article>
       `;
@@ -1156,7 +1311,7 @@ function renderSettingsOverview() {
   const sections = {
     communications: [
       {
-        title: state.lang === "zh" ? "\u5fae\u4fe1\u4f20\u8f93" : "WeChat Transport",
+        title: state.lang === "zh" ? "\u5fae\u4fe1\u6e20\u9053" : "WeChat Channel",
         rows: [
           [state.lang === "zh" ? "\u63d0\u4f9b\u65b9" : "Provider", wechat?.providerMode || meta?.wechatProvider || "-"],
           [state.lang === "zh" ? "\u8fde\u63a5" : "Connected", String(Boolean(wechat?.connected))],
@@ -1164,7 +1319,7 @@ function renderSettingsOverview() {
         ]
       },
       {
-        title: state.lang === "zh" ? "\u5de5\u4f5c\u533a\u8bb0\u5fc6" : "Workspace Memory",
+        title: state.lang === "zh" ? "\u7814\u7a76\u7b14\u8bb0" : "Research Notes",
         rows: [
           [state.lang === "zh" ? "\u8def\u5f84" : "Path", state.memoryStatus?.workspaceDir || meta?.workspaceDir || "-"],
           [state.lang === "zh" ? "\u6587\u4ef6\u6570" : "Files", String(state.memoryStatus?.files ?? 0)],
@@ -1243,7 +1398,7 @@ function renderSettingsOverview() {
         ]
       },
       {
-        title: state.lang === "zh" ? "\u5f53\u524d\u8fd0\u884c\u6001" : "Current Runtime Posture",
+        title: state.lang === "zh" ? "\u5f53\u524d\u8fd0\u884c\u72b6\u6001" : "Current Runtime Status",
         rows: [
           [state.lang === "zh" ? "Provider" : "Provider", wechat?.providerMode || meta?.wechatProvider || "-"],
           [state.lang === "zh" ? "生命周期" : "Lifecycle", wechat?.lifecycleState || "-"],
@@ -1251,8 +1406,8 @@ function renderSettingsOverview() {
           [state.lang === "zh" ? "运行中" : "Running", String(Boolean(wechat?.running))],
           [state.lang === "zh" ? "已连接" : "Connected", String(Boolean(wechat?.connected))],
           [state.lang === "zh" ? "需人工处理" : "Human action", String(Boolean(wechat?.requiresHumanAction))],
-          [state.lang === "zh" ? "最近健康" : "Last healthy", wechat?.lastHealthyAt ? formatTime(wechat.lastHealthyAt) : "-"],
-          [state.lang === "zh" ? "最近重启" : "Last restart", wechat?.lastRestartAt ? formatTime(wechat.lastRestartAt) : "-"]
+          [state.lang === "zh" ? "最近健康时间" : "Last healthy", wechat?.lastHealthyAt ? formatTime(wechat.lastHealthyAt) : "-"],
+          [state.lang === "zh" ? "最近重启时间" : "Last restart", wechat?.lastRestartAt ? formatTime(wechat.lastRestartAt) : "-"]
         ]
       },
       {
@@ -1591,17 +1746,17 @@ function renderLatestReport(target, report) {
   bindReportButtons(target);
 }
 
-function renderOverviewActivity(messages) {
-  if (!els.overviewActivity) return;
+function renderActivityFeed(target, messages) {
+  if (!target) return;
   const recent = [...messages].slice(-6).reverse();
   if (!recent.length) {
-    els.overviewActivity.className = "empty-state";
-    els.overviewActivity.textContent = t("empty.activity", "No activity yet.");
+    target.className = "empty-state";
+    target.textContent = t("empty.activity", "No activity yet.");
     return;
   }
 
-  els.overviewActivity.className = "result-stack";
-  els.overviewActivity.innerHTML = recent
+  target.className = "result-stack";
+  target.innerHTML = recent
     .map(
       (message) => `
         <article class="activity-item">
@@ -1616,25 +1771,24 @@ function renderOverviewActivity(messages) {
     .join("");
 }
 
+function renderOverviewActivity(messages) {
+  renderActivityFeed(els.overviewActivity, messages);
+  renderActivityFeed(els.chatActivity, messages);
+}
+
 function renderProductAlerts() {
   if (!els.productAlerts) return;
+
+  const alertsAllowedTabs = new Set(["channels"]);
+  if (!alertsAllowedTabs.has(state.activeTab)) {
+    els.productAlerts.hidden = true;
+    els.productAlerts.innerHTML = "";
+    return;
+  }
 
   const alerts = [];
   const wechat = state.channels?.wechat;
   const researchRoute = state.runtimeMeta?.llm?.routes?.research;
-
-  if (wechat?.requiresHumanAction) {
-    alerts.push({
-      tone: "warn",
-      title: state.lang === "zh" ? "微信需要人工处理" : "WeChat Needs Attention",
-      body:
-        wechat.lastError ||
-        wechat.lastMessage ||
-        (state.lang === "zh"
-          ? "当前微信通道需要人工确认，例如扫码或重新认证。"
-          : "The current WeChat channel needs manual confirmation, such as QR scan or re-auth.")
-    });
-  }
 
   if (researchRoute?.providerType === "fallback") {
     alerts.push({
@@ -3053,7 +3207,7 @@ function renderModuleAsset(asset) {
         <div>
           <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Module Asset" : "Module Asset")}</div>
           <h3>${escapeHtml(`${asset.owner}/${asset.repo}`)}</h3>
-          <p>${escapeHtml(state.lang === "zh" ? "已归档的可复用模块与仓库快照。" : "Archived reusable module selections and repository snapshot.")}</p>
+          <p>${escapeHtml(state.lang === "zh" ? "这里展示已归档的可复用模块和仓库快照。" : "Archived reusable modules and repository snapshots.")}</p>
         </div>
         <div class="report-chip-list">
           ${renderPill(asset.id)}
@@ -3069,14 +3223,14 @@ function renderModuleAsset(asset) {
             <h3>${escapeHtml(state.lang === "zh" ? "Selected Paths" : "Selected Paths")}</h3>
             ${renderPill(String(asset.selectedPaths?.length || 0))}
           </div>
-          <div class="result-stack">${renderStringList(asset.selectedPaths, state.lang === "zh" ? "暂无 selected paths。" : "No selected paths recorded.")}</div>
+          <div class="result-stack">${renderStringList(asset.selectedPaths, state.lang === "zh" ? "还没有已选路径。" : "No selected paths recorded.")}</div>
         </article>
         <article class="report-block">
           <div class="report-item-head">
             <h3>${escapeHtml(state.lang === "zh" ? "Notes" : "Notes")}</h3>
             ${renderPill(String(asset.notes?.length || 0))}
           </div>
-          <div class="result-stack">${renderStringList(asset.notes, state.lang === "zh" ? "暂无 notes。" : "No notes recorded.")}</div>
+          <div class="result-stack">${renderStringList(asset.notes, state.lang === "zh" ? "还没有备注。" : "No notes recorded.")}</div>
         </article>
       </div>
       <aside class="stack research-report-side">
@@ -3108,7 +3262,7 @@ function renderDirectionReportList(reports) {
   if (!els.directionReportList) return;
   if (!reports.length) {
     els.directionReportList.className = "empty-state compact-empty";
-    els.directionReportList.textContent = state.lang === "zh" ? "暂无方向报告。" : "No direction reports yet.";
+    els.directionReportList.textContent = state.lang === "zh" ? "还没有主题报告。" : "No topic reports yet.";
     return;
   }
 
@@ -3141,7 +3295,7 @@ function renderResearchBriefList(briefs) {
   if (!els.researchBriefList) return;
   if (!briefs.length) {
     els.researchBriefList.className = "empty-state compact-empty";
-    els.researchBriefList.textContent = state.lang === "zh" ? "暂无 research briefs。" : "No research briefs yet.";
+    els.researchBriefList.textContent = state.lang === "zh" ? "还没有研究模板。" : "No research templates yet.";
     return;
   }
 
@@ -3229,17 +3383,17 @@ function renderDiscoveryScheduler(status) {
   const directionMap = new Map((state.researchBriefs || []).map((brief) => [brief.id, brief.label]));
   const selectedDirections = (scheduler.directionIds || []).length
     ? scheduler.directionIds.map((directionId) => directionMap.get(directionId) ? `${directionMap.get(directionId)} (${directionId})` : directionId)
-    : [state.lang === "zh" ? "全部已启用 briefs" : "All enabled briefs"];
+    : [state.lang === "zh" ? "所有已启用的模板" : "All enabled templates"];
   const lastRuns = Object.entries(scheduler.lastRunDateByDirection || {});
 
   els.discoverySchedulerStatus.innerHTML = [
-    [state.lang === "zh" ? "后台调度器" : "Background scheduler", scheduler.running ? (state.lang === "zh" ? "运行中" : "Running") : (state.lang === "zh" ? "未挂载" : "Not mounted")],
-    [state.lang === "zh" ? "已启用" : "Enabled", String(Boolean(scheduler.enabled))],
+    [state.lang === "zh" ? "后台计划任务" : "Background schedule", scheduler.running ? (state.lang === "zh" ? "运行中" : "Running") : (state.lang === "zh" ? "未启动" : "Not running")],
+    [state.lang === "zh" ? "是否启用" : "Enabled", String(Boolean(scheduler.enabled))],
     [state.lang === "zh" ? "每日时间" : "Daily time", scheduler.dailyTimeLocal || "09:00"],
     [state.lang === "zh" ? "推送目标" : "Push target", scheduler.senderId || "-"],
-    [state.lang === "zh" ? "方向范围" : "Directions", selectedDirections.join(" | ")],
+    [state.lang === "zh" ? "覆盖主题" : "Topics", selectedDirections.join(" | ")],
     ["Top K", String(scheduler.topK || 5)],
-    [state.lang === "zh" ? "每个 query 的论文数" : "Papers / query", String(scheduler.maxPapersPerQuery || 4)],
+    [state.lang === "zh" ? "每次检索论文数" : "Papers / search", String(scheduler.maxPapersPerQuery || 4)],
     [state.lang === "zh" ? "最近更新" : "Updated", scheduler.updatedAt ? formatTime(scheduler.updatedAt) : "-"],
     [state.lang === "zh" ? "最近执行" : "Recent runs", lastRuns.length ? lastRuns.map(([directionId, value]) => `${directionMap.get(directionId) || directionId}: ${value}`).join(" | ") : (state.lang === "zh" ? "暂无" : "None yet")],
   ]
@@ -3258,7 +3412,7 @@ function renderDiscoveryRuns() {
   const runs = (state.discoveryRuns || []).slice(0, 6);
   if (!runs.length) {
     els.discoverySchedulerRuns.className = "empty-state compact-empty";
-    els.discoverySchedulerRuns.textContent = state.lang === "zh" ? "暂无 discovery runs。" : "No discovery runs yet.";
+    els.discoverySchedulerRuns.textContent = state.lang === "zh" ? "还没有定时运行记录。" : "No scheduled runs yet.";
     return;
   }
 
@@ -3271,7 +3425,7 @@ function renderDiscoveryRuns() {
             <span class="message__author">${escapeHtml((run.directionLabels || []).join(", ") || "-")}</span>
             <span>${escapeHtml(formatRelativeTime(run.generatedAt))}</span>
           </div>
-          <p>${escapeHtml(run.topTitle || (state.lang === "zh" ? "暂无 top paper。" : "No top paper recorded."))}</p>
+          <p>${escapeHtml(run.topTitle || (state.lang === "zh" ? "还没有代表论文。" : "No top paper recorded."))}</p>
           <small>${escapeHtml(`${run.itemCount || 0} items · ${run.pushed ? "pushed" : "local"}`)}</small>
         </article>
       `
@@ -3291,7 +3445,7 @@ function renderLifecycleAudit(items) {
 
   if (!state.wechatLifecycleAudit.length) {
     els.channelLifecycleAudit.className = "empty-state compact-empty";
-    els.channelLifecycleAudit.textContent = state.lang === "zh" ? "暂无 lifecycle audit。" : "No lifecycle events yet.";
+    els.channelLifecycleAudit.textContent = state.lang === "zh" ? "还没有状态变化记录。" : "No recent status changes yet.";
     return;
   }
 
@@ -3307,7 +3461,7 @@ function renderLifecycleAudit(items) {
             <span class="message__author">${escapeHtml(entry.event || "-")}</span>
             <span>${escapeHtml(entry.ts ? formatTime(entry.ts) : "-")}</span>
           </div>
-          <p>${escapeHtml([entry.state, entry.reason].filter(Boolean).join(" · ") || (state.lang === "zh" ? "无附加状态。" : "No additional state."))}</p>
+          <p>${escapeHtml([entry.state, entry.reason].filter(Boolean).join(" · ") || (state.lang === "zh" ? "没有更多状态信息。" : "No additional state."))}</p>
           <small>${escapeHtml(details || entry.providerMode || "-")}</small>
         </article>
       `;
@@ -3331,10 +3485,10 @@ function renderFeedbackSummary(summary) {
   const negative = (summary.counts?.["not-useful"] || 0) + (summary.counts?.["less-like-this"] || 0) + (summary.counts?.["too-theoretical"] || 0) + (summary.counts?.["too-engineering-heavy"] || 0) + (summary.counts?.["not-worth-following"] || 0);
 
   els.feedbackSummary.innerHTML = `
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Total" : "Total")}</span><strong>${escapeHtml(String(summary.total))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Positive signals" : "Positive signals")}</span><strong>${escapeHtml(String(positive))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Negative signals" : "Negative signals")}</span><strong>${escapeHtml(String(negative))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Updated" : "Updated")}</span><strong>${escapeHtml(formatTime(summary.updatedAt))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "总数" : "Total")}</span><strong>${escapeHtml(String(summary.total))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "正向反馈" : "Positive feedback")}</span><strong>${escapeHtml(String(positive))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "负向反馈" : "Negative feedback")}</span><strong>${escapeHtml(String(negative))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "最近更新" : "Updated")}</span><strong>${escapeHtml(formatTime(summary.updatedAt))}</strong></div>
   `;
 }
 
@@ -3342,7 +3496,7 @@ function renderFeedbackList(items) {
   if (!els.feedbackList) return;
   if (!items.length) {
     els.feedbackList.className = "empty-state compact-empty";
-    els.feedbackList.textContent = state.lang === "zh" ? "暂无反馈记录。" : "No feedback recorded yet.";
+    els.feedbackList.textContent = state.lang === "zh" ? "还没有反馈记录。" : "No feedback yet.";
     return;
   }
 
@@ -3516,6 +3670,9 @@ async function hydrateResearchTask(taskId) {
   state.selectedResearchTaskId = task.taskId;
   state.selectedResearchTask = task;
   els.reportTaskId.value = task.taskId;
+  if (els.chatReportTaskId) {
+    els.chatReportTaskId.value = task.taskId;
+  }
 
   if (task.reportReady && task.state === "completed") {
     return hydrateReport(task.taskId);
@@ -3535,6 +3692,9 @@ async function hydrateReport(taskId) {
   clearResearchSelections();
   state.selectedResearchTaskId = report.taskId;
   els.reportTaskId.value = report.taskId;
+  if (els.chatReportTaskId) {
+    els.chatReportTaskId.value = report.taskId;
+  }
   renderResearchReport(report);
   renderLatestReport(els.chatLatestReport, report);
   renderLatestReport(els.overviewLatestReport, report);
@@ -4208,11 +4368,19 @@ function updateGlobalSummary() {
   const wechat = state.channels?.wechat;
   const summary = getLatestSummary();
   const transport = getTransportStatus(wechat);
+  const shouldShowTopbarDelivery = false;
 
   els.healthChip.textContent = state.health?.status?.toUpperCase?.() || "ERROR";
   els.healthDot.className = `statusDot ${healthOk ? "ok" : ""}`.trim();
-  els.wechatConnection.textContent = transport.value;
-  els.wechatMode.textContent = wechat?.providerMode || "-";
+  if (els.topbarDeliveryPill) {
+    els.topbarDeliveryPill.hidden = !shouldShowTopbarDelivery;
+  }
+  if (els.wechatConnection) {
+    els.wechatConnection.textContent = transport.value;
+  }
+  if (els.wechatMode) {
+    els.wechatMode.textContent = wechat?.providerMode || "-";
+  }
   els.memoryFileCount.textContent = String(state.memoryStatus?.files ?? 0);
   els.memoryMode.textContent = state.memoryStatus?.searchMode || "-";
   els.researchSessionCount.textContent = String(state.recentReports.length);
@@ -4224,7 +4392,7 @@ function updateGlobalSummary() {
   els.chatMemoryPill.textContent = state.memoryStatus?.searchMode || "-";
   els.sidebarStatusText.textContent = healthOk ? (state.lang === "zh" ? "\u6b63\u5e38" : "Healthy") : "Error";
   setSidebarStatus(Boolean(healthOk));
-  els.sidebarNote.textContent = wechat?.lastError || t("shell.sidebarNote", "");
+  els.sidebarNote.textContent = t("shell.sidebarNote", "");
   renderLandingSurfaces();
   renderOverviewCards(els.chatOverviewCards, true);
   renderOverviewCards(els.overviewCards, false);
@@ -4274,6 +4442,9 @@ function setActiveTab(tab) {
   state.activeTab = next;
   els.navTabs.forEach((item) => item.classList.toggle("nav-item--active", item.dataset.tab === next));
   els.panels.forEach((panel) => panel.classList.toggle("workspace-panel--active", panel.dataset.panel === next));
+  if (els.workspacePulse) {
+    els.workspacePulse.hidden = next !== "landing";
+  }
   els.currentTabLabel.textContent = i18n?.getTabMeta?.(state, next)?.label || next;
   els.pageTitle.textContent = i18n?.getTabMeta?.(state, next)?.title || next;
   els.pageSubtitle.textContent = i18n?.getTabMeta?.(state, next)?.subtitle || "";
@@ -4531,6 +4702,22 @@ document.querySelector("#wechat-message-form").addEventListener("submit", async 
   await refreshAll();
 });
 
+document.querySelector("#chat-research-form")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const topic = els.chatResearchTopic?.value.trim() || "";
+  const question = els.chatResearchQuestion?.value.trim() || "";
+  if (!topic) return;
+
+  await startResearchTask(topic, question, { openResearch: false });
+
+  if (els.chatResearchTopic) els.chatResearchTopic.value = "";
+  if (els.chatResearchQuestion) els.chatResearchQuestion.value = "";
+});
+
+document.querySelector("#chat-load-report")?.addEventListener("click", async () => {
+  await openResearchTaskOrReport(els.chatReportTaskId?.value.trim() || "", { openResearch: false });
+});
+
 document.querySelector("#memory-search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = els.memoryQuery.value.trim();
@@ -4557,22 +4744,9 @@ document.querySelector("#memory-remember-form").addEventListener("submit", async
 
 document.querySelector("#research-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const task = await requestJson("/api/research/tasks", {
-    method: "POST",
-    body: JSON.stringify({
-      topic: els.researchTopic.value.trim(),
-      question: els.researchQuestion.value.trim() || undefined,
-      maxPapers: 10
-    })
+  await startResearchTask(els.researchTopic.value.trim(), els.researchQuestion.value.trim(), {
+    openResearch: true
   });
-  clearResearchSelections();
-  state.selectedResearchTaskId = task.taskId;
-  state.selectedResearchTask = null;
-  els.reportTaskId.value = task.taskId;
-  await loadResearchTasks();
-  await hydrateResearchTask(task.taskId);
-  window.location.hash = "research";
-  setActiveTab("research");
 });
 
 els.discoverySchedulerForm?.addEventListener("submit", async (event) => {
@@ -4615,15 +4789,7 @@ els.discoverySchedulerRun?.addEventListener("click", async () => {
 });
 
 document.querySelector("#load-report").addEventListener("click", async () => {
-  const taskId = els.reportTaskId.value.trim();
-  if (!taskId) throw new Error(state.lang === "zh" ? "\u8bf7\u8f93\u5165 taskId\u3002" : "Please enter a taskId.");
-  try {
-    await hydrateResearchTask(taskId);
-  } catch {
-    await hydrateReport(taskId);
-  }
-  window.location.hash = "research";
-  setActiveTab("research");
+  await openResearchTaskOrReport(els.reportTaskId.value.trim(), { openResearch: true });
 });
 
 els.directionReportForm?.addEventListener("submit", async (event) => {
