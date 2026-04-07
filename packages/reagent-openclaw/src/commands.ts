@@ -166,6 +166,37 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
   });
 
   api.registerCommand({
+    name: "reagent-baseline-suggest",
+    description: "Suggest likely baselines and reusable modules for a direction or topic.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const raw = ctx.args?.trim();
+      if (!raw) {
+        return textReply("Usage: /reagent-baseline-suggest <directionId-or-topic>");
+      }
+
+      const { baselineService, directionService } = createPluginServices(api);
+      const knownDirection = await directionService.getProfile(raw);
+      const report = await baselineService.suggest(
+        knownDirection
+          ? { directionId: knownDirection.id }
+          : { topic: raw }
+      );
+
+      return textReply([
+        `Baseline suggestion: ${report.topic}`,
+        ...(report.baselines.length > 0
+          ? [`Baselines: ${report.baselines.slice(0, 4).map((item: { title: string }) => item.title).join(", ")}`]
+          : ["Baselines: none yet"]),
+        ...(report.reusableModules.length > 0
+          ? [`Modules: ${report.reusableModules.slice(0, 4).join(", ")}`]
+          : []),
+        ...(report.innovationSuggestions[0] ? [`Top route: ${report.innovationSuggestions[0]}`] : []),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
     name: "reagent-link-ingest",
     description: "Ingest an article link or raw text and extract paper and GitHub candidates.",
     acceptsArgs: true,
@@ -255,6 +286,36 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
   });
 
   api.registerCommand({
+    name: "reagent-module-extract",
+    description: "Download a GitHub repository archive and record reusable module paths.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const raw = ctx.args?.trim();
+      if (!raw) {
+        return textReply("Usage: /reagent-module-extract <github-url> [context-title]");
+      }
+
+      const tokens = splitArgs(raw);
+      const url = tokens[0];
+      const contextTitle = tokens.slice(1).join(" ").trim() || undefined;
+      if (!url || !/^https?:\/\/github\.com\//iu.test(url)) {
+        return textReply("A valid GitHub repository URL is required.");
+      }
+
+      const { moduleAssetService } = createPluginServices(api);
+      const asset = await moduleAssetService.extract({ url, ...(contextTitle ? { contextTitle } : {}) });
+
+      return textReply([
+        `Module asset: ${asset.id}`,
+        `Repo: ${asset.owner}/${asset.repo}`,
+        ...(asset.defaultBranch ? [`Default branch: ${asset.defaultBranch}`] : []),
+        ...(asset.selectedPaths.length > 0 ? [`Selected paths: ${asset.selectedPaths.join(", ")}`] : []),
+        ...(asset.archivePath ? [`Archive: ${asset.archivePath}`] : []),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
     name: "reagent-novelty-check",
     description: "Check whether a research idea appears likely novel based on nearby papers.",
     acceptsArgs: true,
@@ -280,6 +341,55 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
               ),
             ]
           : [])
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
+    name: "reagent-direction-report",
+    description: "Generate a direction report from recent papers, baselines, and repos.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const raw = ctx.args?.trim();
+      if (!raw) {
+        return textReply("Usage: /reagent-direction-report <directionId-or-topic>");
+      }
+
+      const { directionReportService, directionService } = createPluginServices(api);
+      const knownDirection = await directionService.getProfile(raw);
+      const report = await directionReportService.generate(
+        knownDirection
+          ? { directionId: knownDirection.id }
+          : { topic: raw }
+      );
+
+      return textReply([
+        `Direction report: ${report.topic}`,
+        report.overview,
+        ...(report.representativePapers[0] ? [`Top paper: ${report.representativePapers[0].title}`] : []),
+        ...(report.commonBaselines.length > 0 ? [`Baselines: ${report.commonBaselines.slice(0, 3).join(", ")}`] : []),
+        ...(report.commonModules.length > 0 ? [`Modules: ${report.commonModules.slice(0, 3).join(", ")}`] : []),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
+    name: "reagent-presentation-generate",
+    description: "Generate a markdown and pptx meeting deck from recent direction reports.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const topic = ctx.args?.trim() || undefined;
+      const { presentationService } = createPluginServices(api);
+      const result = await presentationService.generateWeeklyPresentation(
+        topic ? { topic } : {}
+      );
+
+      return textReply([
+        `Presentation: ${result.title}`,
+        `Source reports: ${result.sourceReportTaskIds.length}`,
+        `Markdown: ${result.filePath}`,
+        ...(result.pptxPath ? [`PPTX: ${result.pptxPath}`] : []),
+        ...(result.imagePaths.length > 0 ? [`Images: ${result.imagePaths.length}`] : []),
       ].join("\n"));
     }
   });

@@ -3,6 +3,7 @@ import { definePluginEntry } from "openclaw/plugin-sdk/core";
 import { ReAgentPluginConfigSchema } from "./src/config.js";
 import { registerReAgentCommands } from "./src/commands.js";
 import { createPluginServices } from "./src/services.js";
+import { registerReAgentTools } from "./src/tools.js";
 
 export default definePluginEntry({
   id: "reagent-openclaw",
@@ -23,5 +24,6 @@ export default definePluginEntry({
     });
 
     registerReAgentCommands(api);
+    registerReAgentTools(api);
   }
 });

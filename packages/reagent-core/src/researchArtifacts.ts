@@ -64,3 +64,37 @@ export interface RepoAnalysisStore {
   updatedAt: string;
   reports: RepoAnalysisReport[];
 }
+
+export interface ModuleAsset {
+  id: string;
+  repoUrl: string;
+  owner: string;
+  repo: string;
+  defaultBranch?: string | undefined;
+  archivePath?: string | undefined;
+  selectedPaths: string[];
+  notes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModuleAssetStore {
+  updatedAt: string;
+  assets: ModuleAsset[];
+}
+
+export interface WeeklyPresentationRequest {
+  days?: number | undefined;
+  topic?: string | undefined;
+}
+
+export interface WeeklyPresentationResult {
+  id: string;
+  title: string;
+  generatedAt: string;
+  sourceReportTaskIds: string[];
+  slideMarkdown: string;
+  filePath: string;
+  pptxPath?: string | undefined;
+  imagePaths: string[];
+}

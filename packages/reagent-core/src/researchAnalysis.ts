@@ -65,3 +65,19 @@ export interface DeepPaperAnalysisStore {
   updatedAt: string;
   reports: DeepPaperAnalysisReport[];
 }
+
+export interface BaselineSuggestionReport {
+  id: string;
+  directionId?: string | undefined;
+  topic: string;
+  baselines: Array<{
+    title: string;
+    reason: string;
+    sourceUrl?: string | undefined;
+  }>;
+  reusableModules: string[];
+  innovationSuggestions: string[];
+  supportingSignals: string[];
+  createdAt: string;
+  updatedAt: string;
+}
