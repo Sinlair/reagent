@@ -62,6 +62,16 @@ export class ResearchMemoryFlushService {
       title: `Direction report: ${report.topic}`,
       content: buildDirectionReportMemoryContent(report),
       source: "direction-report:auto-flush",
+      sourceId: report.id,
+      sourceType: "report-derived",
+      confidence: "high",
+      tags: [
+        "direction-report",
+        report.topic,
+        ...report.commonBaselines.slice(0, 3),
+        ...report.commonModules.slice(0, 3),
+      ],
+      entityIds: report.directionId ? [report.directionId] : [],
     });
   }
 }

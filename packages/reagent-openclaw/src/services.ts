@@ -2,6 +2,7 @@ import path from "node:path";
 
 import {
   MemoryService,
+  MemoryRecallService,
   ResearchBaselineService,
   ResearchDirectionService,
   ResearchDirectionReportService,
@@ -43,10 +44,21 @@ export function createPluginMemoryService(
   return new MemoryService(workspaceDir, scopeKey ? { scopeKey } : {});
 }
 
+export function createPluginMemoryRecallService(
+  api: OpenClawPluginApi,
+  options: ReAgentMemoryScopeOptions = {},
+): MemoryRecallService {
+  const workspaceDir = resolvePluginStateDir(api);
+  const scope = options.scope ?? "workspace";
+  const scopeKey = scope === "conversation" ? options.scopeKey?.trim() || undefined : undefined;
+  return new MemoryRecallService(workspaceDir, scopeKey ? { conversationScopeKey: scopeKey } : {});
+}
+
 export function createPluginServices(api: OpenClawPluginApi): {
   workspaceDir: string;
   config: ReAgentPluginConfig;
   memoryService: MemoryService;
+  memoryRecallService: MemoryRecallService;
   baselineService: ResearchBaselineService;
   directionService: ResearchDirectionService;
   directionReportService: ResearchDirectionReportService;
@@ -62,6 +74,7 @@ export function createPluginServices(api: OpenClawPluginApi): {
   const workspaceDir = resolvePluginStateDir(api);
   const config = (api.pluginConfig ?? {}) as ReAgentPluginConfig;
   const memoryService = createPluginMemoryService(api);
+  const memoryRecallService = createPluginMemoryRecallService(api);
   const baselineService = new ResearchBaselineService(workspaceDir, {
     crossrefMailto: config.crossrefMailto,
   });
@@ -91,6 +104,7 @@ export function createPluginServices(api: OpenClawPluginApi): {
     workspaceDir,
     config,
     memoryService,
+    memoryRecallService,
     baselineService,
     directionService,
     directionReportService,

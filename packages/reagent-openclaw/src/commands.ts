@@ -1,8 +1,9 @@
-import type { MemorySearchResult } from "@sinlair/reagent-core";
+import type { MemoryRecallHit } from "@sinlair/reagent-core";
 import type { OpenClawPluginApi, PluginCommandContext } from "openclaw/plugin-sdk/core";
 
 import {
   createPluginMemoryService,
+  createPluginMemoryRecallService,
   createPluginServices,
   resolveConversationMemoryScopeKey,
 } from "./services.js";
@@ -25,7 +26,7 @@ function buildMemoryScopeLabel(scope: "workspace" | "conversation", senderId?: s
     : "workspace";
 }
 
-function buildMemorySearchReply(scopeLabel: string, query: string, hits: MemorySearchResult[]): string {
+function buildMemorySearchReply(scopeLabel: string, query: string, hits: MemoryRecallHit[]): string {
   if (hits.length === 0) {
     return `No memory hits found for "${query}" in ${scopeLabel}.`;
   }
@@ -35,7 +36,7 @@ function buildMemorySearchReply(scopeLabel: string, query: string, hits: MemoryS
     "",
     ...hits.map(
       (item) =>
-        `- ${item.path}:${item.startLine}-${item.endLine} | ${item.title}\n  ${item.snippet}`,
+        `- [${item.layer}] ${item.title}${item.path ? ` | ${item.path}` : item.artifactType ? ` | ${item.artifactType}` : ""}\n  ${item.snippet}\n  provenance=${item.provenance} confidence=${item.confidence}`,
     ),
   ].join("\n");
 }
@@ -100,7 +101,16 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
         scope: "conversation",
         scopeKey,
       });
-      const hits = await memoryService.search(query, 4);
+      const recall = createPluginMemoryRecallService(api, {
+        scope: "conversation",
+        scopeKey,
+      });
+      const hits = (await recall.recall(query, {
+        limit: 6,
+        includeConversation: true,
+        includeWorkspace: true,
+        includeArtifacts: true,
+      })).hits;
       return textReply(buildMemorySearchReply(buildMemoryScopeLabel("conversation", ctx.senderId), query, hits));
     },
   });
@@ -115,8 +125,13 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
         return textReply("Usage: /reagent-memory-workspace <query>");
       }
 
-      const memoryService = createPluginMemoryService(api);
-      const hits = await memoryService.search(query, 4);
+      const recall = createPluginMemoryRecallService(api);
+      const hits = (await recall.recall(query, {
+        limit: 6,
+        includeConversation: false,
+        includeWorkspace: true,
+        includeArtifacts: true,
+      })).hits;
       return textReply(buildMemorySearchReply(buildMemoryScopeLabel("workspace"), query, hits));
     },
   });
@@ -145,6 +160,9 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
         title: "Conversation Note",
         content,
         source: "openclaw-command:conversation",
+        sourceType: "user-stated",
+        confidence: "medium",
+        tags: ["conversation-memory"],
       });
 
       return textReply(
@@ -169,6 +187,9 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
         title: "Workspace Note",
         content,
         source: "openclaw-command:workspace",
+        sourceType: "user-stated",
+        confidence: "medium",
+        tags: ["workspace-memory"],
       });
 
       return textReply(`Saved to workspace memory: ${saved.path}`);

@@ -1,5 +1,7 @@
 export * from "./types.js";
 export * from "./memory.js";
+export * from "./memoryIndexService.js";
+export * from "./memoryRecallService.js";
 export * from "./memoryService.js";
 export * from "./paperRanker.js";
 export * from "./researchDirectionService.js";

@@ -82,6 +82,15 @@ export class ResearchMemoryFlushService {
       title: `Research report: ${report.topic}`,
       content: buildResearchReportMemoryContent(report),
       source: "research-task:auto-flush",
+      sourceId: report.taskId,
+      sourceType: "report-derived",
+      confidence:
+        report.critique.verdict === "strong"
+          ? "high"
+          : report.critique.verdict === "moderate"
+            ? "medium"
+            : "low",
+      tags: ["research-report", report.topic, report.critique.verdict],
     });
   }
 
@@ -91,6 +100,16 @@ export class ResearchMemoryFlushService {
       title: `Direction report: ${report.topic}`,
       content: buildDirectionReportMemoryContent(report),
       source: "direction-report:auto-flush",
+      sourceId: report.id,
+      sourceType: "report-derived",
+      confidence: "high",
+      tags: [
+        "direction-report",
+        report.topic,
+        ...report.commonBaselines.slice(0, 3),
+        ...report.commonModules.slice(0, 3),
+      ],
+      entityIds: report.directionId ? [report.directionId] : [],
     });
   }
 }

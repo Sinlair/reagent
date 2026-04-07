@@ -4,8 +4,10 @@ import path from "node:path";
 
 import type { ResearchService } from "./researchService.js";
 import type { MemoryService } from "./memoryService.js";
+import { MemoryRecallService } from "./memoryRecallService.js";
 import { ChatService, type ChatServiceLike } from "./chatService.js";
 import { ResearchFeedbackService } from "./researchFeedbackService.js";
+import type { MemoryRecallHit } from "../types/memory.js";
 import type {
   ChannelsStatusSnapshot,
   WeChatLifecycleAuditEntry,
@@ -192,7 +194,7 @@ function hasAgentRuntimeControls(
   );
 }
 
-function buildMemoryReply(query: string, hits: Awaited<ReturnType<MemoryService["search"]>>): string {
+function buildMemoryReply(query: string, hits: MemoryRecallHit[]): string {
   if (hits.length === 0) {
     return `No memory hits found for \"${query}\".`;
   }
@@ -201,7 +203,7 @@ function buildMemoryReply(query: string, hits: Awaited<ReturnType<MemoryService[
     `Memory hits for \"${query}\":`,
     ...hits.map(
       (hit, index) =>
-        `${index + 1}. ${hit.path}:${hit.startLine}-${hit.endLine} | ${hit.title}\n${hit.snippet}`
+        `${index + 1}. [${hit.layer}] ${hit.title}${hit.path ? ` | ${hit.path}` : hit.artifactType ? ` | ${hit.artifactType}` : ""}\n${hit.snippet}`
     )
   ].join("\n\n");
 }
@@ -239,6 +241,7 @@ export class ChannelService {
   private readonly lifecycleAuditPath: string;
   private readonly chatService: ChatServiceLike;
   private readonly feedbackService: ResearchFeedbackService;
+  private readonly memoryRecallService: MemoryRecallService;
   private readonly healthMonitorIntervalMs: number;
   private readonly restartCooldownMs: number;
   private readonly unhealthyThreshold: number;
@@ -260,6 +263,7 @@ export class ChannelService {
         researchService
       });
     this.feedbackService = new ResearchFeedbackService(workspaceDir);
+    this.memoryRecallService = new MemoryRecallService(workspaceDir, researchService);
     this.mockProvider =
       this.wechatProviderMode === "mock" ? new MockWeChatChannelProvider(workspaceDir) : null;
     this.nativeProvider =
@@ -946,7 +950,13 @@ export class ChannelService {
       if (!query) {
         reply = "Usage: /memory <query>";
       } else {
-        const hits = await this.memoryService.search(query, 4);
+        const hits = await this.memoryRecallService
+          .recall(query, {
+            limit: 6,
+            includeWorkspace: true,
+            includeArtifacts: true
+          })
+          .then((result) => result.hits);
         reply = buildMemoryReply(query, hits);
       }
     } else if (message === "/remember" || message.startsWith("/remember ")) {
@@ -958,7 +968,10 @@ export class ChannelService {
           scope: "daily",
           title: `WeChat note from ${input.senderName?.trim() || input.senderId}`,
           content,
-          source: "wechat"
+          source: "wechat",
+          sourceType: "user-stated",
+          confidence: "medium",
+          tags: ["wechat-memory", input.senderId]
         });
         reply = "Saved to today's memory file.";
       }

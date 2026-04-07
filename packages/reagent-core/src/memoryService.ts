@@ -11,6 +11,7 @@ import type {
   MemoryStatus,
   RememberRequest,
 } from "./memory.js";
+import { MemoryIndexService } from "./memoryIndexService.js";
 
 const LONG_TERM_FILE = "MEMORY.md";
 const DAILY_DIR = "memory";
@@ -328,10 +329,14 @@ function scoreChunk(
 }
 
 export class MemoryService {
+  private readonly memoryIndexService: MemoryIndexService;
+
   constructor(
     private readonly workspaceDir: string,
     private readonly options: MemoryServiceOptions = {},
-  ) {}
+  ) {
+    this.memoryIndexService = new MemoryIndexService(workspaceDir, options);
+  }
 
   private get scopeKey(): string | undefined {
     return this.options.scopeKey?.trim() || undefined;
@@ -451,6 +456,7 @@ export class MemoryService {
     await this.ensureLongTermFile();
 
     const now = new Date();
+    const createdAt = now.toISOString();
     const title =
       input.title?.trim() || (input.scope === "long-term" ? "Remembered Note" : "Daily Note");
     const sourceSuffix = input.source?.trim() ? ` [source: ${input.source.trim()}]` : "";
@@ -479,6 +485,14 @@ export class MemoryService {
 
     const separator = existing.endsWith("\n") ? "" : "\n";
     await writeFile(absolutePath, `${existing}${separator}${entry}`.trimEnd() + "\n", "utf8");
+    await this.memoryIndexService.recordRememberedEntry({
+      path: relativePath,
+      kind: input.scope === "long-term" ? "long-term" : "daily",
+      title,
+      content: input.content.trim(),
+      createdAt,
+      remember: input,
+    });
 
     return this.readAllowedFile(relativePath);
   }

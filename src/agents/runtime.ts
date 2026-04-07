@@ -31,9 +31,11 @@ import { ResearchRepoAnalysisService } from "../services/researchRepoAnalysisSer
 import { ResearchModuleAssetService } from "../services/researchModuleAssetService.js";
 import { ResearchBaselineService } from "../services/researchBaselineService.js";
 import { ResearchPresentationService } from "../services/researchPresentationService.js";
+import { MemoryRecallService } from "../services/memoryRecallService.js";
 import type { ResearchService } from "../services/researchService.js";
 import { McpRegistryService } from "../services/mcpRegistryService.js";
 import type { MemoryService } from "../services/memoryService.js";
+import type { MemoryRecallHit } from "../types/memory.js";
 
 export interface AgentChatInput {
   senderId: string;
@@ -463,7 +465,7 @@ function formatStructuredToolReply(
   ].join("\n");
 }
 
-function buildMemoryPrimer(hits: Awaited<ReturnType<MemoryService["search"]>>): string {
+function buildMemoryPrimer(hits: MemoryRecallHit[]): string {
   if (hits.length === 0) {
     return "No relevant memory snippets were preloaded for this turn.";
   }
@@ -471,7 +473,7 @@ function buildMemoryPrimer(hits: Awaited<ReturnType<MemoryService["search"]>>): 
   return hits
     .map(
       (hit, index) =>
-        `${index + 1}. ${hit.path}:${hit.startLine}-${hit.endLine} | ${hit.title}\n${hit.snippet}`,
+        `${index + 1}. [${hit.layer}] ${hit.title}${hit.path ? ` | ${hit.path}` : hit.artifactType ? ` | ${hit.artifactType}` : ""}\n${hit.snippet}\nprovenance=${hit.provenance} confidence=${hit.confidence}`,
     )
     .join("\n\n");
 }
@@ -545,6 +547,7 @@ export class AgentRuntime {
   private readonly researchModuleAssetService: ResearchModuleAssetService;
   private readonly researchBaselineService: ResearchBaselineService;
   private readonly researchPresentationService: ResearchPresentationService | null;
+  private readonly memoryRecallService: MemoryRecallService;
   private readonly roleMap = new Map(ROLE_DEFINITIONS.map((role) => [role.id, role]));
   private readonly skillMap = new Map(SKILL_DEFINITIONS.map((skill) => [skill.id, skill]));
 
@@ -570,6 +573,7 @@ export class AgentRuntime {
       options.researchService && typeof options.researchService.getReport === "function"
         ? new ResearchPresentationService(workspaceDir, options.researchService)
         : null;
+    this.memoryRecallService = new MemoryRecallService(workspaceDir, options.researchService);
     this.injectedWireApi = options.wireApi;
     this.injectedModel = options.model;
     this.injectedClient =
@@ -984,7 +988,14 @@ export class AgentRuntime {
 
     await this.setLastEntrySource(input.senderId, resolveInputSource(input));
     const session = await this.getSession(input.senderId);
-    const memoryPrimer = await this.memoryService.search(text, MEMORY_PRIMER_LIMIT).catch(() => []);
+    const memoryPrimer = await this.memoryRecallService
+      .recall(text, {
+        limit: MEMORY_PRIMER_LIMIT,
+        includeWorkspace: true,
+        includeArtifacts: true,
+      })
+      .then((result) => result.hits)
+      .catch(() => []);
     const llmRoute = await this.resolveLlmRouteForSession(session);
     const llmClient = this.injectedClient ?? this.buildCompatClient(llmRoute);
 
@@ -1238,7 +1249,7 @@ export class AgentRuntime {
   private buildUserInput(
     input: AgentChatInput,
     session: AgentSession,
-    memoryPrimer: Awaited<ReturnType<MemoryService["search"]>>,
+    memoryPrimer: MemoryRecallHit[],
   ): string {
     return [
       "Current workspace primer:",
@@ -1472,7 +1483,7 @@ export class AgentRuntime {
       },
       {
         name: "memory_search",
-        description: "Search saved memory files for relevant notes, decisions, and prior facts.",
+        description: "Run v3 memory recall across saved workspace memory and durable artifacts.",
         skillId: "memory-ops",
         toolsetIds: ["memory"],
         inputSchema: z.object({
@@ -1492,7 +1503,11 @@ export class AgentRuntime {
           const parsed = args as { query: string; limit?: number | undefined };
           return {
             query: parsed.query,
-            results: await this.memoryService.search(parsed.query, parsed.limit ?? 4),
+            recall: await this.memoryRecallService.recall(parsed.query, {
+              limit: parsed.limit ?? 4,
+              includeWorkspace: true,
+              includeArtifacts: true,
+            }),
           };
         },
       },
@@ -2010,7 +2025,7 @@ export class AgentRuntime {
   private async startToolTurnWithRouteFallback(
     input: AgentChatInput,
     session: AgentSession,
-    memoryPrimer: Awaited<ReturnType<MemoryService["search"]>>,
+    memoryPrimer: MemoryRecallHit[],
     primaryRoute: AgentResolvedLlmRoute,
     allSkills: RuntimeSkillDefinition[],
     functionTools: FunctionToolSpec[],
@@ -2063,7 +2078,7 @@ export class AgentRuntime {
   private async replyWithTools(
     input: AgentChatInput,
     session: AgentSession,
-    memoryPrimer: Awaited<ReturnType<MemoryService["search"]>>,
+    memoryPrimer: MemoryRecallHit[],
     _client: OpenAiCompatClient,
     llmRoute: AgentResolvedLlmRoute,
   ): Promise<string> {
@@ -2176,7 +2191,7 @@ export class AgentRuntime {
 
   private buildFallbackReply(
     input: AgentChatInput,
-    memoryHits: Awaited<ReturnType<MemoryService["search"]>>,
+    memoryHits: MemoryRecallHit[],
   ): string {
     const normalized = input.text.trim();
     const capabilityPattern =
@@ -2201,7 +2216,7 @@ export class AgentRuntime {
       memoryHits.length > 0
         ? `I also found relevant memory context: ${memoryHits
             .slice(0, 2)
-            .map((hit) => `${hit.title} (${hit.path})`)
+            .map((hit) => `${hit.title} (${hit.path ?? hit.artifactType ?? hit.layer})`)
             .join("; ")}.`
         : "";
 

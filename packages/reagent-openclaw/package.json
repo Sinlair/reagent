@@ -16,7 +16,9 @@
     }
   },
   "scripts": {
+    "prebuild": "npm --prefix ../reagent-core run build",
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "npm --prefix ../reagent-core run build",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run typecheck && npm run build"
   },

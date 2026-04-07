@@ -31,6 +31,9 @@ jobs:
       - name: Install reagent-core dependencies
         run: npm ci --prefix packages/reagent-core
 
+      - name: Build reagent-core package
+        run: npm --prefix packages/reagent-core run build
+
       - name: Install reagent-openclaw dependencies
         run: npm ci --prefix packages/reagent-openclaw
 

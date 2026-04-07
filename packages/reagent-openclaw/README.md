@@ -5,6 +5,7 @@ OpenClaw plugin package for ReAgent research workflows.
 Current first-phase capabilities:
 
 - conversation-scoped and workspace-scoped memory
+- v3 recall across conversation memory, workspace memory, and durable artifacts
 - manage research directions
 - run paper discovery
 - record feedback
@@ -91,3 +92,9 @@ The slash commands default to conversation-scoped memory, which lines up with
 OpenClaw's per-peer context isolation. Tool calls can choose either scope by
 passing `scope: "workspace"` or `scope: "conversation"`. When using
 conversation-scoped tools, pass a stable `scopeKey` such as a sender id.
+
+`/reagent-memory` and `reagent_memory_search` now run a v3-style recall pass:
+
+- conversation scope first when available
+- shared workspace memory next
+- durable artifacts such as briefs, direction reports, and presentations last

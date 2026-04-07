@@ -1,6 +1,10 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
 
-import { createPluginMemoryService, createPluginServices } from "./services.js";
+import {
+  createPluginMemoryRecallService,
+  createPluginMemoryService,
+  createPluginServices,
+} from "./services.js";
 
 function textToolResult(text: string, details?: unknown) {
   return {
@@ -49,6 +53,21 @@ function resolveMemoryToolAccess(api: OpenClawPluginApi, params: Record<string, 
     scopeKey,
     scopeLabel: formatMemoryScopeLabel(scope, scopeKey),
     memoryService: createPluginMemoryService(api, { scope, scopeKey }),
+  };
+}
+
+function resolveMemoryRecallAccess(api: OpenClawPluginApi, params: Record<string, unknown>) {
+  const resolved = resolveMemoryToolAccess(api, params);
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  return {
+    ...resolved,
+    memoryRecallService: createPluginMemoryRecallService(api, {
+      scope: resolved.scope,
+      scopeKey: resolved.scopeKey,
+    }),
   };
 }
 
@@ -204,7 +223,7 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
   api.registerTool({
     name: "reagent_memory_search",
     label: "ReAgent Memory Search",
-    description: "Search shared workspace memory or one conversation scope using hybrid memory retrieval.",
+    description: "Run v3 memory recall across conversation, workspace, and artifact layers.",
     parameters: {
       type: "object",
       properties: {
@@ -220,16 +239,19 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params) {
-      const resolved = resolveMemoryToolAccess(api, params);
+      const resolved = resolveMemoryRecallAccess(api, params);
       if (!resolved.ok) {
         return textToolResult(resolved.message, { ok: false });
       }
 
       const query = String(params.query).trim();
-      const results = await resolved.memoryService.search(
-        query,
-        typeof params.limit === "number" ? params.limit : 4,
-      );
+      const recall = await resolved.memoryRecallService.recall(query, {
+        limit: typeof params.limit === "number" ? params.limit : 6,
+        includeConversation: resolved.scope === "conversation",
+        includeWorkspace: true,
+        includeArtifacts: true,
+      });
+      const results = recall.hits;
 
       if (results.length === 0) {
         return textToolResult(`No memory hits found for "${query}" in ${resolved.scopeLabel}.`, {
@@ -242,11 +264,11 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
 
       return textToolResult(
         [
-          `Memory hits for "${query}" in ${resolved.scopeLabel}:`,
+          `Memory recall hits for "${query}" in ${resolved.scopeLabel}:`,
           "",
           ...results.map(
             (item) =>
-              `- ${item.path}:${item.startLine}-${item.endLine} | ${item.title}\n  ${item.snippet}`,
+              `- [${item.layer}] ${item.title}${item.path ? ` | ${item.path}` : item.artifactType ? ` | ${item.artifactType}` : ""}\n  ${item.snippet}\n  provenance=${item.provenance} confidence=${item.confidence}`,
           ),
         ].join("\n"),
         {
@@ -254,6 +276,7 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
           scope: resolved.scope,
           scopeKey: resolved.scopeKey,
           query,
+          generatedAt: recall.generatedAt,
           results,
         },
       );
@@ -294,6 +317,11 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
         title: typeof params.title === "string" && params.title.trim() ? params.title.trim() : undefined,
         content: String(params.content),
         source: typeof params.source === "string" && params.source.trim() ? params.source.trim() : undefined,
+        sourceType: "user-stated",
+        confidence: "medium",
+        tags: [
+          resolved.scope === "conversation" ? "conversation-memory" : "workspace-memory",
+        ],
       });
 
       return textToolResult(
