@@ -61,7 +61,12 @@ class StubResearchService {
 }
 
 class StubChatService {
+  constructor() {
+    this.inputs = [];
+  }
+
   async reply(input) {
+    this.inputs.push(input);
     return `Chat reply: ${input.text}`;
   }
 }
@@ -576,6 +581,36 @@ async function main() {
 
       const logoutStatus = await channels.logoutWeChat();
       assert.equal(logoutStatus.connected, false);
+    });
+  });
+
+  await runTest("ChannelService passes entry source to chat backend", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      await memory.ensureWorkspace();
+      const chatService = new StubChatService();
+      const channels = new ChannelService(dir, new StubResearchService(), memory, {
+        wechatProvider: "mock",
+        chatService
+      });
+
+      await channels.startWeChatLogin(false);
+      await channels.completeWeChatLogin("Mock User");
+
+      await channels.receiveUiChatMessage({
+        senderId: "ui-user-1",
+        senderName: "UI User",
+        text: "hello from ui"
+      });
+      await channels.receiveWeChatMessage({
+        senderId: "wx-user-1",
+        senderName: "WX User",
+        text: "hello from wechat"
+      });
+
+      assert.equal(chatService.inputs.length, 2);
+      assert.equal(chatService.inputs[0].source, "ui");
+      assert.equal(chatService.inputs[1].source, "wechat");
     });
   });
 

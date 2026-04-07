@@ -56,6 +56,10 @@ const AgentReasoningSchema = z.object({
   reasoningEffort: z.string().trim().optional().default("default")
 });
 
+const LifecycleAuditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20)
+});
+
 export async function registerChannelRoutes(
   app: FastifyInstance,
   channelService: ChannelService
@@ -69,6 +73,21 @@ export async function registerChannelRoutes(
   app.get("/api/channels/wechat/messages", async () => ({
     messages: await channelService.listWeChatMessages()
   }));
+
+  app.get("/api/channels/wechat/lifecycle-audit", async (request, reply) => {
+    const parsed = LifecycleAuditQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid lifecycle audit query",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    return reply.send({
+      items: await channelService.listWeChatLifecycleAudit(parsed.data.limit)
+    });
+  });
 
   app.get("/api/channels/wechat/agent", async (request, reply) => {
     const parsed = AgentQuerySchema.safeParse(request.query ?? {});

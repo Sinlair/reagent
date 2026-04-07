@@ -1,0 +1,59 @@
+name: Feature Request
+description: Propose a concrete product, runtime, research-workflow, or plugin improvement.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please frame the request around actual research workflow value.
+
+        Good requests usually explain:
+        - which user flow is blocked
+        - why existing behavior is insufficient
+        - what artifact, runtime, or UI change would unlock the next step
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is currently painful or impossible?
+      placeholder: Describe the current limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Change
+      description: What should ReAgent do differently?
+      placeholder: Describe the requested behavior.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Research brief
+        - Discovery / ranking
+        - Paper analysis
+        - Repo / module extraction
+        - Reports / decks
+        - Memory / graph
+        - WeChat / OpenClaw runtime
+        - Always-on / scheduler
+        - Web UI
+        - Packages / plugin parity
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What are you doing today instead?
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional Context
+      description: Links, screenshots, reference projects, or implementation notes.

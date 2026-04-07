@@ -7,6 +7,9 @@ export interface ResearchDiscoveryItem extends PaperCandidate {
   queryReason: string;
   venuePreferenceMatched: boolean;
   datasetOrBenchmarkMatched: boolean;
+  targetProblemMatched: boolean;
+  baselineOrEvaluationMatched: boolean;
+  blockedTopicMatched: boolean;
 }
 
 export interface ResearchDiscoveryRunRequest {

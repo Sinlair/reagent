@@ -2,9 +2,56 @@
 
 ## Goal
 
-Build a research-focused agent that can continuously discover, read, analyze, organize, and summarize papers for a target research direction, then push high-value outputs to WeChat.
+Build a research-focused workspace agent that can continuously discover, read, analyze, organize, and summarize papers for a target research direction, then push high-value outputs to WeChat.
 
 The agent is not a general chatbot first. Its primary job is to act like a research assistant for one person or one lab.
+
+## Product Positioning
+
+ReAgent should be built as a `Research Workspace / Research OS`, not as a single-report generator and not as a generic chat shell with research bolted on later.
+
+Its product center should be the closed loop of:
+
+- `Evidence`
+  - papers
+  - repos
+  - article links
+  - citations
+  - provenance
+- `Memory`
+  - direction briefs
+  - preferences
+  - previous reports
+  - reusable modules
+  - feedback
+- `Delivery`
+  - daily push
+  - paper briefs
+  - direction reports
+  - research maps
+  - meeting decks
+
+This means chat is only one interaction surface. The more important outputs are durable research artifacts that can be reused later.
+
+## Landscape-Derived Principles
+
+The system should borrow these lessons from the research-agent landscape:
+
+- prioritize end-to-end research workflows over isolated chat turns
+- keep evidence, citation, provenance, and confidence visible in important outputs
+- treat scholarly retrieval quality, paper-repo linking, and report structure as core capabilities
+- design for long-running tasks, memory, tool orchestration, and future multi-agent expansion
+- present the product as a clear workspace with reusable deliverables, not only as a demo repo
+- keep local deployment, inspectability, extensibility, and operator control as product advantages
+
+## Non-Goals
+
+ReAgent should not drift toward:
+
+- a generic chatbot product first
+- a single-shot deep-research report product only
+- a hosted black-box SaaS that hides artifacts and workflow state
+- a system where chat is more central than direction reports, research maps, and knowledge assets
 
 ## Core Outcomes
 

@@ -40,7 +40,13 @@ openclaw plugins install @sinlair/reagent-openclaw --yes
 - `/reagent-module-extract <github-url> [context-title]`
 - `/reagent-novelty-check <idea-or-topic>`
 - `/reagent-direction-report <directionId-or-topic>`
+- `/reagent-direction-reports [limit]`
+- `/reagent-direction-report-get <reportId>`
 - `/reagent-presentation-generate [topic]`
+- `/reagent-presentations [limit]`
+- `/reagent-presentation-get <presentationId>`
+- `/reagent-module-assets [limit]`
+- `/reagent-module-asset-get <assetId>`
 
 ## Tools
 
@@ -54,6 +60,12 @@ The plugin also registers these host-side tools:
 - `reagent_paper_analyze`
 - `reagent_repo_analyze`
 - `reagent_module_extract`
+- `reagent_module_asset_recent`
+- `reagent_module_asset_get`
 - `reagent_novelty_check`
 - `reagent_direction_report_generate`
+- `reagent_direction_report_recent`
+- `reagent_direction_report_get`
 - `reagent_presentation_generate`
+- `reagent_presentation_recent`
+- `reagent_presentation_get`

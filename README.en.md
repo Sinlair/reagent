@@ -5,7 +5,15 @@
 </p>
 
 <p align="center">
-  A research-oriented agent console.
+  Turn ongoing research into a reusable workflow, not a one-off conversation.
+</p>
+
+<p align="center">
+  A local research workspace for paper discovery, evidence synthesis, research memory, and direction delivery.
+</p>
+
+<p align="center">
+  <a href="./README.md">中文</a>
 </p>
 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -13,108 +21,61 @@
 [![CI](https://github.com/Sinlair/reagent/actions/workflows/ci.yml/badge.svg)](https://github.com/Sinlair/reagent/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-ReAgent is not designed as a generic chatbot with some research features bolted on. It is a research workspace centered on continuous paper discovery, article ingestion, repository analysis, memory, direction reports, and meeting material generation, delivered through a web console and WeChat channels.
-
-Chinese README: [README.md](./README.md)
-
-## Preview
-
 ![ReAgent Console](./docs/reagent-console.png)
 
-## Table of Contents
+## What It Is
 
-- [Why This Project Exists](#why-this-project-exists)
-- [Use Cases](#use-cases)
-- [Core Capabilities](#core-capabilities)
-- [Typical Workflow](#typical-workflow)
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
-- [Configuration Examples](#configuration-examples)
-- [Common Commands](#common-commands)
-- [Project Structure](#project-structure)
-- [Workspace Conventions](#workspace-conventions)
-- [Key Endpoints](#key-endpoints)
-- [Project Status](#project-status)
-- [Roadmap](#roadmap)
-- [FAQ](#faq)
-- [Related Documents](#related-documents)
-- [Contributing](#contributing)
-- [License](#license)
+ReAgent is not a generic chatbot with a few research tools attached.
 
-## Why This Project Exists
+It is closer to a local `Research Workspace / Research OS`:
 
-The common problem in research work is not a lack of information. It is the lack of a stable way to turn too much information into reusable judgment and reusable artifacts.
+- define structured `Research Brief`s with goals, baselines, constraints, and evaluation criteria
+- keep running discovery instead of restarting the search every week
+- store papers, repos, evidence, feedback, and memory in one workspace
+- turn outputs into reports, briefings, decks, and reusable module notes
+- continue the loop through the web UI, WeChat, and OpenClaw plugin surfaces
 
-ReAgent focuses on:
+## Who It Is For
 
-- Daily discovery: collect and rank recent papers for target directions
-- Deep analysis: generate structured results from paper links, article links, or titles
-- Code mining: identify GitHub repositories, assess reproducibility, and extract reusable modules
-- Research synthesis: produce direction reports, baseline suggestions, innovation routes, and meeting decks
-- Long-term memory: keep direction preferences, goals, findings, and artifacts in one workspace
+- individual researchers tracking one or more directions over time
+- lab members who need paper reading, repo inspection, and meeting prep in one workflow
+- teams exploring a `research agent + workspace memory + delivery` product shape
+- developers who want a controllable, hackable, local research workspace
 
-## Use Cases
+## Current Capabilities
 
-- Individual researchers tracking one or more research directions
-- Lab members who want paper reading, code mining, and meeting preparation in one workflow
-- Teams exploring a “research agent + workspace memory + WeChat delivery” product shape
-- Developers building a controllable and extensible local research console
+- structured `Research Brief`s
+- brief-driven discovery
+- paper analysis, repo analysis, and module extraction
+- baseline suggestion and direction reports
+- feedback loop
+- memory graph and file-backed memory
+- meeting deck generation
+- WeChat / OpenClaw runtime integration
+- scheduler, lifecycle audit, and always-on runtime visibility
 
-## Core Capabilities
+## Workspace Surfaces
 
-| Capability | Description |
-| --- | --- |
-| Web console | Default address: `http://127.0.0.1:3000/` |
-| Agent runtime | Roles, skills, model routing, fallbacks, reasoning effort |
-| Research task queue | Track task state and persist outputs |
-| Paper discovery | Direction-aware search plans and scheduled discovery |
-| Multi-source discovery | Currently backed by Crossref and arXiv |
-| Link ingestion | Extract paper and GitHub candidates from articles |
-| Deep paper analysis | Distinguish paper evidence, code evidence, inference, and speculation |
-| Repo analysis and module extraction | Inspect repository structure and download reusable modules |
-| Feedback loop | Record positive and negative feedback and feed it back into ranking and scheduling |
-| Direction reports | Generate direction overview, representative papers, common baselines, modules, and suggested routes |
-| Meeting material generation | Produce presentation drafts and related artifacts |
-| WeChat channels | Support `mock`, `native`, and `openclaw` |
-
-## Typical Workflow
-
-1. Define research directions and preferences.
-2. Let the system discover recent papers on a schedule.
-3. Ingest a paper link, article link, or title for deep analysis.
-4. Continue into repository analysis and module extraction if code exists.
-5. Generate direction reports, baseline suggestions, and meeting materials.
-
-## Architecture
-
-```text
-User / WeChat / Web UI
-        |
-        v
-+-------------------------+
-|      Fastify Server     |
-|   routes + services     |
-+-------------------------+
-        |
-        +--> Agent Runtime
-        +--> Research Workflow
-        +--> Workspace State
-```
+- `Home`
+  Product landing surface with workspace pulse, latest outputs, and fast entry points.
+- `Command Center`
+  Health, recent activity, delivery posture, and latest outputs.
+- `Agent Desk`
+  Natural language and slash commands for research, memory, and delivery actions.
+- `Evidence Workspace`
+  Research briefs, tasks, scheduler control, reports, and artifacts.
+- `Research Map`
+  Relationships across directions, papers, repos, modules, reports, and presentations.
+- `Knowledge Vault`
+  File-backed research memory search, write, and preview.
+- `Channels`
+  WeChat / OpenClaw status, pairing, lifecycle audit, and recovery visibility.
 
 ## Quick Start
-
-### Requirements
-
-- Node.js 22+
-- npm 10+
-- On Windows PowerShell, prefer `npm.cmd`
-
-### Start Development
 
 ```powershell
 Copy-Item .env.example .env
 npm.cmd install
-npm.cmd --prefix package install
 npm.cmd run db:push
 npm.cmd run dev
 ```
@@ -123,15 +84,6 @@ Open:
 
 - `http://127.0.0.1:3000/`
 
-### Build and Run
-
-```powershell
-npm.cmd run build
-npm.cmd start
-```
-
-## Configuration Examples
-
 Minimal local setup:
 
 ```env
@@ -139,147 +91,88 @@ LLM_PROVIDER=fallback
 WECHAT_PROVIDER=mock
 ```
 
-OpenAI `responses` API:
+If you are using Windows PowerShell, prefer `npm.cmd`.
 
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=your_key
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_WIRE_API=responses
-OPENAI_MODEL=gpt-5.4
-```
+## Always-On Runtime
 
-Compatible `chat/completions` API:
+The root app already supports always-on operation. You do not need to keep a foreground terminal open.
 
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=your_key
-OPENAI_BASE_URL=https://example.com/v1
-OPENAI_WIRE_API=chat-completions
-OPENAI_MODEL=gpt-4o
-```
+Options:
 
-WeChat channel setup:
+- PM2
+  - `npm.cmd run pm2:start`
+  - `npm.cmd run pm2:restart`
+  - `npm.cmd run pm2:logs`
+- Windows service
+  - `npm.cmd run service:install`
+  - `npm.cmd run service:status`
+  - `npm.cmd run service:start`
+  - `npm.cmd run service:stop`
 
-```env
-WECHAT_PROVIDER=native
-OPENCLAW_CLI_PATH=D:/nodejs/openclaw.cmd
-OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789
-OPENCLAW_GATEWAY_TOKEN=
-OPENCLAW_GATEWAY_PASSWORD=
-OPENCLAW_WECHAT_CHANNEL_ID=openclaw-weixin
-```
+See [OPERATIONS.md](./OPERATIONS.md) for details.
 
-See [`.env.example`](./.env.example) for the full sample.
+## Repository Layout
 
-## Common Commands
+- root
+  The main ReAgent app, web workspace, and full runtime
+- [`packages/reagent-core/`](./packages/reagent-core)
+  Reusable core research logic package
+- [`packages/reagent-openclaw/`](./packages/reagent-openclaw)
+  ReAgent OpenClaw plugin package
+- [`package/`](./package)
+  OpenClaw WeChat channel reference package kept in-repo for compatibility and integration work
+
+Notes:
+
+- The repository itself is open source, but the root `package.json` stays `private: true` because the root app is not intended to be published directly to npm.
+- The publish-oriented packages live under `packages/reagent-core` and `packages/reagent-openclaw`.
+
+## Development And Validation
 
 ```powershell
-npm.cmd run check
 npm.cmd run check:all
-npm.cmd run test:root
 npm.cmd run test
-npm.cmd run db:push
-npm.cmd run db:studio
 ```
 
-## Project Structure
+If you only want to validate the publishable packages:
 
-```text
-.
-├─ src/
-├─ web/
-├─ prisma/
-├─ tests/
-├─ packages/
-├─ workspace/
-├─ package/
-├─ agent.md
-└─ OPERATIONS.md
+```powershell
+npm.cmd run build:packages
+npm.cmd run check:packages
 ```
 
-## Workspace Conventions
+## OpenClaw Plugin
 
-- `workspace/skills/*/SKILL.md`: custom workspace skills
-- `workspace/channels/llm-providers.json`: model and provider routing
-- `workspace/channels/mcp-servers.json`: MCP server registry
-- `workspace/memory/` and `workspace/MEMORY.md`: file-backed memory
-- `workspace/research/`: research artifacts
+Install the ReAgent OpenClaw plugin with:
 
-## Key Endpoints
+```bash
+openclaw plugins install @sinlair/reagent-openclaw --yes
+```
 
-- `GET /health`
-- `GET /api/runtime/meta`
-- `POST /api/research`
-- `GET /api/research/:taskId`
-- `GET /api/research/recent`
-- `GET /api/research/tasks`
-- `GET /api/research/feedback`
-- `POST /api/research/feedback`
-- `GET /api/research/direction-reports/recent`
-- `POST /api/research/direction-reports/generate`
+Plugin source lives in [packages/reagent-openclaw/](./packages/reagent-openclaw).
 
-## Project Status
+## Reference Projects
 
-The repository already has a usable research loop, but it is still evolving.
+These projects influenced ReAgent most directly:
 
-Implemented:
+- [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
+- [deer-flow](https://github.com/bytedance/deer-flow)
+- [PASA](https://github.com/bytedance/pasa)
+- [Paper2Agent](https://github.com/jmiao24/Paper2Agent)
+- [enterprise-deep-research](https://github.com/SalesforceAIResearch/enterprise-deep-research)
+- [InternAgent](https://github.com/InternScience/InternAgent)
+- [OpenClaw](https://github.com/openclaw/openclaw)
 
-- direction management
-- scheduled discovery
-- multi-source discovery
-- article ingestion
-- paper and repo analysis
-- feedback loop
-- direction reports
-- meeting deck draft generation
-
-Still improving:
-
-- richer frontend research views
-- more discovery sources
-- stronger feedback-driven scheduling policies
-
-## Roadmap
-
-- [x] direction management
-- [x] scheduled discovery
-- [x] article ingestion
-- [x] deep paper analysis
-- [x] repo analysis and module extraction
-- [x] feedback loop
-- [x] direction reports
-- [x] meeting deck drafts
-- [ ] richer frontend research views
-- [ ] more discovery sources
-- [ ] stronger scheduling and push control
-
-## FAQ
-
-### Can I run this without OpenAI keys?
-
-Yes. Use `LLM_PROVIDER=fallback` for local workflow and UI validation.
-
-### Can I run this without a real WeChat environment?
-
-Yes. Use `WECHAT_PROVIDER=mock`.
-
-### Is this production-ready?
-
-It is better described as a working research console under active iteration than a fully productized hosted service.
+For a more detailed comparison, see [docs/research-agent-landscape.md](./docs/research-agent-landscape.md).
 
 ## Related Documents
 
-- Operations: [OPERATIONS.md](./OPERATIONS.md)
+- Chinese README: [README.md](./README.md)
 - Product plan: [agent.md](./agent.md)
 - Roadmap: [ROADMAP.md](./ROADMAP.md)
+- Operations: [OPERATIONS.md](./OPERATIONS.md)
 - Contribution guide: [CONTRIBUTING.md](./CONTRIBUTING.md)
 - Security policy: [SECURITY.md](./SECURITY.md)
-- OpenClaw WeChat plugin package: [package/](./package)
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 

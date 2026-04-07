@@ -319,6 +319,102 @@ async function main() {
     });
   });
 
+  await runTest("ChatService runtime filters toolsets by entry source", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      await memory.ensureWorkspace();
+
+      const requests = [];
+      const client = {
+        responses: {
+          async create(params) {
+            requests.push(params);
+            return {
+              id: `resp-${requests.length}`,
+              output_text: "Acknowledged.",
+              output: []
+            };
+          }
+        }
+      };
+
+      const researchService = {
+        async runResearch(request) {
+          return {
+            taskId: "task-toolset-1",
+            topic: request.topic,
+            question: request.question,
+            generatedAt: new Date().toISOString(),
+            plan: {
+              objective: request.question ?? request.topic,
+              subquestions: [],
+              searchQueries: [request.topic]
+            },
+            papers: [],
+            chunks: [],
+            summary: "summary",
+            findings: [],
+            gaps: [],
+            nextActions: [],
+            evidence: [],
+            warnings: [],
+            critique: {
+              verdict: "weak",
+              summary: "No evidence yet.",
+              issues: [],
+              recommendations: [],
+              supportedEvidenceCount: 0,
+              unsupportedEvidenceCount: 0,
+              coveredFindingsCount: 0,
+              citationDiversity: 0,
+              citationCoverage: 0
+            }
+          };
+        },
+        async listRecentReports() {
+          return [];
+        },
+        async getReport() {
+          return null;
+        }
+      };
+
+      const chat = new ChatService(dir, memory, {
+        client,
+        model: "gpt-test",
+        researchService,
+        wireApi: "responses"
+      });
+
+      await chat.reply({
+        senderId: "toolset-user",
+        text: "Help with my research setup.",
+        source: "wechat"
+      });
+
+      await chat.reply({
+        senderId: "toolset-user",
+        text: "Help with my research setup.",
+        source: "ui"
+      });
+
+      assert.equal(requests.length, 2);
+      assert.ok(String(requests[0].instructions).includes("Active entry: WeChat (wechat)"));
+      assert.equal(requests[0].tools.some((tool) => tool.name === "direction_upsert"), false);
+      assert.equal(requests[0].tools.some((tool) => tool.name === "presentation_generate"), false);
+      assert.equal(requests[0].tools.some((tool) => tool.name === "research_run"), true);
+
+      assert.ok(String(requests[1].instructions).includes("Active entry: UI (ui)"));
+      assert.equal(requests[1].tools.some((tool) => tool.name === "direction_upsert"), true);
+      assert.equal(requests[1].tools.some((tool) => tool.name === "presentation_generate"), true);
+
+      const summary = await chat.describeSession("toolset-user");
+      assert.equal(summary.activeEntrySource, "ui");
+      assert.equal(summary.enabledToolsets.includes("research-admin"), true);
+      assert.equal(summary.enabledToolsets.includes("research-heavy"), true);
+    });
+  });
+
   await runTest("LlmRegistryService resolves provider/model routes with per-model wire APIs", async () => {
     await withTempDir(async (dir) => {
       await mkdir(path.join(dir, "channels"), { recursive: true });

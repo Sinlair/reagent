@@ -1,381 +1,405 @@
-# Chat-First Research Agent Todo
+# ReAgent Todo
 
-## Product Direction
+## Direction
 
-Build **one main conversational research agent** with **Node-only runtime requirements**.
+Learn first from the open-source research-agent landscape, not mainly from autonomous experiment-runner systems.
 
-The target user experience is:
+Primary references:
 
-- talk naturally in one chat
-- send article links / paper links / GitHub links
-- let the agent automatically route the work
-- receive structured research results and WeChat pushes
+- `assafelovic/gpt-researcher`
+  - learn: end-to-end report flow, citation/evidence UX, research-product framing
+- `bytedance/deer-flow`
+  - learn: harness design, tool/memory/skill boundaries, long-running task orchestration, product expression
+- `bytedance/pasa`
+  - learn: scholarly retrieval quality, paper selection strategy, search-agent decision logic
+- `SalesforceAIResearch/enterprise-deep-research`
+  - learn: workspace-style research UI, knowledge-source integration, team-facing deliverables
+- `jmiao24/Paper2Agent`
+  - learn: turning paper outputs into reusable tools/agents/artifacts
+- `InternScience/InternAgent`
+  - learn: long-horizon scientific-workflow framing and system boundaries
+- `AstroPilot-AI/Denario`
+  - learn: modular role splitting for scientific research assistance
 
-The system should feel like a real research assistant, not a dashboard full of separate buttons.
+Secondary reference:
 
-## Hard Constraints
+- `SakanaAI/AI-Scientist-v2`
+  - learn later: ideation artifacts, novelty gates, branch search, experiment safety constraints
 
-- Node-only runtime for normal usage
-- `npm install && npm start` should remain the main deployment path
-- avoid requiring Python or extra system tools for the core workflow
-- keep WeChat as the main delivery channel
+What ReAgent should borrow now:
 
-## Current Status
+- structured research briefs and direction memory
+- stronger discovery quality and paper/repo linking
+- evidence-backed reports with citation/provenance visibility
+- durable artifacts, retrieval, and delivery surfaces
+- long-running task visibility and entry-aware tool orchestration
+- plugin/package parity for generated artifacts
 
-### Already Implemented
+What ReAgent should defer until later:
 
-- [x] Main chat-first runtime with tool calling
-- [x] Structured research direction profiles
-- [x] Direction CRUD API
-- [x] Discovery plan generation from direction profiles
-- [x] Discovery service with ranking, digest generation, and WeChat push callback
-- [x] Daily discovery scheduler with per-direction anti-duplicate execution
-- [x] Link ingestion service
-- [x] `@mozilla/readability` + `jsdom` article extraction path
-- [x] GitHub link extraction from article content
-- [x] Single paper deep analysis service
-- [x] GitHub repo analysis service
-- [x] Repo archive download and module asset extraction
-- [x] Baseline / innovation suggestion service
-- [x] Weekly presentation draft service
-- [x] Pure Node `.pptx` generation
-- [x] Unified research memory graph backend
-- [x] Research graph API
-- [x] Graph filtering by type / search / date
-- [x] Graph detail API and raw artifact click-through
-- [x] Upgraded graph UI with search, filter chips, stats cards, and node detail panel
-- [x] Native WeChat always-on recovery improvements
-- [x] Windows always-on install scripts
-- [x] Full automated test suite passing
+- large ideation systems
+- strict novelty gating
+- branch search across many hypotheses
+- autonomous experiment execution
 
-## Main Architecture
+What ReAgent should keep:
 
-### User-facing
+- chat-first UX
+- Node-first default path
+- WeChat as the main delivery channel
+- reusable research artifacts over one-shot answers
+- safe, inspectable workflows over hidden autonomy
 
-- one main chat agent
-- one WeChat delivery channel
-- one web console for inspection and operations
+## Study Checklist For Open-Source Research Agents
 
-### Behind the scenes
+When reviewing a reference project, capture these points:
 
-- direction memory
-- discovery
-- scheduler
-- external link ingestion
-- paper analysis
-- repo analysis
-- module asset archive
-- baseline synthesis
-- presentation generation
-- memory graph registry
+- product surface
+  - what the user sees first: chat, report, workspace, dashboard, or task board
+- input model
+  - prompt, query, structured brief, or project workspace
+- retrieval loop
+  - how it finds, filters, and ranks papers or evidence
+- evidence model
+  - citation, provenance, confidence, and claim labeling
+- orchestration model
+  - single agent, harness, multi-agent, long task, background job
+- artifact model
+  - what outputs remain durable and reusable after one run
+- delivery model
+  - report, summary, deck, notification, knowledge base, or plugin tool
+- local control
+  - how inspectable, extensible, and self-hostable it is
 
-## Implemented Capability Map
+## Current ReAgent Baseline
 
-### 1. Direction Memory
+Already implemented:
 
-- [x] store structured direction profile
-- [x] generate discovery queries from direction profile
+- [x] chat-first runtime
+- [x] structured research direction profiles
+- [x] discovery and scheduled discovery
+- [x] link ingestion
+- [x] paper analysis
+- [x] repo analysis
+- [x] module extraction
+- [x] baseline suggestion
+- [x] direction report generation
+- [x] meeting deck generation
+- [x] feedback recording
+- [x] memory graph API and UI
+- [x] package/plugin migration for the main research synthesis workflow
 
-### 2. Discovery
+Current branch has already started the landscape-first shift:
 
-- [x] run discovery from directions
-- [x] rank papers
-- [x] push digest to WeChat
-- [x] schedule discovery daily
-- [x] avoid duplicate same-day runs per direction
+- [x] richer research-brief fields in the root direction service
+- [x] markdown export/import round-trip coverage for research briefs
+- [x] entry-aware runtime toolset boundaries for UI / WeChat / OpenClaw style entry points
+- [ ] finish validating the web brief editor end to end
+- [ ] make package-level brief shapes and APIs match the root app more closely
+- [ ] make discovery/report flows consume the richer brief fields more consistently
 
-### 3. Link Ingestion
+This means ReAgent already has a usable research-assistant core.
+What it still needs is a stronger research-workspace layer shaped by the open-source research-agent landscape.
 
-- [x] ingest external article URLs
-- [x] extract main article text
-- [x] extract outbound links
-- [x] detect arXiv links
-- [x] detect DOI links
-- [x] detect GitHub links
-- [x] collect image URLs from article
+## Priority 0: Research Brief And Direction Memory
 
-### 4. Paper Deep Dive
+Goal:
 
-- [x] resolve paper from article/source item/title/URL
-- [x] attempt PDF/abstract extraction
-- [x] generate structured analysis report
-- [x] produce recommendation and likely baselines
-
-### 5. Repo Analysis
-
-- [x] inspect GitHub repo metadata
-- [x] identify top-level code paths
-- [x] estimate likely official status
-
-### 6. Module Archive
-
-- [x] download repo archive
-- [x] store selected module paths
-- [x] persist module asset metadata
-
-### 7. Baseline and Innovation Support
-
-- [x] aggregate recent discovery and paper signals
-- [x] produce baseline suggestions
-- [x] produce reusable module hints
-- [x] produce innovation suggestions
-
-### 8. Presentation
-
-- [x] generate markdown meeting deck
-- [x] include article-derived image assets when available
-- [x] export `.pptx` in pure Node
-
-### 9. Memory Graph
-
-- [x] unify direction / source / report / repo / module / presentation into graph nodes and edges
-- [x] expose graph through API
-- [x] add graph filtering by type / topic / date
-- [x] add graph detail retrieval by node id
-- [x] render graph search / filter / stats / detail page in frontend
-
-## What Is Still Missing
-
-These are the most important remaining gaps when comparing the current codebase against `agent.md`.
-
-### Priority A: Better Chat Orchestration
-
-The system can already call tools, but the orchestration can still be smarter.
+- upgrade direction profiles into a real research brief that captures intent, constraints, baselines, and evaluation priorities
 
 Tasks:
 
-- [ ] Improve intent routing prompts further
-- [x] Add clearer action-oriented reply structure
-- [x] Add "what I understood / what I did / what you should do next" response shape
-- [x] Add stronger automatic chaining:
-  - link_ingest -> paper_analyze
-  - paper_analyze -> repo_analyze
-  - repo_analyze -> module_extract
-- [ ] Add route-specific reply patterns for discovery / paper dive / repo analysis / synthesis requests
+- [ ] keep `ResearchBrief` as a first-class artifact shape across root app and package code
+- [ ] support fields:
+  - label
+  - summary
+  - `tl;dr`
+  - abstract
+  - background
+  - target problem
+  - success criteria
+  - blocked directions
+  - known baselines
+  - evaluation priorities
+  - short-term validation targets
+- [ ] support markdown import/export
+- [ ] support JSON persistence
+- [ ] let the web UI edit briefs directly
+- [ ] let discovery, baseline suggestion, and direction reports consume richer brief fields
 
-### Priority B: Canonical Research Object Model And Deduplication
+Why:
 
-The current graph is useful, but `agent.md` expects a stronger canonical object layer.
+- better research agents start from structured intent, not only topic strings
 
-Tasks:
+## Priority 1: Discovery Quality And Ingestion
 
-- [x] Introduce canonical `paper` entities, not only `paper_report`
-- [x] Introduce canonical `repo` entities, not only `repo_report`
-- [ ] Introduce canonical `presentation_asset` entities, not only generated deck records
-- [x] Link article-derived candidates to normalized paper / repo entities
-- [x] Merge repeated references from discovery, article ingestion, repo analysis, and reports into one research record
-- [x] Add stable canonical ids across related entities
-- [x] Add explicit provenance edges between source article, paper, repo, report, and presentation assets
-- [ ] Add a formal `Research Memory Registry` index file, not only derived aggregation
-- [ ] Persist graph-ready nodes and edges incrementally
-- [x] Add graph query helpers
-- [x] Add memory graph filtering by type / topic / date
-- [x] Add graph detail retrieval by node id
+Goal:
 
-### Priority C: Evidence-Backed Reading And Paper Understanding
-
-Current paper parsing and analysis work, but they do not yet satisfy the full evidence standard in `agent.md`.
+- make ReAgent better at finding, normalizing, deduplicating, and ranking research candidates
 
 Tasks:
 
-- [x] Preserve links between report sections and original evidence more explicitly
-- [x] Separate conclusions into paper-supported / code-supported / agent inference / speculation
-- [x] Add confidence + missing-evidence fields to important conclusions
-- [ ] Detect title / abstract / method / experiments more explicitly from parsed paper content
-- [ ] Add training / inference pipeline extraction to deep paper reports
-- [ ] Add figure / table extraction on the Node-only main path
-- [ ] Remove Python-only PDF figure extraction from the normal product path
+- [ ] improve query generation from research briefs
+- [ ] improve article -> paper -> repo normalization
+- [ ] store clearer ranking reasons for discovered papers
+- [ ] suppress repeated results more aggressively
+- [ ] improve title-only fallback matching for paper and repo discovery
+- [ ] persist richer source metadata for later reports
+- [ ] expose more discovery rationale in API/UI responses
 
-### Priority D: Better Repo Analysis And Reproducibility Signals
+Why:
 
-Repo inspection exists, but `agent.md` expects richer reproducibility-oriented judgment.
+- `pasa`-style quality comes from retrieval discipline, not just having more tools
 
-Tasks:
+## Priority 2: Evidence-Backed Reports And Delivery
 
-- [ ] Improve official/unofficial repo confidence logic
-- [ ] Add repo activity assessment
-- [ ] Add repo completeness assessment
-- [ ] Add reproducibility risk scoring
-- [ ] Add setup complexity summary
-- [ ] Add paper-title -> likely repo search fallback when article text does not provide a direct GitHub URL
+Goal:
 
-### Priority E: Richer Research Quality And Structured Outputs
-
-Current paper and baseline analysis are useful but still partly heuristic.
+- make outputs feel like research deliverables instead of generic assistant replies
 
 Tasks:
 
-- [ ] Improve innovation point extraction quality
-- [ ] Improve baseline inference quality
-- [ ] Add a reusable `Paper Brief` artifact shape
-- [ ] Add richer `Deep Paper Report` fields for reproducibility analysis and confidence notes
-- [ ] Add a reusable `Repo Report` artifact shape with implementation notes
-- [ ] Add `Direction Report` generation
-- [ ] Add baseline map / saturated pattern / improvement-route views
+- [ ] add clearer citation / provenance sections to paper and direction outputs
+- [ ] show paper-supported vs code-supported vs inference labels
+- [ ] add confidence notes to important conclusions
+- [ ] improve report structure for paper, repo, and direction artifacts
+- [ ] improve daily push / weekly summary formatting
+- [ ] add stronger slide/source linking in meeting material
 
-### Priority F: Feedback Loop And Personalization
+Why:
 
-`agent.md` expects the user to steer the agent over time, but that loop is not implemented yet.
+- `gpt-researcher` and enterprise research products are valuable because outputs are readable, reviewable, and reusable
 
-Tasks:
+## Priority 3: Artifact Workspace And Retrieval
 
-- [ ] Add feedback capture from chat / WeChat
-- [ ] Support: useful / not useful / more like this / less like this / too theoretical / too engineering-heavy
-- [ ] Use feedback to refine ranking
-- [ ] Use feedback to refine push frequency
-- [ ] Use feedback to refine direction profile weights
-- [ ] Track per-direction preference adjustments
+Goal:
 
-### Priority G: Task State Machine And Operational Visibility
-
-The workflows run, but they do not yet expose the explicit state machine described in `agent.md`.
+- make stored work easy to reopen, inspect, compare, and reuse
 
 Tasks:
 
-- [ ] Add explicit workflow states:
-  - queued
-  - fetching
-  - parsing
-  - normalizing
-  - searching-paper
-  - downloading-paper
-  - analyzing-paper
-  - checking-repo
-  - extracting-module
-  - generating-summary
-  - generating-ppt
-  - completed
-  - failed
-- [ ] Persist task execution state and transitions
-- [ ] Expose task states in API
-- [ ] Expose task states in the web UI
-- [ ] Add retry / resume hooks for scheduled and on-demand jobs
+- [ ] add better brief list/detail surfaces
+- [ ] add artifact lookup APIs for reports, decks, and module assets
+- [ ] make memory search results easier to open directly in the UI
+- [ ] improve graph entry points into briefs, reports, and reusable modules
+- [ ] support export-friendly views for important artifacts
+- [ ] keep artifact metadata aligned across root app and package/plugin layers
 
-### Priority G.1: Unattended Operation And Always-On Reliability
+Why:
 
-OpenClaw is a useful reference here: daemonization alone is not enough. We also need health monitoring, reconnect gating, and persisted lifecycle state.
+- a research workspace is only useful if prior work stays visible after the chat turn ends
+
+## Priority 4: Research Round And Task State Visibility
+
+Goal:
+
+- store a durable research round with its brief, evidence, outputs, and task history
 
 Tasks:
 
-- [x] Add a unified provider lifecycle store for `running / disconnected / reconnecting / waiting-human-action / failed`
-- [x] Persist provider lifecycle snapshots across restarts
-- [x] Add a WeChat / channel health monitor
-- [ ] Detect `not-running / disconnected / stale-socket / stuck` states explicitly
-- [x] Add automatic provider restart with cooldown windows
-- [x] Add restart budget limits to avoid restart storms
-- [x] Add auth-aware reconnect gating
-  - pause automatic reconnect on `pairing required`
-  - pause automatic reconnect on missing / invalid token
-  - pause automatic reconnect on password mismatch / hard auth failures
-- [x] Distinguish auto-recoverable errors from manual-intervention-required errors
-- [x] Surface `waiting for pairing / waiting for re-auth / cooldown active` in API and UI
-- [x] Add a background health check loop for always-on providers
-- [ ] Add provider restart / resume audit logs in workspace state
+- [ ] add a `ResearchRound` artifact
+- [ ] attach discovery runs, reports, and decisions to a round id
+- [ ] persist richer task states and transitions
+- [ ] expose transition history in API/UI
+- [ ] show current task stage in the workspace and reports
+- [ ] support retry/resume hooks with visible attempt history
 
-### Priority H: Better Frontend Graph Experience
+Suggested states:
 
-The graph page is now useful, but it can still evolve toward a fuller research operations view.
+- `queued`
+- `briefing`
+- `planning`
+- `searching-paper`
+- `downloading-paper`
+- `analyzing-paper`
+- `checking-repo`
+- `extracting-module`
+- `generating-summary`
+- `generating-ppt`
+- `completed`
+- `failed`
 
-Tasks:
+Why:
 
-- [x] Add node detail side panel
-- [x] Add type filter chips
-- [x] Add search box
-- [x] Add graph stats cards
-- [x] Add click-through from graph node to raw artifact/report
-- [x] Improve SVG layout quality
-- [ ] Add graph timeline mode
-- [ ] Add provenance-focused edge highlighting
-- [ ] Add saved graph views for a topic or direction
+- research-agent products need durable work state, not only transient run outputs
 
-### Priority I: Better Presentation Quality
+## Priority 5: Package / Plugin Parity
 
-Current PPT works, but it is still first-pass quality.
+Goal:
+
+- keep the OpenClaw/plugin path close to the root workspace path for artifact inspection and reuse
 
 Tasks:
 
-- [ ] Improve slide layout
-- [ ] Better title/subtitle style
-- [ ] Better figure placement rules
-- [ ] Add source citation footer per slide
-- [ ] Add theme and design controls
-- [ ] Add selected figure / model diagram / table extraction from PDFs on the main path
+- [ ] add package-level brief APIs or helpers where still missing
+- [ ] add artifact list/get/download tools in `packages/reagent-openclaw`
+- [ ] expose recent direction reports via plugin tools
+- [ ] expose recent presentations via plugin tools
+- [ ] expose module asset lookup via plugin tools
+- [ ] add package-level tests for migrated workflows
+- [ ] keep root and package artifact shapes aligned
 
-## Knowledge Graph Direction
+Why:
 
-The next memory step should explicitly move toward a real knowledge graph.
+- a real research workspace platform should not trap artifacts inside only one execution path
 
-### Current implemented graph node set
+## Priority 6: Selective Multi-Agent And Entry-Aware Runtime
 
-- `direction`
-- `discovery_run`
-- `source_item`
-- `workflow_report`
-- `paper_report`
-- `repo_report`
-- `module_asset`
-- `presentation`
+Goal:
 
-### Target canonical entity set
+- expand orchestration carefully, with explicit capability boundaries per entry surface
 
-- `direction`
-- `source_item`
-- `paper`
-- `repo`
-- `module_asset`
-- `report`
-- `presentation_asset`
+Tasks:
 
-### Next graph work
+- [ ] keep toolsets explicit for direct UI, WeChat, and OpenClaw style entries
+- [ ] expose active entry and enabled toolsets clearly in runtime/API/UI
+- [ ] add focused sub-workflows only where they improve search, reading, or synthesis quality
+- [ ] keep role boundaries inspectable instead of opaque
+- [ ] avoid adding multi-agent complexity without durable handoff artifacts
 
-- [x] Add canonical paper / repo nodes separate from report nodes
-- [x] Add stable canonical ids across related entities
-- [x] Add explicit provenance edges
-- [x] Add multi-source aggregation for the same paper
-- [ ] Add graph export/import
-- [ ] Add graph snapshots
-- [ ] Add graph search endpoint
+Why:
 
-## Node-Only Technology Policy
+- `deer-flow` is worth learning mainly for harness discipline, not for complexity by itself
 
-Keep these as the main path:
+## Priority 7: Paper-To-Agent / Reusable Output Layer
 
-- `@mozilla/readability`
-- `jsdom`
-- pure Node `.pptx` export
-- pure Node repo archive handling
+Goal:
 
-Do not make these required for the main product path:
+- turn strong research outputs into reusable tools, presets, modules, or agent affordances
 
-- Python
-- Poppler
-- ImageMagick
-- LibreOffice
-- system-installed PDF conversion tools
+Tasks:
 
-Current gap to close:
+- [ ] add stronger metadata around extracted modules and reusable implementation ideas
+- [ ] explore `direction report -> reusable preset` flows
+- [ ] explore `paper report -> specialized tool / workflow template` flows
+- [ ] persist the provenance between original evidence and the reusable output
 
-- [ ] replace Python-based PDF image extraction fallback with a Node-only main-path solution
+Why:
 
-## Next Recommended Work
+- this is where `Paper2Agent` becomes strategically useful for ReAgent
 
-### Immediate next milestone
+## Priority 8: Idea Generation And Novelty Gate
 
-- Improve chat orchestration
-- Upgrade memory registry from derived graph to first-class canonical registry
-- Add evidence / confidence separation in deep paper reports
-- Add workflow task state machine
-- Add unattended provider lifecycle monitoring and reconnect gating
-- Add feedback capture and ranking refinement
+Goal:
 
-### Why this next
+- add ideation only after briefs, discovery, evidence, and artifacts are strong enough
 
-Because the core workflow is already there.
+Tasks:
 
-The biggest value jump now comes from:
+- [ ] add a `ResearchIdea` artifact
+- [ ] store hypothesis, expected gain, assumptions, risks, dependencies, and recommendation
+- [ ] link novelty checks to idea ids
+- [ ] store novelty verdict and overlap evidence
+- [ ] show novelty status in reports, graph nodes, and chat replies
 
-1. making the chat feel more intelligent
-2. making the research memory layer canonical and trustworthy
-3. making paper conclusions more evidence-backed
-4. making the always-on channel layer recover safely without human babysitting
-5. making long-term ranking quality improve through user feedback
+Why:
+
+- these are useful, but they should sit on top of a stronger research-workspace core
+
+## Priority 9: Branch-Based Research Search
+
+Goal:
+
+- move from one linear route to multiple candidate branches with ranking and pruning
+
+Tasks:
+
+- [ ] add branch nodes for candidate routes
+- [ ] support multiple drafts or candidate branches per brief
+- [ ] score each branch on novelty, feasibility, evidence quality, and implementation readiness
+- [ ] add merge / prune / retry decisions
+- [ ] add branch comparison summaries
+
+Why:
+
+- this should happen after rounds, retrieval quality, and stored artifacts are already dependable
+
+## Priority 10: Controlled Experiment Execution
+
+Goal:
+
+- support optional experiment execution only with strong sandboxing and operator control
+
+Hard requirements:
+
+- [ ] isolated workspace per run
+- [ ] timeout
+- [ ] CPU / memory / disk limits
+- [ ] command allowlist
+- [ ] network policy
+- [ ] artifact capture
+- [ ] structured stdout / stderr logs
+- [ ] cleanup on failure
+- [ ] resume / retry metadata
+
+Important constraint:
+
+- [ ] keep the default ReAgent path Node-first and non-executing
+- [ ] make Python / CUDA / heavy experiment paths optional and isolated
+
+Why:
+
+- this is the riskiest lesson to borrow and should be the last major layer, not the first
+
+## Suggested Build Order
+
+### Milestone 1
+
+- [ ] research brief and direction memory
+- [ ] discovery quality and ingestion
+- [ ] evidence-backed reports and delivery
+
+### Milestone 2
+
+- [ ] artifact workspace and retrieval
+- [ ] package/plugin parity
+- [ ] research round and task visibility
+
+### Milestone 3
+
+- [ ] selective multi-agent / entry-aware runtime expansion
+- [ ] paper-to-agent / reusable output layer
+
+### Milestone 4
+
+- [ ] idea generation
+- [ ] novelty gate
+- [ ] branch-based search
+
+### Milestone 5
+
+- [ ] controlled experiment execution under sandbox
+
+## Definition Of Done For The Landscape-First Plan
+
+- [ ] ReAgent can create, edit, import, export, and reuse research briefs
+- [ ] discovery quality visibly improves through better brief-driven retrieval and normalization
+- [ ] major outputs show evidence, provenance, and confidence more clearly
+- [ ] stored artifacts are easy to browse and reopen from UI, API, and plugin surfaces
+- [ ] one research round can be inspected end to end with task history
+- [ ] runtime capability boundaries are explicit per entry surface
+- [ ] package/plugin users can inspect existing artifacts without regenerating them
+
+## Anti-Goals
+
+Do not do these by default:
+
+- [ ] do not turn ReAgent into a generic chatbot product first
+- [ ] do not optimize for autonomous experiment execution before the workspace loop is solid
+- [ ] do not hide evidence and workflow state behind polished summaries only
+- [ ] do not replace durable artifacts with transient chat-only outputs
+- [ ] do not add multi-agent complexity without clear ownership and reusable outputs
+
+## References Reviewed
+
+- `https://github.com/assafelovic/gpt-researcher`
+- `https://github.com/bytedance/deer-flow`
+- `https://github.com/bytedance/pasa`
+- `https://github.com/langchain-ai/local-deep-researcher`
+- `https://github.com/jina-ai/node-DeepResearch`
+- `https://github.com/SalesforceAIResearch/enterprise-deep-research`
+- `https://github.com/jmiao24/Paper2Agent`
+- `https://github.com/GAIR-NLP/OpenResearcher`
+- `https://github.com/InternScience/InternAgent`
+- `https://github.com/AstroPilot-AI/Denario`
+- `https://github.com/SakanaAI/AI-Scientist-v2`

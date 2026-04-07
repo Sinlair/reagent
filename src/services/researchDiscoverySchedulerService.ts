@@ -137,7 +137,10 @@ export class ResearchDiscoverySchedulerService {
       enabled: state.enabled,
       dailyTimeLocal: state.dailyTimeLocal,
       ...(state.senderId ? { senderId: state.senderId } : {}),
+      ...(state.senderName ? { senderName: state.senderName } : {}),
       directionIds: [...state.directionIds],
+      topK: state.topK,
+      maxPapersPerQuery: state.maxPapersPerQuery,
       lastRunDateByDirection: { ...state.lastRunDateByDirection },
       updatedAt: state.updatedAt,
     };

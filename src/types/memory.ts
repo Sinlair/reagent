@@ -1,5 +1,5 @@
 export type MemoryFileKind = "long-term" | "daily";
-export type MemorySearchMode = "keyword";
+export type MemorySearchMode = "hybrid";
 export type RememberScope = MemoryFileKind;
 
 export interface MemoryFileSummary {

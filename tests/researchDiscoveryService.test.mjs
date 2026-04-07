@@ -31,9 +31,15 @@ async function main() {
       const directionService = new ResearchDirectionService(dir);
       await directionService.upsertProfile({
         label: "Multimodal RAG",
+        targetProblem: "Improve long-document multimodal retrieval quality.",
         preferredVenues: ["NeurIPS"],
         preferredDatasets: ["MMMU"],
+        preferredBenchmarks: ["LongDocBench"],
         preferredPaperStyles: ["engineering", "reproducibility"],
+        knownBaselines: ["RAG"],
+        evaluationPriorities: ["retrieval recall"],
+        shortTermValidationTargets: ["LongDocBench"],
+        blockedDirections: ["image classification"],
         currentGoals: ["Find practical retrieval modules"],
         queryHints: ["multimodal rag retrieval augmentation"]
       });
@@ -47,7 +53,7 @@ async function main() {
               {
                 id: `${input.plan.searchQueries[0]}-paper-a`,
                 title: `A Strong ${input.request.topic} Paper`,
-                abstract: "We improve multimodal retrieval on MMMU with a practical module.",
+                abstract: "We improve long-document multimodal retrieval on MMMU and LongDocBench, beat a RAG baseline, and optimize retrieval recall with a practical module.",
                 authors: ["A. Researcher"],
                 url: `https://example.com/${encodeURIComponent(input.plan.searchQueries[0])}/a`,
                 pdfUrl: `https://example.com/${encodeURIComponent(input.plan.searchQueries[0])}/a.pdf`,
@@ -59,8 +65,8 @@ async function main() {
               },
               {
                 id: `${input.plan.searchQueries[0]}-paper-b`,
-                title: `A Weak ${input.request.topic} Baseline`,
-                abstract: "Generic baseline paper.",
+                title: `A Weak ${input.request.topic} Image Classification Baseline`,
+                abstract: "Generic image classification baseline paper.",
                 authors: ["B. Researcher"],
                 url: `https://example.com/${encodeURIComponent(input.plan.searchQueries[0])}/b`,
                 year: 2021,
@@ -73,12 +79,17 @@ async function main() {
         }
       });
 
-      const result = await discoveryService.runDiscovery({ topK: 3, maxPapersPerQuery: 2 });
+      const result = await discoveryService.runDiscovery({ topK: 10, maxPapersPerQuery: 2 });
 
       assert.equal(result.items.length > 0, true);
       assert.equal(result.items[0]?.rank, 1);
       assert.equal(result.items[0]?.venuePreferenceMatched, true);
       assert.equal(result.items[0]?.datasetOrBenchmarkMatched, true);
+      assert.equal(result.items[0]?.targetProblemMatched, true);
+      assert.equal(result.items[0]?.baselineOrEvaluationMatched, true);
+      assert.equal(result.items[0]?.blockedTopicMatched, false);
+      assert.equal(result.items.some((item) => item.blockedTopicMatched), true);
+      assert.equal(result.items[0]?.rankingReasons?.some((reason) => reason.includes("Target problem / validation match.")), true);
       assert.equal(result.digest.includes("Daily discovery for Multimodal RAG"), true);
       assert.equal(searchCalls.length > 0, true);
 

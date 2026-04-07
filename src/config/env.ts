@@ -28,7 +28,7 @@ const EnvSchema = z.object({
   OPENAI_MODEL: z.string().trim().min(1).default("gpt-4.1-mini"),
   CROSSREF_MAILTO: OptionalEmailString,
   WECHAT_PROVIDER: z.enum(["mock", "native", "openclaw"]).default("mock"),
-  OPENCLAW_CLI_PATH: z.string().trim().min(1).default("D:/nodejs/openclaw.cmd"),
+  OPENCLAW_CLI_PATH: z.string().trim().min(1).default("openclaw"),
   OPENCLAW_GATEWAY_URL: z.string().trim().min(1).default("ws://127.0.0.1:18789"),
   OPENCLAW_GATEWAY_TOKEN: OptionalNonEmptyString,
   OPENCLAW_GATEWAY_PASSWORD: OptionalNonEmptyString,

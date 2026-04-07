@@ -13,9 +13,12 @@ Thanks for contributing to ReAgent.
 ```powershell
 Copy-Item .env.example .env
 npm.cmd install
-npm.cmd --prefix package install
 npm.cmd run db:push
 ```
+
+Optional:
+
+- Run `npm.cmd --prefix package install` if you also need the in-repo OpenClaw WeChat reference package.
 
 ## Recommended Workflow
 
@@ -29,6 +32,13 @@ npm.cmd run db:push
 ```powershell
 npm.cmd run check:all
 npm.cmd run test
+```
+
+If your change only touches the publishable packages:
+
+```powershell
+npm.cmd run build:packages
+npm.cmd run check:packages
 ```
 
 ## Pull Request Guidelines

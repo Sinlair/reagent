@@ -9,6 +9,10 @@ export interface ResearchDirectionProfile {
   id: string;
   label: string;
   summary?: string | undefined;
+  tlDr?: string | undefined;
+  abstract?: string | undefined;
+  background?: string | undefined;
+  targetProblem?: string | undefined;
   subDirections: string[];
   excludedTopics: string[];
   preferredVenues: string[];
@@ -18,6 +22,11 @@ export interface ResearchDirectionProfile {
   openQuestions: string[];
   currentGoals: string[];
   queryHints: string[];
+  successCriteria: string[];
+  blockedDirections: string[];
+  knownBaselines: string[];
+  evaluationPriorities: string[];
+  shortTermValidationTargets: string[];
   priority: ResearchDirectionPriority;
   enabled: boolean;
   createdAt: string;
@@ -28,6 +37,10 @@ export interface ResearchDirectionProfileInput {
   id?: string | undefined;
   label: string;
   summary?: string | undefined;
+  tlDr?: string | undefined;
+  abstract?: string | undefined;
+  background?: string | undefined;
+  targetProblem?: string | undefined;
   subDirections?: string[] | undefined;
   excludedTopics?: string[] | undefined;
   preferredVenues?: string[] | undefined;
@@ -37,9 +50,18 @@ export interface ResearchDirectionProfileInput {
   openQuestions?: string[] | undefined;
   currentGoals?: string[] | undefined;
   queryHints?: string[] | undefined;
+  successCriteria?: string[] | undefined;
+  blockedDirections?: string[] | undefined;
+  knownBaselines?: string[] | undefined;
+  evaluationPriorities?: string[] | undefined;
+  shortTermValidationTargets?: string[] | undefined;
   priority?: ResearchDirectionPriority | undefined;
   enabled?: boolean | undefined;
 }
+
+export interface ResearchBrief extends ResearchDirectionProfile {}
+export interface ResearchBriefInput extends ResearchDirectionProfileInput {}
+export interface ResearchBriefStore extends ResearchDirectionStore {}
 
 export interface ResearchDirectionStore {
   updatedAt: string;

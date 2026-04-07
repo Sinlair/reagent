@@ -18,6 +18,22 @@ export interface WeChatMessage {
   createdAt: string;
 }
 
+export interface WeChatLifecycleAuditEntry {
+  ts?: string | undefined;
+  providerMode: WeChatProviderMode;
+  event:
+    | "service-started"
+    | "service-stopped"
+    | "lifecycle-transition"
+    | "auto-restart-scheduled"
+    | "auto-restart-completed"
+    | "auto-restart-failed"
+    | "auto-restart-blocked";
+  state?: WeChatLifecycleState | undefined;
+  reason?: string | undefined;
+  details?: Record<string, string | number | boolean | null> | undefined;
+}
+
 export interface WeChatBridgeDiagnostics {
   providerMode: "openclaw";
   cliPath: string;

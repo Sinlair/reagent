@@ -39,6 +39,7 @@ export interface AgentChatInput {
   senderId: string;
   senderName?: string | undefined;
   text: string;
+  source?: "direct" | "ui" | "wechat" | "openclaw" | undefined;
 }
 
 export interface AgentRole {
@@ -58,6 +59,10 @@ export interface AgentSkill {
 }
 
 export interface AgentSessionSummary {
+  activeEntrySource: AgentEntrySource;
+  activeEntryLabel: string;
+  enabledToolsets: AgentToolsetId[];
+  availableToolsets: AgentToolsetId[];
   roleId: string;
   roleLabel: string;
   skillIds: string[];
@@ -98,6 +103,7 @@ export interface AgentSessionListEntry {
   sessionId: string;
   channel: string;
   senderId: string;
+  activeEntrySource: AgentEntrySource;
   roleId: string;
   roleLabel: string;
   skillIds: string[];
@@ -126,6 +132,7 @@ interface AgentSession {
   updatedAt: string;
   roleId: string;
   skillIds: string[];
+  lastEntrySource?: AgentEntrySource | undefined;
   providerId?: string | undefined;
   modelId?: string | undefined;
   fallbackRoutes?: LlmRouteSelection[] | undefined;
@@ -147,6 +154,7 @@ interface AgentToolDefinition<T> {
   name: string;
   description: string;
   skillId: string;
+  toolsetIds: AgentToolsetId[];
   inputSchema: z.ZodType<T>;
   parameters: Record<string, unknown>;
   execute(args: T, context: AgentToolContext): Promise<unknown>;
@@ -175,6 +183,15 @@ type AgentResolvedLlmRoute = Omit<ResolvedLlmRoute, "source"> & {
   source: "registry" | "env" | "injected";
 };
 
+type AgentEntrySource = "direct" | "ui" | "wechat" | "openclaw";
+type AgentToolsetId =
+  | "workspace"
+  | "memory"
+  | "research-core"
+  | "research-admin"
+  | "research-heavy"
+  | "mcp";
+
 const REASONING_EFFORT_OPTIONS: Array<"default" | OpenAiReasoningEffort> = [
   "default",
   "none",
@@ -190,6 +207,14 @@ const MEMORY_PRIMER_LIMIT = 2;
 const MAX_TOOL_ROUNDS = 6;
 const MAX_FALLBACK_ECHO_CHARS = 120;
 const MAX_RESPONSE_RETRIES = 3;
+const ALL_AGENT_TOOLSETS: AgentToolsetId[] = [
+  "workspace",
+  "memory",
+  "research-core",
+  "research-admin",
+  "research-heavy",
+  "mcp",
+];
 
 const ROLE_DEFINITIONS: AgentRole[] = [
   {
@@ -244,6 +269,7 @@ function defaultSession(): AgentSession {
     updatedAt: nowIso(),
     roleId: "operator",
     skillIds: SKILL_DEFINITIONS.map((skill) => skill.id),
+    lastEntrySource: "direct",
     providerId: undefined,
     modelId: undefined,
     fallbackRoutes: [],
@@ -377,6 +403,28 @@ function buildNextStepHint(inputText: string, executedTools: string[], useChines
   return useChinese
     ? "如果你愿意，可以继续给我下一步目标，我会基于当前上下文接着做。"
     : "If you want, give me the next target and I will continue from the current context.";
+}
+
+function resolveInputSource(input: AgentChatInput): AgentEntrySource {
+  return input.source ?? "direct";
+}
+
+function labelForEntrySource(source: AgentEntrySource): string {
+  const labels: Record<AgentEntrySource, string> = {
+    direct: "Direct",
+    ui: "UI",
+    wechat: "WeChat",
+    openclaw: "OpenClaw",
+  };
+  return labels[source];
+}
+
+function resolveAllowedToolsetsForSource(source: AgentEntrySource): AgentToolsetId[] {
+  if (source === "wechat" || source === "openclaw") {
+    return ["workspace", "memory", "research-core"];
+  }
+
+  return [...ALL_AGENT_TOOLSETS];
 }
 
 function formatStructuredToolReply(
@@ -618,6 +666,8 @@ export class AgentRuntime {
   }
 
   private async buildSessionSummary(senderId: string, session: AgentSession): Promise<AgentSessionSummary> {
+    const activeEntrySource = session.lastEntrySource ?? "direct";
+    const allowedToolsets = resolveAllowedToolsetsForSource(activeEntrySource);
     const role = this.getRoleOrDefault(session.roleId);
     const llmRoute = await this.resolveLlmRouteForSession(session);
     const defaultRoute = await this.llmRegistry.resolvePurpose("agent");
@@ -688,6 +738,10 @@ export class AgentRuntime {
     });
 
     return {
+      activeEntrySource,
+      activeEntryLabel: labelForEntrySource(activeEntrySource),
+      enabledToolsets: allowedToolsets,
+      availableToolsets: [...ALL_AGENT_TOOLSETS],
       roleId: role.id,
       roleLabel: role.label,
       skillIds: normalizedSkillIds,
@@ -745,6 +799,7 @@ export class AgentRuntime {
           sessionId,
           channel: channel || "workspace",
           senderId,
+          activeEntrySource: summary.activeEntrySource,
           roleId: summary.roleId,
           roleLabel: summary.roleLabel,
           skillIds: summary.skillIds,
@@ -927,6 +982,7 @@ export class AgentRuntime {
       return "Please enter a message.";
     }
 
+    await this.setLastEntrySource(input.senderId, resolveInputSource(input));
     const session = await this.getSession(input.senderId);
     const memoryPrimer = await this.memoryService.search(text, MEMORY_PRIMER_LIMIT).catch(() => []);
     const llmRoute = await this.resolveLlmRouteForSession(session);
@@ -977,6 +1033,11 @@ export class AgentRuntime {
                   typeof partial.providerId === "string" && partial.providerId.trim()
                     ? partial.providerId.trim()
                     : undefined;
+                const lastEntrySource =
+                  typeof partial.lastEntrySource === "string" &&
+                  ["direct", "ui", "wechat", "openclaw"].includes(partial.lastEntrySource)
+                    ? (partial.lastEntrySource as AgentEntrySource)
+                    : "direct";
                 const modelId =
                   typeof partial.modelId === "string" && partial.modelId.trim()
                     ? partial.modelId.trim()
@@ -1030,6 +1091,7 @@ export class AgentRuntime {
                       typeof partial.updatedAt === "string" ? partial.updatedAt : nowIso(),
                     roleId,
                     skillIds: skillIds.length ? skillIds : SKILL_DEFINITIONS.map((skill) => skill.id),
+                    lastEntrySource,
                     ...(providerId ? { providerId } : {}),
                     ...(modelId ? { modelId } : {}),
                     fallbackRoutes,
@@ -1093,11 +1155,27 @@ export class AgentRuntime {
     });
   }
 
+  private async setLastEntrySource(senderId: string, source: AgentEntrySource): Promise<void> {
+    await this.mutateStore((store) => {
+      const key = this.buildSessionKey(senderId);
+      const current = store.sessions[key] ?? defaultSession();
+      store.sessions[key] = {
+        ...current,
+        lastEntrySource: source,
+        updatedAt: nowIso(),
+      };
+      return store;
+    });
+  }
+
   private buildInstructions(
+    input: AgentChatInput,
     session: AgentSession,
     llmRoute: AgentResolvedLlmRoute,
     allSkills: RuntimeSkillDefinition[],
   ): string {
+    const source = resolveInputSource(input);
+    const allowedToolsets = resolveAllowedToolsetsForSource(source);
     const role = this.getRoleOrDefault(session.roleId);
     const skillMap = new Map(allSkills.map((skill) => [skill.id, skill]));
     const enabledSkillIds = new Set([
@@ -1119,6 +1197,8 @@ export class AgentRuntime {
       "You are ReAgent, operating inside a host-style workspace runtime.",
       "Act like a tool-using operator agent, not a generic chatbot shell.",
       `Active role: ${role.label} (${role.id})`,
+      `Active entry: ${labelForEntrySource(source)} (${source})`,
+      `Enabled toolsets for this entry: ${allowedToolsets.join(", ")}`,
       `Model route: ${llmRoute.providerLabel}/${llmRoute.modelLabel}${llmRoute.wireApi ? ` via ${llmRoute.wireApi}` : ""}`,
       role.instruction,
       "",
@@ -1130,6 +1210,7 @@ export class AgentRuntime {
       "- When the user sends an article link, paper link, or GitHub link, prefer using the corresponding research tools instead of guessing.",
       "- If you call a tool, wait for its result and then answer with the updated facts.",
       "- Do not invent tool results.",
+      "- Respect the active entry and toolsets. If a tool is unavailable in this entry, do not assume you can call it.",
       "- If the user describes a research direction or preference, use direction_upsert when it should become lasting workspace state.",
       "- If the user sends an article link, start with link_ingest, then use paper_analyze or repo_analyze if the extracted candidates are useful.",
       "- Prefer continuing the research pipeline when one strong candidate is found: link_ingest -> paper_analyze -> repo_analyze -> module_extract.",
@@ -1374,11 +1455,13 @@ export class AgentRuntime {
     input: AgentChatInput,
     session: AgentSession,
   ): AgentToolDefinition<unknown>[] {
+    const allowedToolsets = new Set(resolveAllowedToolsetsForSource(resolveInputSource(input)));
     const tools: AgentToolDefinition<unknown>[] = [
       {
         name: "agent_describe",
         description: "Read the current agent session configuration, including active role and enabled skills.",
         skillId: "workspace-control",
+        toolsetIds: ["workspace"],
         inputSchema: z.object({}),
         parameters: {
           type: "object",
@@ -1391,6 +1474,7 @@ export class AgentRuntime {
         name: "memory_search",
         description: "Search saved memory files for relevant notes, decisions, and prior facts.",
         skillId: "memory-ops",
+        toolsetIds: ["memory"],
         inputSchema: z.object({
           query: z.string().trim().min(1),
           limit: z.number().int().min(1).max(6).optional(),
@@ -1416,6 +1500,7 @@ export class AgentRuntime {
         name: "memory_remember",
         description: "Write a new note into daily or long-term memory.",
         skillId: "memory-ops",
+        toolsetIds: ["memory"],
         inputSchema: z.object({
           content: z.string().trim().min(1),
           scope: z.enum(["daily", "long-term"]).optional(),
@@ -1459,6 +1544,7 @@ export class AgentRuntime {
           name: "research_run",
           description: "Launch a new structured research workflow and return the generated report summary.",
           skillId: "research-ops",
+          toolsetIds: ["research-core"],
           inputSchema: z.object({
             topic: z.string().trim().min(1),
             question: z.string().trim().min(1).optional(),
@@ -1500,6 +1586,7 @@ export class AgentRuntime {
           name: "research_recent",
           description: "List recent research runs stored in the workspace.",
           skillId: "research-ops",
+          toolsetIds: ["research-core"],
           inputSchema: z.object({
             limit: z.number().int().min(1).max(10).optional(),
           }),
@@ -1525,6 +1612,7 @@ export class AgentRuntime {
         name: "direction_list",
         description: "List structured research direction profiles stored in the workspace.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({}),
         parameters: {
           type: "object",
@@ -1539,6 +1627,7 @@ export class AgentRuntime {
         name: "direction_upsert",
         description: "Create or update a structured research direction profile in the workspace.",
         skillId: "research-ops",
+        toolsetIds: ["research-admin"],
         inputSchema: z.object({
           id: z.string().trim().min(1).optional(),
           label: z.string().trim().min(1),
@@ -1597,6 +1686,7 @@ export class AgentRuntime {
         name: "discovery_run",
         description: "Run paper discovery for the configured research directions and optionally push the digest to WeChat.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           directionId: z.string().trim().min(1).optional(),
           maxPapersPerQuery: z.number().int().min(1).max(10).optional(),
@@ -1621,6 +1711,7 @@ export class AgentRuntime {
         name: "discovery_recent",
         description: "List recent discovery runs and digests.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           limit: z.number().int().min(1).max(20).optional(),
         }),
@@ -1642,6 +1733,7 @@ export class AgentRuntime {
         name: "link_ingest",
         description: "Read an article or raw content, extract outbound links, paper candidates, and GitHub repo candidates.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           url: z.string().trim().url().optional(),
           rawContent: z.string().trim().min(1).optional(),
@@ -1665,6 +1757,7 @@ export class AgentRuntime {
         name: "paper_analyze",
         description: "Perform a deep analysis for a paper from a title, paper URL, article URL, or stored source item.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           sourceItemId: z.string().trim().min(1).optional(),
           url: z.string().trim().url().optional(),
@@ -1690,6 +1783,7 @@ export class AgentRuntime {
         name: "repo_analyze",
         description: "Inspect a GitHub repository linked to a paper or article and return a structured repo report.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           url: z.string().trim().url(),
           contextTitle: z.string().trim().min(1).optional(),
@@ -1712,6 +1806,7 @@ export class AgentRuntime {
         name: "module_extract",
         description: "Download a GitHub repository archive and record reusable module paths for later reuse.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           url: z.string().trim().url(),
           contextTitle: z.string().trim().min(1).optional(),
@@ -1737,6 +1832,7 @@ export class AgentRuntime {
         name: "baseline_suggest",
         description: "Suggest likely baselines, reusable modules, and innovation directions for a topic or direction.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           directionId: z.string().trim().min(1).optional(),
           topic: z.string().trim().min(1).optional(),
@@ -1760,6 +1856,7 @@ export class AgentRuntime {
         name: "feedback_record",
         description: "Record explicit user feedback about paper quality, direction preference, or recommendation usefulness.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           feedback: z.enum([
             "useful",
@@ -1831,6 +1928,7 @@ export class AgentRuntime {
         name: "direction_report_generate",
         description: "Generate a reusable direction report with representative papers, baselines, modules, and suggested routes.",
         skillId: "research-ops",
+        toolsetIds: ["research-core"],
         inputSchema: z.object({
           directionId: z.string().trim().min(1).optional(),
           topic: z.string().trim().min(1).optional(),
@@ -1857,6 +1955,7 @@ export class AgentRuntime {
         name: "presentation_generate",
         description: "Generate a markdown draft for a group meeting presentation from recent research reports.",
         skillId: "research-ops",
+        toolsetIds: ["research-heavy"],
         inputSchema: z.object({
           days: z.number().int().min(1).max(30).optional(),
           topic: z.string().trim().min(1).optional(),
@@ -1883,6 +1982,7 @@ export class AgentRuntime {
     const enabledSkills = new Set(session.skillIds);
     return tools
       .filter((tool) => enabledSkills.has(tool.skillId))
+      .filter((tool) => tool.toolsetIds.some((toolsetId) => allowedToolsets.has(toolsetId)))
       .map((tool) => ({
         ...tool,
         execute: (args, context) => tool.execute(args, context),
@@ -1932,13 +2032,14 @@ export class AgentRuntime {
       }
 
       try {
+        const allowedToolsets = new Set(resolveAllowedToolsetsForSource(resolveInputSource(input)));
         const mcpTools =
-          session.skillIds.includes("mcp-ops") && route.wireApi === "responses"
+          session.skillIds.includes("mcp-ops") && allowedToolsets.has("mcp") && route.wireApi === "responses"
             ? await this.mcpRegistry.buildOpenAiTools()
             : [];
         const response = await this.runWithRetry(() =>
           client.startToolTurn({
-            instructions: this.buildInstructions(session, route, allSkills),
+            instructions: this.buildInstructions(input, session, route, allSkills),
             input: this.buildUserInput(input, session, memoryPrimer),
             tools: functionTools,
             mcpTools,
@@ -1985,8 +2086,9 @@ export class AgentRuntime {
     const activeClient = initial.client;
     const activeRoute = initial.route;
     let response = initial.response;
+    const allowedToolsets = new Set(resolveAllowedToolsetsForSource(resolveInputSource(input)));
     const activeMcpTools =
-      session.skillIds.includes("mcp-ops") && activeRoute.wireApi === "responses"
+      session.skillIds.includes("mcp-ops") && allowedToolsets.has("mcp") && activeRoute.wireApi === "responses"
         ? await this.mcpRegistry.buildOpenAiTools()
         : [];
 

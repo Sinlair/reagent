@@ -38,8 +38,15 @@ async function main() {
         id: "multimodal-rag",
         label: "Multimodal RAG",
         summary: "Focus on practical long-document multimodal retrieval.",
+        tlDr: "Prioritize reusable retrieval improvements with measurable gains.",
+        targetProblem: "Improve long-document multimodal retrieval.",
         openQuestions: ["How should retrieval modules be adapted for long documents?"],
         currentGoals: ["Find reusable retrieval modules"],
+        knownBaselines: ["Hybrid retrieval"],
+        evaluationPriorities: ["retrieval recall"],
+        successCriteria: ["Beat the current retrieval baseline on LongDocBench"],
+        shortTermValidationTargets: ["LongDocBench"],
+        blockedDirections: ["image classification"],
       });
 
       const now = new Date().toISOString();
@@ -154,9 +161,14 @@ async function main() {
       assert.equal(report.directionId, "multimodal-rag");
       assert.equal(report.representativePapers.length > 0, true);
       assert.equal(report.commonBaselines.includes("Standard RAG baseline"), true);
+      assert.equal(report.commonBaselines.includes("Hybrid retrieval"), true);
       assert.equal(report.commonModules.includes("src/retrieval"), true);
       assert.equal(report.openProblems.some((item) => item.includes("long documents")), true);
       assert.equal(report.suggestedRoutes.length > 0, true);
+      assert.equal(report.overview.includes("Target problem: Improve long-document multimodal retrieval."), true);
+      assert.equal(report.overview.includes("Success criteria: Beat the current retrieval baseline on LongDocBench"), true);
+      assert.equal(report.suggestedRoutes.some((item) => item.includes("Optimize for: retrieval recall")), true);
+      assert.equal(report.supportingSignals.some((item) => item.includes("Metric: retrieval recall")), true);
 
       const recent = await service.listRecent();
       assert.equal(recent.length, 1);

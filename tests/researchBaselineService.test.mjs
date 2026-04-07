@@ -34,8 +34,12 @@ async function main() {
       const directionService = new ResearchDirectionService(dir);
       const direction = await directionService.upsertProfile({
         label: "Multimodal RAG",
+        targetProblem: "Improve long-document multimodal retrieval quality.",
         openQuestions: ["How to improve retrieval quality?"],
-        currentGoals: ["Find reusable retrieval modules"]
+        currentGoals: ["Find reusable retrieval modules"],
+        knownBaselines: ["RAG"],
+        evaluationPriorities: ["retrieval recall"],
+        successCriteria: ["Beat current retrieval baseline on LongDocBench"],
       });
 
       const discoveryService = new ResearchDiscoveryService(dir, {
@@ -109,8 +113,12 @@ async function main() {
         const report = await baselineService.suggest({ directionId: direction.id });
 
         assert.equal(report.baselines.length > 0, true);
+        assert.equal(report.baselines.some((item) => item.title === "RAG" && item.reason.includes("research brief")), true);
         assert.equal(report.reusableModules.includes("src"), true);
         assert.equal(report.innovationSuggestions.some((item) => item.includes("Investigate")), true);
+        assert.equal(report.innovationSuggestions.some((item) => item.includes("Solve: Improve long-document multimodal retrieval quality.")), true);
+        assert.equal(report.innovationSuggestions.some((item) => item.includes("Validate against: Beat current retrieval baseline on LongDocBench")), true);
+        assert.equal(report.supportingSignals.some((item) => item.includes("Metric: retrieval recall")), true);
       } finally {
         global.fetch = originalFetch;
       }

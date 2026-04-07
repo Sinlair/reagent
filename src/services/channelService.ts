@@ -8,6 +8,7 @@ import { ChatService, type ChatServiceLike } from "./chatService.js";
 import { ResearchFeedbackService } from "./researchFeedbackService.js";
 import type {
   ChannelsStatusSnapshot,
+  WeChatLifecycleAuditEntry,
   WeChatLifecycleState,
   WeChatChannelStatus,
   WeChatInboundResult,
@@ -59,22 +60,6 @@ interface WeChatLifecycleStateRecord {
   reconnectPausedUntil?: string | undefined;
   restartHistory: string[];
   lastError?: string | undefined;
-}
-
-interface WeChatLifecycleAuditEntry {
-  ts?: string | undefined;
-  providerMode: WeChatProviderMode;
-  event:
-    | "service-started"
-    | "service-stopped"
-    | "lifecycle-transition"
-    | "auto-restart-scheduled"
-    | "auto-restart-completed"
-    | "auto-restart-failed"
-    | "auto-restart-blocked";
-  state?: WeChatLifecycleState | undefined;
-  reason?: string | undefined;
-  details?: Record<string, string | number | boolean | null>;
 }
 
 const DEFAULT_HEALTH_MONITOR_INTERVAL_MS = 15_000;
@@ -286,7 +271,7 @@ export class ChannelService {
       this.wechatProviderMode === "openclaw"
         ? (options.openClawBridge ??
           new OpenClawBridgeService(
-            options.openClaw?.cliPath ?? "D:/nodejs/openclaw.cmd",
+            options.openClaw?.cliPath ?? "openclaw",
             options.openClaw?.gatewayUrl ?? "ws://127.0.0.1:18789",
             options.openClaw?.channelId ?? "openclaw-weixin",
             options.openClaw?.token,
@@ -479,6 +464,44 @@ export class ChannelService {
       `${JSON.stringify({ ...entry, ts: nowIso() })}\n`,
       "utf8"
     );
+  }
+
+  async listWeChatLifecycleAudit(limit = 30): Promise<WeChatLifecycleAuditEntry[]> {
+    try {
+      const raw = await readFile(this.lifecycleAuditPath, "utf8");
+      const entries = raw
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          try {
+            return JSON.parse(line) as Partial<WeChatLifecycleAuditEntry>;
+          } catch {
+            return null;
+          }
+        })
+        .filter((entry): entry is Partial<WeChatLifecycleAuditEntry> => Boolean(entry))
+        .filter(
+          (entry) =>
+            typeof entry.providerMode === "string" &&
+            typeof entry.event === "string",
+        )
+        .map((entry) => ({
+          ts: typeof entry.ts === "string" ? entry.ts : undefined,
+          providerMode: entry.providerMode as WeChatProviderMode,
+          event: entry.event as WeChatLifecycleAuditEntry["event"],
+          state: typeof entry.state === "string" ? (entry.state as WeChatLifecycleState) : undefined,
+          reason: typeof entry.reason === "string" ? entry.reason : undefined,
+          details:
+            entry.details && typeof entry.details === "object"
+              ? (entry.details as Record<string, string | number | boolean | null>)
+              : undefined,
+        }));
+
+      return entries.slice(-Math.max(1, Math.min(limit, 100))).reverse();
+    } catch {
+      return [];
+    }
   }
 
   private inferWeChatLifecycle(
@@ -899,6 +922,7 @@ export class ChannelService {
     senderId: string;
     senderName?: string | undefined;
     text: string;
+    source?: "ui" | "wechat" | "openclaw" | undefined;
   }): Promise<WeChatInboundResult> {
     const message = input.text.trim();
     let reply: string;
@@ -1096,7 +1120,10 @@ export class ChannelService {
     } else if (message.startsWith("/")) {
       reply = buildCommandHelpReply();
     } else {
-      reply = await this.chatService.reply(input);
+      reply = await this.chatService.reply({
+        ...input,
+        source: input.source ?? (this.wechatProviderMode === "openclaw" ? "openclaw" : "wechat"),
+      });
     }
 
     return {
@@ -1126,7 +1153,10 @@ export class ChannelService {
       text: message
     });
 
-    const result = await this.handleWeChatInput(input);
+    const result = await this.handleWeChatInput({
+      ...input,
+      source: "ui",
+    });
 
     await this.appendTranscriptMessage({
       direction: "outbound",
@@ -1600,7 +1630,10 @@ export class ChannelService {
         senderName: input.senderName,
         text: message
       });
-      const result = await this.handleWeChatInput(input);
+      const result = await this.handleWeChatInput({
+        ...input,
+        source: "openclaw",
+      });
       const outbound = await this.appendOpenClawOutboundReply(result.reply);
       return {
         ...outbound,
@@ -1609,7 +1642,10 @@ export class ChannelService {
     }
 
     await this.mockProvider!.appendInbound(input.senderId, message, input.senderName);
-    const result = await this.handleWeChatInput(input);
+    const result = await this.handleWeChatInput({
+      ...input,
+      source: "wechat",
+    });
     const outbound = await this.mockProvider!.appendOutbound(result.reply);
     return {
       ...outbound,

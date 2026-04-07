@@ -50,22 +50,115 @@ function uniqueTrimmed(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+const MATCH_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "how",
+  "in",
+  "into",
+  "is",
+  "of",
+  "on",
+  "or",
+  "our",
+  "that",
+  "the",
+  "their",
+  "this",
+  "to",
+  "we",
+  "what",
+  "with",
+]);
+
+function normalizeMatchText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/gu, " ").trim();
+}
+
+function buildMatchTokens(value: string): string[] {
+  return uniqueTrimmed(
+    normalizeMatchText(value)
+      .split(" ")
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3 && !MATCH_STOPWORDS.has(token))
+  );
+}
+
+function matchesResearchSignal(haystack: string, values: Array<string | undefined>): boolean {
+  const normalizedHaystack = normalizeMatchText(haystack);
+  if (!normalizedHaystack) {
+    return false;
+  }
+
+  return values.some((value) => {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    const normalizedValue = normalizeMatchText(trimmed);
+    if (!normalizedValue) {
+      return false;
+    }
+
+    if (normalizedValue.length <= 48 && normalizedHaystack.includes(normalizedValue)) {
+      return true;
+    }
+
+    const tokens = buildMatchTokens(trimmed);
+    if (tokens.length < 2) {
+      return false;
+    }
+
+    const matchedCount = tokens.filter((token) => normalizedHaystack.includes(token)).length;
+    return matchedCount >= Math.min(tokens.length, 3);
+  });
+}
+
+function buildDiscoveryQuestion(profile: ResearchDirectionProfile): string {
+  return uniqueTrimmed([
+    profile.targetProblem ?? "",
+    profile.summary ?? "",
+    profile.tlDr ?? "",
+    profile.currentGoals[0] ?? "",
+    profile.successCriteria[0] ?? "",
+    profile.openQuestions[0] ?? "",
+    profile.label,
+  ])
+    .slice(0, 2)
+    .join(" ");
+}
+
 function buildDirectionRequest(profile: ResearchDirectionProfile, maxPapers: number): ResearchRequest {
   return {
     topic: profile.label,
-    question:
-      profile.summary?.trim() ||
-      profile.currentGoals[0] ||
-      profile.openQuestions[0] ||
-      profile.label,
+    question: buildDiscoveryQuestion(profile),
     maxPapers,
   };
 }
 
 function buildDirectionPlan(profile: ResearchDirectionProfile, query: string): ResearchPlan {
   return {
-    objective: profile.summary?.trim() || profile.label,
-    subquestions: [...profile.openQuestions, ...profile.currentGoals],
+    objective:
+      profile.targetProblem?.trim() ||
+      profile.summary?.trim() ||
+      profile.tlDr?.trim() ||
+      profile.label,
+    subquestions: uniqueTrimmed([
+      ...profile.successCriteria.map((criterion) => `Success criterion: ${criterion}`),
+      ...profile.evaluationPriorities.map((priority) => `Measure: ${priority}`),
+      ...profile.shortTermValidationTargets.map((target) => `Validate: ${target}`),
+      ...profile.currentGoals,
+      ...profile.openQuestions,
+    ]).slice(0, 10),
     searchQueries: [query],
   };
 }
@@ -82,6 +175,15 @@ function scorePreferenceMatches(item: ResearchDiscoveryItem, profile: ResearchDi
   }
   if (item.datasetOrBenchmarkMatched) {
     score += 2;
+  }
+  if (item.targetProblemMatched) {
+    score += 3;
+  }
+  if (item.baselineOrEvaluationMatched) {
+    score += 2;
+  }
+  if (item.blockedTopicMatched) {
+    score -= 5;
   }
   if (item.pdfUrl) {
     score += 1;
@@ -117,13 +219,26 @@ function buildDiscoveryItem(
   queryReason: string,
 ): ResearchDiscoveryItem {
   const normalizedVenue = paper.venue?.toLowerCase() ?? "";
-  const metadataHaystack = `${paper.title} ${paper.abstract ?? ""}`.toLowerCase();
+  const metadataHaystack = `${paper.title} ${paper.abstract ?? ""} ${paper.venue ?? ""}`;
   const venuePreferenceMatched = profile.preferredVenues.some(
     (venue) => normalizedVenue.includes(venue.toLowerCase()),
   );
   const datasetOrBenchmarkMatched = [...profile.preferredDatasets, ...profile.preferredBenchmarks].some(
-    (token) => metadataHaystack.includes(token.toLowerCase()),
+    (token) => normalizeMatchText(metadataHaystack).includes(normalizeMatchText(token)),
   );
+  const targetProblemMatched = matchesResearchSignal(metadataHaystack, [
+    profile.targetProblem,
+    ...profile.successCriteria,
+    ...profile.shortTermValidationTargets,
+  ]);
+  const baselineOrEvaluationMatched = matchesResearchSignal(metadataHaystack, [
+    ...profile.knownBaselines,
+    ...profile.evaluationPriorities,
+  ]);
+  const blockedTopicMatched = matchesResearchSignal(metadataHaystack, [
+    ...profile.excludedTopics,
+    ...profile.blockedDirections,
+  ]);
 
   return {
     ...paper,
@@ -133,6 +248,9 @@ function buildDiscoveryItem(
     queryReason,
     venuePreferenceMatched,
     datasetOrBenchmarkMatched,
+    targetProblemMatched,
+    baselineOrEvaluationMatched,
+    blockedTopicMatched,
   };
 }
 
@@ -163,6 +281,10 @@ function mergeDiscoveryItems(items: ResearchDiscoveryItem[]): ResearchDiscoveryI
       ]).join(" "),
       venuePreferenceMatched: primary.venuePreferenceMatched || secondary.venuePreferenceMatched,
       datasetOrBenchmarkMatched: primary.datasetOrBenchmarkMatched || secondary.datasetOrBenchmarkMatched,
+      targetProblemMatched: primary.targetProblemMatched || secondary.targetProblemMatched,
+      baselineOrEvaluationMatched:
+        primary.baselineOrEvaluationMatched || secondary.baselineOrEvaluationMatched,
+      blockedTopicMatched: primary.blockedTopicMatched || secondary.blockedTopicMatched,
     });
   }
 
@@ -184,9 +306,7 @@ function formatDiscoveryDigest(result: ResearchDiscoveryRunResult): string {
     const metadata = [item.year, item.venue, item.directionLabel].filter(Boolean).join(" | ");
     const why = uniqueTrimmed([
       item.queryReason,
-      ...(item.rankingReasons ?? []).slice(0, 2),
-      item.venuePreferenceMatched ? "Preferred venue match." : "",
-      item.datasetOrBenchmarkMatched ? "Dataset/benchmark match." : "",
+      ...(item.rankingReasons ?? []).slice(0, 3),
     ]).join(" ");
     const codeHint = item.pdfUrl ? "PDF: yes" : "PDF: no";
 
@@ -332,6 +452,9 @@ export class ResearchDiscoveryService {
               score: (paper.score ?? 0) + bonus,
               rankingReasons: uniqueTrimmed([
                 ...(paper.rankingReasons ?? []),
+                discoveryItem.targetProblemMatched ? "Target problem / validation match." : "",
+                discoveryItem.baselineOrEvaluationMatched ? "Baseline / evaluation priority match." : "",
+                discoveryItem.blockedTopicMatched ? "Blocked-topic penalty applied." : "",
                 bonus > 0 ? `Profile bonus: +${bonus}.` : "",
                 ]),
               };

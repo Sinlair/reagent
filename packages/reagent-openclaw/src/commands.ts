@@ -374,6 +374,50 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
   });
 
   api.registerCommand({
+    name: "reagent-direction-reports",
+    description: "List recent direction reports.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const limit = Number.parseInt(ctx.args?.trim() || "5", 10);
+      const { directionReportService } = createPluginServices(api);
+      const reports = await directionReportService.listRecent(Number.isFinite(limit) ? Math.max(1, Math.min(limit, 20)) : 5);
+      if (reports.length === 0) {
+        return textReply("No direction reports are available yet.");
+      }
+
+      return textReply([
+        "Recent direction reports:",
+        ...reports.map((report) => `- ${report.id}: ${report.topic}`),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
+    name: "reagent-direction-report-get",
+    description: "Get one direction report by id.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const reportId = ctx.args?.trim();
+      if (!reportId) {
+        return textReply("Usage: /reagent-direction-report-get <reportId>");
+      }
+
+      const { directionReportService } = createPluginServices(api);
+      const report = await directionReportService.getReport(reportId);
+      if (!report) {
+        return textReply(`Direction report not found: ${reportId}`);
+      }
+
+      return textReply([
+        `Direction report: ${report.topic}`,
+        report.overview,
+        ...(report.commonBaselines.length ? [`Baselines: ${report.commonBaselines.slice(0, 4).join(", ")}`] : []),
+        ...(report.commonModules.length ? [`Modules: ${report.commonModules.slice(0, 4).join(", ")}`] : []),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
     name: "reagent-presentation-generate",
     description: "Generate a markdown and pptx meeting deck from recent direction reports.",
     acceptsArgs: true,
@@ -390,6 +434,94 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
         `Markdown: ${result.filePath}`,
         ...(result.pptxPath ? [`PPTX: ${result.pptxPath}`] : []),
         ...(result.imagePaths.length > 0 ? [`Images: ${result.imagePaths.length}`] : []),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
+    name: "reagent-presentations",
+    description: "List recent presentation artifacts.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const limit = Number.parseInt(ctx.args?.trim() || "5", 10);
+      const { presentationService } = createPluginServices(api);
+      const presentations = await presentationService.listRecent(Number.isFinite(limit) ? Math.max(1, Math.min(limit, 20)) : 5);
+      if (presentations.length === 0) {
+        return textReply("No presentations are available yet.");
+      }
+
+      return textReply([
+        "Recent presentations:",
+        ...presentations.map((item) => `- ${item.id}: ${item.title}`),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
+    name: "reagent-presentation-get",
+    description: "Get one presentation artifact by id.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const presentationId = ctx.args?.trim();
+      if (!presentationId) {
+        return textReply("Usage: /reagent-presentation-get <presentationId>");
+      }
+
+      const { presentationService } = createPluginServices(api);
+      const presentation = await presentationService.getPresentation(presentationId);
+      if (!presentation) {
+        return textReply(`Presentation not found: ${presentationId}`);
+      }
+
+      return textReply([
+        `Presentation: ${presentation.title}`,
+        `Generated: ${presentation.generatedAt}`,
+        `Markdown: ${presentation.filePath}`,
+        ...(presentation.pptxPath ? [`PPTX: ${presentation.pptxPath}`] : []),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
+    name: "reagent-module-assets",
+    description: "List recent module assets.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const limit = Number.parseInt(ctx.args?.trim() || "5", 10);
+      const { moduleAssetService } = createPluginServices(api);
+      const assets = await moduleAssetService.listRecent(Number.isFinite(limit) ? Math.max(1, Math.min(limit, 20)) : 5);
+      if (assets.length === 0) {
+        return textReply("No module assets are available yet.");
+      }
+
+      return textReply([
+        "Recent module assets:",
+        ...assets.map((asset) => `- ${asset.id}: ${asset.owner}/${asset.repo}`),
+      ].join("\n"));
+    }
+  });
+
+  api.registerCommand({
+    name: "reagent-module-asset-get",
+    description: "Get one module asset by id.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const assetId = ctx.args?.trim();
+      if (!assetId) {
+        return textReply("Usage: /reagent-module-asset-get <assetId>");
+      }
+
+      const { moduleAssetService } = createPluginServices(api);
+      const asset = await moduleAssetService.getAsset(assetId);
+      if (!asset) {
+        return textReply(`Module asset not found: ${assetId}`);
+      }
+
+      return textReply([
+        `Module asset: ${asset.id}`,
+        `Repo: ${asset.owner}/${asset.repo}`,
+        ...(asset.selectedPaths.length ? [`Selected paths: ${asset.selectedPaths.join(", ")}`] : []),
+        ...(asset.archivePath ? [`Archive: ${asset.archivePath}`] : []),
       ].join("\n"));
     }
   });

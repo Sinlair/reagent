@@ -22,9 +22,17 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             package/package-lock.json
+            packages/reagent-core/package-lock.json
+            packages/reagent-openclaw/package-lock.json
 
       - name: Install root dependencies
         run: npm ci
+
+      - name: Install reagent-core dependencies
+        run: npm ci --prefix packages/reagent-core
+
+      - name: Install reagent-openclaw dependencies
+        run: npm ci --prefix packages/reagent-openclaw
 
       - name: Install package dependencies
         run: npm ci --prefix package

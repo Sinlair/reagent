@@ -41,6 +41,11 @@ const DirectionParamsSchema = z.object({
   directionId: z.string().trim().min(1)
 });
 
+const DirectionBriefMarkdownImportSchema = z.object({
+  markdown: z.string().trim().min(1),
+  id: z.string().trim().min(1).optional(),
+});
+
 const DiscoveryRunParamsSchema = z.object({
   runId: z.string().trim().min(1)
 });
@@ -157,6 +162,10 @@ const ResearchDirectionProfileSchema = z.object({
   id: z.string().trim().min(1).optional(),
   label: z.string().trim().min(1),
   summary: z.string().trim().min(1).optional(),
+  tlDr: z.string().trim().min(1).optional(),
+  abstract: z.string().trim().min(1).optional(),
+  background: z.string().trim().min(1).optional(),
+  targetProblem: z.string().trim().min(1).optional(),
   subDirections: z.array(z.string().trim().min(1)).optional(),
   excludedTopics: z.array(z.string().trim().min(1)).optional(),
   preferredVenues: z.array(z.string().trim().min(1)).optional(),
@@ -168,6 +177,11 @@ const ResearchDirectionProfileSchema = z.object({
   openQuestions: z.array(z.string().trim().min(1)).optional(),
   currentGoals: z.array(z.string().trim().min(1)).optional(),
   queryHints: z.array(z.string().trim().min(1)).optional(),
+  successCriteria: z.array(z.string().trim().min(1)).optional(),
+  blockedDirections: z.array(z.string().trim().min(1)).optional(),
+  knownBaselines: z.array(z.string().trim().min(1)).optional(),
+  evaluationPriorities: z.array(z.string().trim().min(1)).optional(),
+  shortTermValidationTargets: z.array(z.string().trim().min(1)).optional(),
   priority: z.enum(["primary", "secondary", "watchlist"]).optional(),
   enabled: z.boolean().optional(),
 });
@@ -519,6 +533,14 @@ export async function registerResearchRoutes(
     return reply.send(await researchDiscoverySchedulerService.configure(schedulerConfig));
   });
 
+  app.post("/api/research/discovery/scheduler/tick", async () => {
+    const results = await researchDiscoverySchedulerService.tick();
+    return {
+      results,
+      status: await researchDiscoverySchedulerService.getStatus(),
+    };
+  });
+
   app.post("/api/research/discovery/run", async (request, reply) => {
     const parsed = DiscoveryRunRequestSchema.safeParse(request.body ?? {});
 
@@ -613,6 +635,21 @@ export async function registerResearchRoutes(
     return reply.send(asset);
   });
 
+  app.get("/api/research/module-assets/recent", async (request, reply) => {
+    const parsedQuery = RecentReportsQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsedQuery.success) {
+      return reply.code(400).send({
+        message: "Invalid module asset query",
+        issues: parsedQuery.error.flatten()
+      });
+    }
+
+    return reply.send({
+      assets: await moduleAssetService.listRecent(parsedQuery.data.limit)
+    });
+  });
+
   app.get("/api/research/presentations/:presentationId", async (request, reply) => {
     const parsedParams = PresentationParamsSchema.safeParse(request.params);
 
@@ -631,6 +668,21 @@ export async function registerResearchRoutes(
     }
 
     return reply.send(presentation);
+  });
+
+  app.get("/api/research/presentations/recent", async (request, reply) => {
+    const parsedQuery = RecentReportsQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsedQuery.success) {
+      return reply.code(400).send({
+        message: "Invalid presentation query",
+        issues: parsedQuery.error.flatten()
+      });
+    }
+
+    return reply.send({
+      presentations: await presentationService.listRecent(parsedQuery.data.limit)
+    });
   });
 
   app.get("/api/research/direction-reports/recent", async (request, reply) => {
@@ -702,6 +754,27 @@ export async function registerResearchRoutes(
     return reply.send(profile);
   });
 
+  app.get("/api/research/directions/:directionId/brief-markdown", async (request, reply) => {
+    const parsedParams = DirectionParamsSchema.safeParse(request.params);
+
+    if (!parsedParams.success) {
+      return reply.code(400).send({
+        message: "Invalid research direction id",
+        issues: parsedParams.error.flatten()
+      });
+    }
+
+    const markdown = await researchDirectionService.exportBriefMarkdown(parsedParams.data.directionId);
+    if (!markdown) {
+      return reply.code(404).send({
+        message: "Research direction not found"
+      });
+    }
+
+    reply.header("Content-Type", "text/markdown; charset=utf-8");
+    return reply.send(markdown);
+  });
+
   app.get("/api/research/directions/:directionId/plan", async (request, reply) => {
     const parsedParams = DirectionParamsSchema.safeParse(request.params);
 
@@ -737,6 +810,28 @@ export async function registerResearchRoutes(
 
     const profile = await researchDirectionService.upsertProfile(parsed.data);
     return reply.code(201).send(profile);
+  });
+
+  app.post("/api/research/directions/import-markdown", async (request, reply) => {
+    const parsed = DirectionBriefMarkdownImportSchema.safeParse(request.body ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid research brief markdown payload",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    try {
+      const profile = await researchDirectionService.importBriefMarkdown(parsed.data.markdown, {
+        ...(parsed.data.id ? { id: parsed.data.id } : {}),
+      });
+      return reply.code(201).send(profile);
+    } catch (error) {
+      return reply.code(400).send({
+        message: error instanceof Error ? error.message : "Failed to import research brief markdown"
+      });
+    }
   });
 
   app.delete("/api/research/directions/:directionId", async (request, reply) => {

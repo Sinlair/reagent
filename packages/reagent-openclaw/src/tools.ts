@@ -370,6 +370,66 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
   });
 
   api.registerTool({
+    name: "reagent_direction_report_recent",
+    label: "ReAgent Direction Reports",
+    description: "List recent reusable direction reports from the plugin workspace.",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 20 }
+      },
+      additionalProperties: false
+    },
+    async execute(_toolCallId, params) {
+      const { directionReportService } = createPluginServices(api);
+      const reports = await directionReportService.listRecent(
+        typeof params.limit === "number" ? params.limit : 5
+      );
+
+      return textToolResult(
+        reports.length
+          ? [
+              "Recent direction reports:",
+              ...reports.map((report) => `- ${report.id}: ${report.topic}`),
+            ].join("\n")
+          : "No direction reports are available yet.",
+        { count: reports.length, reports }
+      );
+    }
+  });
+
+  api.registerTool({
+    name: "reagent_direction_report_get",
+    label: "ReAgent Direction Report Detail",
+    description: "Get one reusable direction report by id.",
+    parameters: {
+      type: "object",
+      properties: {
+        reportId: { type: "string", minLength: 1 }
+      },
+      required: ["reportId"],
+      additionalProperties: false
+    },
+    async execute(_toolCallId, params) {
+      const { directionReportService } = createPluginServices(api);
+      const report = await directionReportService.getReport(String(params.reportId));
+      if (!report) {
+        return textToolResult("Direction report not found.", { reportId: params.reportId, found: false });
+      }
+
+      return textToolResult(
+        [
+          `Direction report: ${report.topic}`,
+          report.overview,
+          ...(report.commonBaselines.length ? [`Baselines: ${report.commonBaselines.slice(0, 4).join(", ")}`] : []),
+          ...(report.commonModules.length ? [`Modules: ${report.commonModules.slice(0, 4).join(", ")}`] : []),
+        ].join("\n"),
+        report
+      );
+    }
+  });
+
+  api.registerTool({
     name: "reagent_presentation_generate",
     label: "ReAgent Presentation Generate",
     description: "Generate a markdown and pptx meeting deck from recent direction reports.",
@@ -396,6 +456,126 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
           ...(result.pptxPath ? [`PPTX: ${result.pptxPath}`] : []),
         ].join("\n"),
         result
+      );
+    }
+  });
+
+  api.registerTool({
+    name: "reagent_presentation_recent",
+    label: "ReAgent Presentations",
+    description: "List recent presentation artifacts from the plugin workspace.",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 20 }
+      },
+      additionalProperties: false
+    },
+    async execute(_toolCallId, params) {
+      const { presentationService } = createPluginServices(api);
+      const presentations = await presentationService.listRecent(
+        typeof params.limit === "number" ? params.limit : 5
+      );
+
+      return textToolResult(
+        presentations.length
+          ? [
+              "Recent presentations:",
+              ...presentations.map((item) => `- ${item.id}: ${item.title}`),
+            ].join("\n")
+          : "No presentations are available yet.",
+        { count: presentations.length, presentations }
+      );
+    }
+  });
+
+  api.registerTool({
+    name: "reagent_presentation_get",
+    label: "ReAgent Presentation Detail",
+    description: "Get one presentation artifact by id.",
+    parameters: {
+      type: "object",
+      properties: {
+        presentationId: { type: "string", minLength: 1 }
+      },
+      required: ["presentationId"],
+      additionalProperties: false
+    },
+    async execute(_toolCallId, params) {
+      const { presentationService } = createPluginServices(api);
+      const presentation = await presentationService.getPresentation(String(params.presentationId));
+      if (!presentation) {
+        return textToolResult("Presentation not found.", { presentationId: params.presentationId, found: false });
+      }
+
+      return textToolResult(
+        [
+          `Presentation: ${presentation.title}`,
+          `Generated: ${presentation.generatedAt}`,
+          `Markdown: ${presentation.filePath}`,
+          ...(presentation.pptxPath ? [`PPTX: ${presentation.pptxPath}`] : []),
+        ].join("\n"),
+        presentation
+      );
+    }
+  });
+
+  api.registerTool({
+    name: "reagent_module_asset_recent",
+    label: "ReAgent Module Assets",
+    description: "List recent reusable module assets from the plugin workspace.",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 20 }
+      },
+      additionalProperties: false
+    },
+    async execute(_toolCallId, params) {
+      const { moduleAssetService } = createPluginServices(api);
+      const assets = await moduleAssetService.listRecent(
+        typeof params.limit === "number" ? params.limit : 5
+      );
+
+      return textToolResult(
+        assets.length
+          ? [
+              "Recent module assets:",
+              ...assets.map((asset) => `- ${asset.id}: ${asset.owner}/${asset.repo}`),
+            ].join("\n")
+          : "No module assets are available yet.",
+        { count: assets.length, assets }
+      );
+    }
+  });
+
+  api.registerTool({
+    name: "reagent_module_asset_get",
+    label: "ReAgent Module Asset Detail",
+    description: "Get one reusable module asset by id.",
+    parameters: {
+      type: "object",
+      properties: {
+        assetId: { type: "string", minLength: 1 }
+      },
+      required: ["assetId"],
+      additionalProperties: false
+    },
+    async execute(_toolCallId, params) {
+      const { moduleAssetService } = createPluginServices(api);
+      const asset = await moduleAssetService.getAsset(String(params.assetId));
+      if (!asset) {
+        return textToolResult("Module asset not found.", { assetId: params.assetId, found: false });
+      }
+
+      return textToolResult(
+        [
+          `Module asset: ${asset.id}`,
+          `Repo: ${asset.owner}/${asset.repo}`,
+          ...(asset.selectedPaths.length ? [`Selected paths: ${asset.selectedPaths.join(", ")}`] : []),
+          ...(asset.archivePath ? [`Archive: ${asset.archivePath}`] : []),
+        ].join("\n"),
+        asset
       );
     }
   });

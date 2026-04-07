@@ -25,7 +25,10 @@ export interface ResearchDiscoverySchedulerStatus {
   enabled: boolean;
   dailyTimeLocal: string;
   senderId?: string | undefined;
+  senderName?: string | undefined;
   directionIds: string[];
+  topK: number;
+  maxPapersPerQuery: number;
   lastRunDateByDirection: Record<string, string>;
   updatedAt?: string | undefined;
 }

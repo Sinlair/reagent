@@ -4,16 +4,28 @@ const NAV_STORAGE_KEY = "reagent-ui-nav-collapsed";
 const UI_AGENT_SENDER_ID = "ui-wechat-user";
 
 const state = {
-  activeTab: "chat",
+  activeTab: "landing",
   latestReport: null,
+  researchBriefs: [],
+  selectedResearchBrief: null,
+  selectedResearchBriefId: null,
   selectedDirectionReport: null,
   selectedDirectionReportId: null,
+  selectedPresentation: null,
+  selectedPresentationId: null,
+  selectedModuleAsset: null,
+  selectedModuleAssetId: null,
   latestMessages: [],
   transportMessages: [],
   recentReports: [],
+  discoveryScheduler: null,
+  discoveryRuns: [],
   directionReports: [],
+  presentations: [],
+  moduleAssets: [],
   feedbackItems: [],
   feedbackSummary: null,
+  wechatLifecycleAudit: [],
   researchTasks: [],
   lang: "zh",
   navCollapsed: false,
@@ -92,6 +104,15 @@ const els = {
   settingsOverview: document.querySelector("#settings-overview"),
   chatLatestReport: document.querySelector("#chat-latest-report"),
   chatSessionList: document.querySelector("#chat-session-list"),
+  workspacePulseKicker: document.querySelector("#workspace-pulse-kicker"),
+  workspacePulseHeadline: document.querySelector("#workspace-pulse-headline"),
+  workspacePulseSubtitle: document.querySelector("#workspace-pulse-subtitle"),
+  workspacePulseMetrics: document.querySelector("#workspace-pulse-metrics"),
+  workspacePulseActions: document.querySelector("#workspace-pulse-actions"),
+  landingCommandBar: document.querySelector("#landing-command-bar"),
+  landingLiveCards: document.querySelector("#landing-live-cards"),
+  landingLatestReport: document.querySelector("#landing-latest-report"),
+  landingSessionList: document.querySelector("#landing-session-list"),
   overviewCards: document.querySelector("#overview-cards"),
   overviewActivity: document.querySelector("#overview-activity"),
   overviewLatestReport: document.querySelector("#overview-latest-report"),
@@ -102,6 +123,7 @@ const els = {
   pairingQr: document.querySelector("#pairing-qr"),
   pairingHint: document.querySelector("#pairing-hint"),
   channelNotes: document.querySelector("#channel-notes"),
+  channelLifecycleAudit: document.querySelector("#channel-lifecycle-audit"),
   wechatMessages: document.querySelector("#wechat-messages"),
   wechatChannelMessages: document.querySelector("#wechat-channel-messages"),
   wechatDisplayName: document.querySelector("#wechat-display-name"),
@@ -110,16 +132,57 @@ const els = {
   wechatLogout: document.querySelector("#wechat-logout"),
   wechatMessage: document.querySelector("#wechat-message"),
   researchSessionList: document.querySelector("#research-session-list"),
+  discoverySchedulerForm: document.querySelector("#discovery-scheduler-form"),
+  discoverySchedulerTime: document.querySelector("#discovery-scheduler-time"),
+  discoverySchedulerEnabled: document.querySelector("#discovery-scheduler-enabled"),
+  discoverySchedulerSenderId: document.querySelector("#discovery-scheduler-sender-id"),
+  discoverySchedulerSenderName: document.querySelector("#discovery-scheduler-sender-name"),
+  discoverySchedulerDirectionIds: document.querySelector("#discovery-scheduler-direction-ids"),
+  discoverySchedulerTopK: document.querySelector("#discovery-scheduler-topk"),
+  discoverySchedulerMaxPapers: document.querySelector("#discovery-scheduler-max-papers"),
+  discoverySchedulerRun: document.querySelector("#discovery-scheduler-run"),
+  discoverySchedulerStatus: document.querySelector("#discovery-scheduler-status"),
+  discoverySchedulerRuns: document.querySelector("#discovery-scheduler-runs"),
   researchTaskList: document.querySelector("#research-task-list"),
   reportTaskId: document.querySelector("#report-task-id"),
   researchTopic: document.querySelector("#research-topic"),
   researchQuestion: document.querySelector("#research-question"),
   researchReport: document.querySelector("#research-report"),
+  researchBriefForm: document.querySelector("#research-brief-form"),
+  researchBriefId: document.querySelector("#research-brief-id"),
+  researchBriefLabel: document.querySelector("#research-brief-label"),
+  researchBriefSummary: document.querySelector("#research-brief-summary"),
+  researchBriefTlDr: document.querySelector("#research-brief-tldr"),
+  researchBriefBackground: document.querySelector("#research-brief-background"),
+  researchBriefTargetProblem: document.querySelector("#research-brief-target-problem"),
+  researchBriefSuccessCriteria: document.querySelector("#research-brief-success-criteria"),
+  researchBriefKnownBaselines: document.querySelector("#research-brief-known-baselines"),
+  researchBriefEvaluationPriorities: document.querySelector("#research-brief-evaluation-priorities"),
+  researchBriefShortTermValidationTargets: document.querySelector("#research-brief-short-term-validation-targets"),
+  researchBriefCurrentGoals: document.querySelector("#research-brief-current-goals"),
+  researchBriefOpenQuestions: document.querySelector("#research-brief-open-questions"),
+  researchBriefQueryHints: document.querySelector("#research-brief-query-hints"),
+  researchBriefBlockedDirections: document.querySelector("#research-brief-blocked-directions"),
+  researchBriefPreferredVenues: document.querySelector("#research-brief-preferred-venues"),
+  researchBriefPreferredDatasets: document.querySelector("#research-brief-preferred-datasets"),
+  researchBriefPreferredBenchmarks: document.querySelector("#research-brief-preferred-benchmarks"),
+  researchBriefPreferredPaperStyles: document.querySelector("#research-brief-preferred-paper-styles"),
+  researchBriefPriority: document.querySelector("#research-brief-priority"),
+  researchBriefEnabled: document.querySelector("#research-brief-enabled"),
+  researchBriefMarkdownForm: document.querySelector("#research-brief-markdown-form"),
+  researchBriefMarkdown: document.querySelector("#research-brief-markdown"),
+  researchBriefList: document.querySelector("#research-brief-list"),
+  researchBriefStatus: document.querySelector("#research-brief-status"),
+  researchBriefNew: document.querySelector("#research-brief-new"),
+  researchBriefExport: document.querySelector("#research-brief-export"),
+  researchBriefDelete: document.querySelector("#research-brief-delete"),
   directionReportForm: document.querySelector("#direction-report-form"),
   directionReportTopic: document.querySelector("#direction-report-topic"),
   directionReportId: document.querySelector("#direction-report-id"),
   directionReportDays: document.querySelector("#direction-report-days"),
   directionReportList: document.querySelector("#direction-report-list"),
+  presentationList: document.querySelector("#presentation-list"),
+  moduleAssetList: document.querySelector("#module-asset-list"),
   feedbackForm: document.querySelector("#research-feedback-form"),
   feedbackSignal: document.querySelector("#feedback-signal"),
   feedbackTopic: document.querySelector("#feedback-topic"),
@@ -310,7 +373,65 @@ async function requestJson(url, options) {
     throw new Error(payload?.message || `${response.status} ${response.statusText}`);
   }
 
+  if (response.status === 204) {
+    return null;
+  }
+
   return response.json();
+}
+
+async function requestText(url, options) {
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || `${response.status} ${response.statusText}`);
+  }
+
+  return response.text();
+}
+
+function parseListInput(value) {
+  if (!value) return [];
+  return [
+    ...new Set(
+      String(value)
+        .split(/\n|,/u)
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  ];
+}
+
+function formatListInput(values) {
+  return Array.isArray(values) ? values.join("\n") : "";
+}
+
+function clearResearchBriefStatus() {
+  if (!els.researchBriefStatus) return;
+  els.researchBriefStatus.hidden = true;
+  els.researchBriefStatus.className = "brief-status";
+  els.researchBriefStatus.textContent = "";
+}
+
+function setResearchBriefStatus(message, tone = "") {
+  if (!els.researchBriefStatus) return;
+  els.researchBriefStatus.hidden = false;
+  els.researchBriefStatus.className = `brief-status${tone ? ` brief-status--${tone}` : ""}`;
+  els.researchBriefStatus.textContent = message;
+}
+
+function clearResearchSelections() {
+  state.selectedResearchBrief = null;
+  state.selectedResearchBriefId = null;
+  state.selectedDirectionReport = null;
+  state.selectedDirectionReportId = null;
+  state.selectedPresentation = null;
+  state.selectedPresentationId = null;
+  state.selectedModuleAsset = null;
+  state.selectedModuleAssetId = null;
+  state.selectedResearchTask = null;
+  state.selectedResearchTaskId = null;
 }
 
 function getLatestSummary() {
@@ -357,21 +478,21 @@ function renderOverviewCards(target, compact = false) {
   const cards = [
     {
       tab: "overview",
-      label: state.lang === "zh" ? "\u8fd0\u884c\u5065\u5eb7" : "Runtime Health",
+      label: state.lang === "zh" ? "\u5de5\u4f5c\u533a\u5065\u5eb7" : "Workspace Health",
       value: state.health?.status?.toUpperCase?.() || "-",
       hint: state.health?.agent || (state.lang === "zh" ? "\u7b49\u5f85\u5065\u5eb7\u68c0\u67e5" : "Waiting for health"),
       tone: state.health?.status === "ok" ? "ok" : ""
     },
     {
       tab: "channels",
-      label: state.lang === "zh" ? "\u5fae\u4fe1\u4f20\u8f93" : "WeChat Transport",
+      label: state.lang === "zh" ? "\u4ea4\u4ed8\u6e20\u9053" : "Delivery Channel",
       value: transport.value,
       hint: transport.hint || "-",
       tone: transport.tone
     },
     {
       tab: "agents",
-      label: state.lang === "zh" ? "Agent Runtime" : "Agent Runtime",
+      label: state.lang === "zh" ? "\u7814\u7a76\u6a21\u5f0f" : "Research Mode",
       value: state.agentSession?.roleLabel || state.agentSession?.roleId || "-",
       hint:
         state.agentSession?.skillLabels?.length
@@ -381,14 +502,15 @@ function renderOverviewCards(target, compact = false) {
     },
     {
       tab: "research",
-      label: state.lang === "zh" ? "\u7814\u7a76\u4efb\u52a1" : "Research Runs",
+      label: state.lang === "zh" ? "\u7814\u7a76\u4ea7\u51fa" : "Research Outputs",
       value: String(state.recentReports.length),
       hint: getLatestSummary()?.generatedAt ? formatRelativeTime(getLatestSummary().generatedAt) : t("empty.report", "No report yet."),
       tone: ""
     }
   ];
 
-  target.className = compact ? "ov-cards ov-cards--compact" : "ov-cards";
+  const variantClass = target.dataset.cardVariant ? ` ov-cards--${target.dataset.cardVariant}` : "";
+  target.className = `${compact ? "ov-cards ov-cards--compact" : "ov-cards"}${variantClass}`;
   target.innerHTML = cards
     .map(
       (card, index) => `
@@ -404,13 +526,293 @@ function renderOverviewCards(target, compact = false) {
   bindOpenTabButtons(target);
 }
 
+function getActiveResearchTask() {
+  return (state.researchTasks || []).find((task) => !["completed", "failed"].includes(task.state)) || null;
+}
+
+function renderWorkspacePulse() {
+  if (!els.workspacePulseMetrics || !els.workspacePulseActions) return;
+
+  const summary = getLatestSummary();
+  const activeTask = getActiveResearchTask();
+  const transport = getTransportStatus(state.channels?.wechat);
+  const healthOk = state.health?.status === "ok";
+  const memoryFiles = state.memoryStatus?.files ?? 0;
+  const briefsCount = state.researchBriefs.length;
+  const reportsCount = state.recentReports.length;
+
+  let headline = state.lang === "zh"
+    ? "\u5de5\u4f5c\u533a\u5df2\u5c31\u7eea\uff0c\u53ef\u4ee5\u53d1\u8d77\u7b2c\u4e00\u6761\u7814\u7a76\u6d41\u6c34\u7ebf\u3002"
+    : "Workspace is ready to launch the first research run.";
+  let subtitle = memoryFiles
+    ? (
+        state.lang === "zh"
+          ? `\u77e5\u8bc6\u5e93\u91cc\u5df2\u6709 ${memoryFiles} \u4e2a memory \u6587\u4ef6\uff0c\u53ef\u4ee5\u5e26\u7740\u4e0a\u4e0b\u6587\u76f4\u63a5\u5f00\u59cb\u3002`
+          : `The vault already has ${memoryFiles} memory files, so you can start with context.`
+      )
+    : (state.lang === "zh"
+        ? "\u53ef\u4ee5\u4ece research brief\u3001knowledge vault \u6216\u65b0\u4e3b\u9898\u76f4\u63a5\u8d77\u6b65\u3002"
+        : "Start from a research brief, the vault, or a fresh topic.");
+
+  if (!healthOk) {
+    headline = state.lang === "zh"
+      ? "\u8fd0\u884c\u72b6\u6001\u9700\u8981\u5148\u6062\u590d\uff0c\u518d\u7ee7\u7eed\u4e0b\u4e00\u6b65\u7814\u7a76\u52a8\u4f5c\u3002"
+      : "Runtime health needs attention before the next research move.";
+    subtitle =
+      state.health?.agent ||
+      state.health?.status ||
+      (state.lang === "zh" ? "\u8bf7\u5148\u68c0\u67e5 runtime \u5065\u5eb7\u72b6\u6001\u3002" : "Inspect runtime health before continuing.");
+  } else if (transport.tone === "warn" || transport.tone === "danger") {
+    headline = state.lang === "zh"
+      ? "\u4ea4\u4ed8\u901a\u9053\u9700\u8981\u5904\u7406\uff0c\u907f\u514d\u7814\u7a76\u4ea7\u51fa\u5361\u5728\u6700\u540e\u4e00\u8df3\u3002"
+      : "Delivery channel needs attention before the next handoff.";
+    subtitle =
+      state.channels?.wechat?.lastError ||
+      state.channels?.wechat?.lastMessage ||
+      transport.hint ||
+      (state.lang === "zh" ? "\u8bf7\u68c0\u67e5\u914d\u5bf9\u3001\u8fde\u63a5\u6216 provider \u72b6\u6001\u3002" : "Check pairing, connectivity, or provider state.");
+  } else if (activeTask) {
+    headline = state.lang === "zh"
+      ? "\u7814\u7a76\u8fd0\u884c\u8fdb\u884c\u4e2d\uff0c\u8bc1\u636e\u8fd8\u5728\u7d2f\u79ef\u3002"
+      : "A research run is in flight and evidence is still accumulating.";
+    subtitle = `${formatResearchTaskState(activeTask)} · ${trimText(activeTask.topic || activeTask.taskId || "-", 92)}`;
+  } else if (summary) {
+    headline = state.lang === "zh"
+      ? "\u6700\u65b0\u4ea7\u51fa\u5df2\u5c31\u7eea\uff0c\u53ef\u4ee5\u7ee7\u7eed\u5ba1\u9605\u6216\u4ea4\u4ed8\u3002"
+      : "The latest output is ready for review or delivery.";
+    subtitle = `${trimText(summary.topic || summary.taskId || "-", 92)} · ${formatRelativeTime(summary.generatedAt)}`;
+  }
+
+  if (els.workspacePulseKicker) {
+    els.workspacePulseKicker.textContent = state.lang === "zh" ? "\u5de5\u4f5c\u533a\u8109\u51b2" : "Workspace Pulse";
+  }
+  if (els.workspacePulseHeadline) {
+    els.workspacePulseHeadline.textContent = headline;
+  }
+  if (els.workspacePulseSubtitle) {
+    els.workspacePulseSubtitle.textContent = subtitle;
+  }
+
+  const metrics = [
+    {
+      label: state.lang === "zh" ? "\u6d3b\u8dc3\u8fd0\u884c" : "Active Run",
+      value: activeTask ? formatResearchTaskState(activeTask) : (state.lang === "zh" ? "\u7a7a\u95f2" : "Idle"),
+      hint: activeTask
+        ? trimText(activeTask.topic || activeTask.taskId || "-", 72)
+        : (state.lang === "zh" ? `\u5df2\u8ffd\u8e2a ${reportsCount} \u6761\u4ea7\u51fa` : `${reportsCount} outputs tracked`),
+      tone: activeTask ? "warn" : ""
+    },
+    {
+      label: state.lang === "zh" ? "\u6700\u65b0\u4ea7\u51fa" : "Latest Output",
+      value: summary?.generatedAt ? formatRelativeTime(summary.generatedAt) : (state.lang === "zh" ? "\u6682\u65e0" : "None yet"),
+      hint: summary
+        ? trimText(summary.topic || summary.taskId || "-", 72)
+        : (state.lang === "zh" ? "\u5148\u542f\u52a8\u4e00\u6761 research run" : "Launch the first research run"),
+      tone: summary ? "ok" : ""
+    },
+    {
+      label: state.lang === "zh" ? "Brief \u5e93" : "Brief Library",
+      value: String(briefsCount),
+      hint: briefsCount
+        ? (state.lang === "zh" ? `\u5df2\u4fdd\u5b58 ${briefsCount} \u4e2a structured brief` : `${briefsCount} structured briefs ready`)
+        : (state.lang === "zh" ? "\u521b\u5efa\u7b2c\u4e00\u4e2a research brief" : "Create the first research brief"),
+      tone: briefsCount ? "ok" : ""
+    },
+    {
+      label: state.lang === "zh" ? "\u77e5\u8bc6\u5e93" : "Knowledge Vault",
+      value: String(memoryFiles),
+      hint:
+        state.memoryStatus?.searchMode ||
+        (state.lang === "zh" ? "\u6682\u672a\u52a0\u8f7d search mode" : "Search mode not loaded"),
+      tone: memoryFiles ? "ok" : ""
+    }
+  ];
+
+  els.workspacePulseMetrics.innerHTML = metrics
+    .map(
+      (metric) => `
+        <article class="pulse-metric ${metric.tone ? `pulse-metric--${metric.tone}` : ""}">
+          <span>${escapeHtml(metric.label)}</span>
+          <strong>${escapeHtml(metric.value)}</strong>
+          <small>${escapeHtml(metric.hint)}</small>
+        </article>
+      `
+    )
+    .join("");
+
+  const actions = [];
+  if (summary?.taskId) {
+    actions.push({
+      label: state.lang === "zh" ? "\u6253\u5f00\u6700\u65b0\u4ea7\u51fa" : "Open latest output",
+      hint: trimText(summary.topic || summary.taskId, 76),
+      taskId: summary.taskId,
+      tone: "primary"
+    });
+  } else {
+    actions.push({
+      label: state.lang === "zh" ? "\u53d1\u8d77\u7814\u7a76" : "Start research",
+      hint: state.lang === "zh" ? "\u8fdb\u5165\u8bc1\u636e\u5de5\u4f5c\u53f0\u63d0\u4ea4\u65b0\u4efb\u52a1" : "Open the evidence workspace and queue a new run.",
+      tab: "research",
+      tone: "primary"
+    });
+  }
+
+  if (activeTask) {
+    actions.push({
+      label: state.lang === "zh" ? "\u8ddf\u8fdb\u6d3b\u8dc3\u8fd0\u884c" : "Follow active run",
+      hint: `${formatResearchTaskState(activeTask)} · ${trimText(activeTask.topic || activeTask.taskId || "-", 64)}`,
+      tab: "research"
+    });
+  } else if (briefsCount) {
+    actions.push({
+      label: state.lang === "zh" ? "\u6253\u5f00 Brief \u5e93" : "Open brief library",
+      hint: state.lang === "zh" ? `\u5df2\u7ecf\u6709 ${briefsCount} \u4e2a brief \u53ef\u590d\u7528` : `${briefsCount} briefs are ready to reuse`,
+      tab: "research"
+    });
+  } else {
+    actions.push({
+      label: state.lang === "zh" ? "\u6253\u5f00\u77e5\u8bc6\u5e93" : "Open knowledge vault",
+      hint: state.lang === "zh" ? "\u5148\u62ff\u56de\u5de5\u4f5c\u4e0a\u4e0b\u6587" : "Bring working context back into view.",
+      tab: "memory"
+    });
+  }
+
+  actions.push(
+    transport.tone === "warn" || transport.tone === "danger"
+      ? {
+          label: state.lang === "zh" ? "\u68c0\u67e5\u4ea4\u4ed8\u901a\u9053" : "Inspect delivery channel",
+          hint: transport.hint || state.channels?.wechat?.providerMode || "-",
+          tab: "channels"
+        }
+      : {
+          label: state.lang === "zh" ? "\u6253\u5f00\u6307\u6325\u4e2d\u5fc3" : "Open command center",
+          hint: state.lang === "zh" ? "\u7edf\u4e00\u67e5\u770b health\u3001memory \u548c delivery \u4fe1\u53f7" : "Review health, memory, and delivery signals together.",
+          tab: "overview"
+        }
+  );
+
+  els.workspacePulseActions.innerHTML = actions
+    .map(
+      (action) => `
+        <button
+          class="pulse-action ${action.tone ? `pulse-action--${action.tone}` : ""}"
+          type="button"
+          ${action.taskId ? `data-task-id="${escapeHtml(action.taskId)}"` : `data-open-tab="${escapeHtml(action.tab)}"`}
+        >
+          <strong>${escapeHtml(action.label)}</strong>
+          <span>${escapeHtml(action.hint)}</span>
+        </button>
+      `
+    )
+    .join("");
+
+  bindOpenTabButtons(els.workspacePulseActions);
+  bindReportButtons(els.workspacePulseActions);
+}
+
+function renderLandingCommandBar() {
+  if (!els.landingCommandBar) return;
+
+  const summary = getLatestSummary();
+  const activeTask = getActiveResearchTask();
+  const transport = getTransportStatus(state.channels?.wechat);
+  const memoryFiles = state.memoryStatus?.files ?? 0;
+  const briefsCount = state.researchBriefs.length;
+  const deploymentModes = state.runtimeMeta?.deployment?.alwaysOn?.modes || [];
+  const deploymentMeta = deploymentModes.map((mode) => mode.label).join(" / ");
+
+  const cards = [
+    summary?.taskId
+      ? {
+          eyebrow: state.lang === "zh" ? "\u6700\u65b0\u4ea7\u51fa" : "Latest Output",
+          title: state.lang === "zh" ? "\u7ee7\u7eed\u9605\u8bfb\u6700\u65b0 synthesis" : "Review the latest synthesis",
+          meta: `${formatRelativeTime(summary.generatedAt)} · ${trimText(summary.topic || summary.taskId, 52)}`,
+          taskId: summary.taskId,
+          tone: "accent"
+        }
+      : {
+          eyebrow: state.lang === "zh" ? "\u7814\u7a76\u5165\u53e3" : "Research Entry",
+          title: state.lang === "zh" ? "\u53d1\u8d77\u7b2c\u4e00\u6761 research run" : "Start the first research run",
+          meta: state.lang === "zh" ? "\u8fdb\u5165\u8bc1\u636e\u5de5\u4f5c\u53f0\uff0c\u63d0\u4ea4\u4e3b\u9898\u548c\u95ee\u9898" : "Open the evidence workspace and queue a topic.",
+          tab: "research",
+          tone: "accent"
+        },
+    {
+      eyebrow: state.lang === "zh" ? "Research Briefs" : "Research Briefs",
+      title: briefsCount
+        ? (state.lang === "zh" ? "\u7ef4\u62a4 structured brief \u5e93" : "Manage the structured brief library")
+        : (state.lang === "zh" ? "\u521b\u5efa\u7b2c\u4e00\u4e2a research brief" : "Create the first research brief"),
+      meta: briefsCount
+        ? (state.lang === "zh" ? `${briefsCount} \u4e2a brief \u5df2\u53ef\u7528` : `${briefsCount} briefs are available`)
+        : (state.lang === "zh" ? "\u7528 brief \u628a\u76ee\u6807\u3001baseline \u548c\u9a8c\u8bc1\u6807\u51c6\u7a33\u5b9a\u4e0b\u6765" : "Stabilize goals, baselines, and evaluation criteria."),
+      tab: "research"
+    },
+    {
+      eyebrow: state.lang === "zh" ? "\u77e5\u8bc6\u5e93" : "Knowledge Vault",
+      title: memoryFiles
+        ? (state.lang === "zh" ? "\u6253\u5f00\u5de5\u4f5c\u533a memory" : "Open workspace memory")
+        : (state.lang === "zh" ? "\u5199\u5165\u7b2c\u4e00\u6761 working memory" : "Write the first working memory"),
+      meta: state.memoryStatus?.searchMode
+        ? `${memoryFiles} files · ${state.memoryStatus.searchMode}`
+        : (state.lang === "zh" ? "\u67e5\u770b\u5df2\u4fdd\u5b58\u6587\u4ef6\u5e76\u6253\u5f00\u539f\u59cb\u4e0a\u4e0b\u6587" : "Inspect saved files and reopen raw context."),
+      tab: "memory"
+    },
+    {
+      eyebrow: state.lang === "zh" ? "\u4ea4\u4ed8\u901a\u9053" : "Delivery Channel",
+      title: transport.tone === "warn" || transport.tone === "danger"
+        ? (state.lang === "zh" ? "\u901a\u9053\u9700\u8981\u5904\u7406" : "Channel needs attention")
+        : (state.lang === "zh" ? "\u901a\u9053\u5df2\u5c31\u7eea" : "Channel is ready"),
+      meta: activeTask
+        ? `${formatResearchTaskState(activeTask)} · ${transport.value}`
+        : `${transport.value} · ${transport.hint || "-"}`,
+      tab: "channels",
+      tone: transport.tone === "warn" || transport.tone === "danger" ? "warn" : ""
+    },
+    {
+      eyebrow: state.lang === "zh" ? "\u5e38\u9a7b\u8fd0\u884c" : "Always-On",
+      title: state.lang === "zh" ? "\u6253\u5f00 npm / PM2 / OpenClaw \u90e8\u7f72\u5165\u53e3" : "Open npm / PM2 / OpenClaw deployment",
+      meta: deploymentMeta || (state.lang === "zh" ? "PM2 / Windows Service / OpenClaw Bridge" : "PM2 / Windows Service / OpenClaw Bridge"),
+      tab: "settings",
+      settingsPanel: "deployment"
+    }
+  ];
+
+  els.landingCommandBar.innerHTML = cards
+    .map(
+      (card) => `
+        <button
+          class="landing-command-card ${card.tone ? `landing-command-card--${card.tone}` : ""}"
+          type="button"
+          ${card.taskId ? `data-task-id="${escapeHtml(card.taskId)}"` : `data-open-tab="${escapeHtml(card.tab)}"`}
+          ${card.settingsPanel ? `data-open-settings-panel="${escapeHtml(card.settingsPanel)}"` : ""}
+        >
+          <span class="landing-command-card__eyebrow">${escapeHtml(card.eyebrow)}</span>
+          <strong>${escapeHtml(card.title)}</strong>
+          <span class="landing-command-card__meta">${escapeHtml(card.meta)}</span>
+        </button>
+      `
+    )
+    .join("");
+
+  bindOpenTabButtons(els.landingCommandBar);
+  bindReportButtons(els.landingCommandBar);
+}
+
+function renderLandingSurfaces() {
+  renderWorkspacePulse();
+  renderLandingCommandBar();
+  renderOverviewCards(els.landingLiveCards, false);
+  renderLatestReport(els.landingLatestReport, getLatestSummary());
+  renderSessionCards(els.landingSessionList, state.recentReports.slice(0, 4), true);
+}
+
 function renderOverviewNotes() {
   const summary = getLatestSummary();
   const notes = [
     [t("chat.workspaceLabel", "Workspace"), state.memoryStatus?.workspaceDir || "-"],
-    [t("chat.wechatProviderLabel", "WeChat provider"), state.channels?.wechat?.providerMode || "-"],
-    [state.lang === "zh" ? "Agent role" : "Agent role", state.agentSession?.roleLabel || state.agentSession?.roleId || "-"],
-    [state.lang === "zh" ? "\u6700\u65b0\u7814\u7a76" : "Latest research", summary ? `${summary.topic} - ${formatRelativeTime(summary.generatedAt)}` : t("empty.report", "No report yet.")]
+    [state.lang === "zh" ? "\u4ea4\u4ed8\u6e20\u9053" : "Delivery channel", state.channels?.wechat?.providerMode || "-"],
+    [state.lang === "zh" ? "\u5f53\u524d\u6a21\u5f0f" : "Active mode", state.agentSession?.roleLabel || state.agentSession?.roleId || "-"],
+    [state.lang === "zh" ? "\u6700\u65b0\u4ea7\u51fa" : "Latest output", summary ? `${summary.topic} - ${formatRelativeTime(summary.generatedAt)}` : t("empty.report", "No report yet.")]
   ];
 
   els.overviewNotes.innerHTML = notes
@@ -420,9 +822,10 @@ function renderOverviewNotes() {
 
 function renderSettingsTabs() {
   const tabs = [
-    ["communications", "Communications"],
-    ["infrastructure", "Infrastructure"],
-    ["aiAgents", "AI & Agents"]
+    ["communications", state.lang === "zh" ? "\u901a\u4fe1\u4e0e\u4ea4\u4ed8" : "Communications"],
+    ["infrastructure", state.lang === "zh" ? "\u57fa\u7840\u8bbe\u65bd" : "Infrastructure"],
+    ["aiAgents", state.lang === "zh" ? "AI \u4e0e Agent" : "AI & Agents"],
+    ["deployment", state.lang === "zh" ? "\u90e8\u7f72\u4e0e\u5e38\u9a7b" : "Deployment"]
   ];
 
   return `
@@ -630,6 +1033,14 @@ function renderAgentToolsPanel(session) {
     return `<div class="empty-state compact-empty">${escapeHtml(t("empty.notes", "No notes available."))}</div>`;
   }
 
+  const entryCard = `
+    <article class="result-item">
+      <h3>${escapeHtml("Entry")}</h3>
+      <p>${escapeHtml(`${session.activeEntryLabel || session.activeEntrySource || "-"} (${session.activeEntrySource || "-"})`)}</p>
+      <small>${escapeHtml(`Toolsets: ${(session.enabledToolsets || []).join(", ") || "-"}`)}</small>
+    </article>
+  `;
+
   const toolGroups = [
     {
       label: "workspace-control",
@@ -645,18 +1056,20 @@ function renderAgentToolsPanel(session) {
     }
   ];
 
-  return toolGroups
-    .filter((group) => session.skillIds.includes(group.label))
-    .map(
-      (group) => `
+  return [
+    entryCard,
+    ...toolGroups
+      .filter((group) => session.skillIds.includes(group.label))
+      .map(
+        (group) => `
         <article class="result-item">
           <h3>${escapeHtml(group.label)}</h3>
           <p>${escapeHtml(group.tools.join(", "))}</p>
           <small>${escapeHtml("Source: session-enabled skill group")}</small>
         </article>
       `
-    )
-    .join("");
+      ),
+  ].join("");
 }
 
 function renderAgentChannelsPanel() {
@@ -706,6 +1119,7 @@ function renderAgentSessionsList(sessions) {
           <p>${escapeHtml(session.lastUserMessage || session.lastAssistantMessage || "-")}</p>
           <div class="message__meta">
             <span>${escapeHtml(session.roleLabel)} (${escapeHtml(session.roleId)})</span>
+            <span>${escapeHtml(session.activeEntrySource || "-")}</span>
             <span>${escapeHtml(String(session.turnCount))} turns</span>
             <span>${escapeHtml(`${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}`)}</span>
             <span>${escapeHtml(session.skillLabels.join(", ") || "-")}</span>
@@ -723,6 +1137,21 @@ function renderSettingsOverview() {
   const meta = state.runtimeMeta;
   const wechat = state.channels?.wechat;
   const agent = state.agentSession;
+  const deployment = meta?.deployment;
+  const alwaysOnModes = deployment?.alwaysOn?.modes || [];
+  const pm2Mode = alwaysOnModes.find((mode) => mode.id === "pm2");
+  const windowsServiceMode = alwaysOnModes.find((mode) => mode.id === "windows-service");
+  const openclawBridgeMode = alwaysOnModes.find((mode) => mode.id === "openclaw-bridge");
+
+  function formatSettingsValue(value) {
+    if (Array.isArray(value)) {
+      return value.filter(Boolean).join(" | ") || "-";
+    }
+    if (value == null || value === "") {
+      return "-";
+    }
+    return String(value);
+  }
 
   const sections = {
     communications: [
@@ -792,6 +1221,49 @@ function renderSettingsOverview() {
           ["Node env", meta?.nodeEnv || "-"]
         ]
       }
+    ],
+    deployment: [
+      {
+        title: state.lang === "zh" ? "Root Runtime" : "Root Runtime",
+        rows: [
+          [state.lang === "zh" ? "工作区" : "Workspace", deployment?.workspaceDir || meta?.workspaceDir || "-"],
+          [state.lang === "zh" ? "安装" : "Install", deployment?.rootRuntime?.installCommand || "npm install"],
+          [state.lang === "zh" ? "启动" : "Start", deployment?.rootRuntime?.startCommand || "npm start"],
+          [state.lang === "zh" ? "开发" : "Dev", deployment?.rootRuntime?.devCommand || "npm run dev"],
+          [state.lang === "zh" ? "构建" : "Build", deployment?.rootRuntime?.buildCommand || "npm run build"]
+        ]
+      },
+      {
+        title: state.lang === "zh" ? "常驻运行" : "Always-On Modes",
+        rows: [
+          ["PM2", pm2Mode ? [pm2Mode.installCommand, pm2Mode.restartCommand, pm2Mode.stopCommand] : "-"],
+          [state.lang === "zh" ? "Windows \u670d\u52a1" : "Windows Service", windowsServiceMode ? [windowsServiceMode.installCommand, windowsServiceMode.startCommand, windowsServiceMode.statusCommand, windowsServiceMode.stopCommand] : "-"],
+          ["OpenClaw Bridge", openclawBridgeMode ? [openclawBridgeMode.installCommand, openclawBridgeMode.statusCommand] : "-"],
+          [state.lang === "zh" ? "说明" : "Notes", deployment?.alwaysOn?.notes?.[0] || "-"]
+        ]
+      },
+      {
+        title: state.lang === "zh" ? "\u5f53\u524d\u8fd0\u884c\u6001" : "Current Runtime Posture",
+        rows: [
+          [state.lang === "zh" ? "Provider" : "Provider", wechat?.providerMode || meta?.wechatProvider || "-"],
+          [state.lang === "zh" ? "生命周期" : "Lifecycle", wechat?.lifecycleState || "-"],
+          [state.lang === "zh" ? "原因" : "Reason", wechat?.lifecycleReason || "-"],
+          [state.lang === "zh" ? "运行中" : "Running", String(Boolean(wechat?.running))],
+          [state.lang === "zh" ? "已连接" : "Connected", String(Boolean(wechat?.connected))],
+          [state.lang === "zh" ? "需人工处理" : "Human action", String(Boolean(wechat?.requiresHumanAction))],
+          [state.lang === "zh" ? "最近健康" : "Last healthy", wechat?.lastHealthyAt ? formatTime(wechat.lastHealthyAt) : "-"],
+          [state.lang === "zh" ? "最近重启" : "Last restart", wechat?.lastRestartAt ? formatTime(wechat.lastRestartAt) : "-"]
+        ]
+      },
+      {
+        title: state.lang === "zh" ? "OpenClaw \u63d2\u4ef6" : "OpenClaw Plugin",
+        rows: [
+          [state.lang === "zh" ? "\u5305\u540d" : "Package", deployment?.openclawPlugin?.packageName || "@sinlair/reagent-openclaw"],
+          [state.lang === "zh" ? "\u5b89\u88c5\u547d\u4ee4" : "Install", deployment?.openclawPlugin?.installCommand || "openclaw plugins install @sinlair/reagent-openclaw --yes"],
+          [state.lang === "zh" ? "\u5f53\u524d\u63d2\u4ef6" : "Plugin state", wechat?.providerMode === "openclaw" ? (wechat?.pluginInstalled ? wechat?.pluginVersion || "installed" : "missing") : (state.lang === "zh" ? "\u672a\u542f\u7528 openclaw provider" : "openclaw provider not active")],
+          [state.lang === "zh" ? "\u793a\u4f8b\u547d\u4ee4" : "Sample commands", deployment?.openclawPlugin?.sampleCommands || "-"]
+        ]
+      }
     ]
   };
 
@@ -810,7 +1282,7 @@ function renderSettingsOverview() {
             ${card.rows
               .map(
                 ([label, value]) =>
-                  `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`,
+                  `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatSettingsValue(value))}</strong></div>`,
               )
               .join("")}
           </div>
@@ -917,6 +1389,8 @@ function renderAgentSession(session) {
     if (state.agentsPanel === "overview") {
       panelContent = [
         [state.lang === "zh" ? "\u4f1a\u8bdd" : "Session", UI_AGENT_SENDER_ID],
+        [state.lang === "zh" ? "\u5165\u53e3" : "Entry", `${session.activeEntryLabel || session.activeEntrySource} (${session.activeEntrySource || "-"})`],
+        [state.lang === "zh" ? "\u5de5\u5177\u96c6" : "Toolsets", session.enabledToolsets?.join(", ") || "-"],
         [state.lang === "zh" ? "\u89d2\u8272" : "Role", `${session.roleLabel} (${session.roleId})`],
         [state.lang === "zh" ? "Skills" : "Skills", session.skillLabels.join(", ") || "-"],
         [state.lang === "zh" ? "\u6a21\u578b\u8def\u7531" : "Model route", `${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}`],
@@ -945,10 +1419,16 @@ function renderAgentSession(session) {
   if (els.agentRuntimeNotes) {
     const notes = [
       state.lang === "zh"
+        ? `当前入口：${session.activeEntryLabel || session.activeEntrySource}。`
+        : `Current entry: ${session.activeEntryLabel || session.activeEntrySource}.`,
+      state.lang === "zh"
+        ? `当前入口允许的 toolsets：${(session.enabledToolsets || []).join(", ") || "-" }。`
+        : `This entry allows these toolsets: ${(session.enabledToolsets || []).join(", ") || "-"}.`,
+      state.lang === "zh"
         ? "\u5f53\u524d\u804a\u5929\u4f1a\u8bdd\u4f1a\u7acb\u5373\u4f7f\u7528\u8fd9\u91cc\u7684 role \u548c skills \u8bbe\u5b9a\u3002"
         : "The current chat session applies these role and skill settings immediately.",
       state.lang === "zh"
-        ? "\u5173\u95ed閺屾劒閲?skill \u540e\uff0cruntime \u4e0d\u4f1a\u518d\u5411\u6a21\u578b\u66b4\u9732\u5bf9\u5e94\u5de5\u5177\u3002"
+        ? "关闭某个 skill 后，runtime 不会再向模型暴露对应工具。"
         : "When a skill is disabled, its tools disappear from the runtime tool list.",
       state.lang === "zh"
         ? "\u4f60\u4ecd\u7136\u53ef\u4ee5\u5728\u804a\u5929\u91cc\u7528 /role\u3001/skills \u548c /model \u547d\u4ee4\u3002"
@@ -1167,6 +1647,17 @@ function renderProductAlerts() {
     });
   }
 
+  if (wechat?.providerMode === "openclaw" && wechat?.pluginInstalled === false) {
+    alerts.push({
+      tone: "warn",
+      title: state.lang === "zh" ? "OpenClaw \u63d2\u4ef6\u672a\u5b89\u88c5" : "OpenClaw Plugin Missing",
+      body:
+        state.lang === "zh"
+          ? "\u5f53\u524d bridge \u5904\u4e8e openclaw \u6a21\u5f0f\uff0c\u4f46\u63d2\u4ef6\u672a\u5c31\u7eea\u3002\u5230 Settings > Deployment \u67e5\u770b\u5b89\u88c5\u547d\u4ee4\u3002"
+          : "The bridge is in openclaw mode, but the plugin is not ready. Open Settings > Deployment for the install command."
+    });
+  }
+
   if (!alerts.length) {
     els.productAlerts.hidden = true;
     els.productAlerts.innerHTML = "";
@@ -1219,7 +1710,7 @@ function researchTaskTone(task) {
   return "warn";
 }
 
-function formatResearchTaskState(task) {
+function formatResearchTaskStateLegacy(task) {
   const labels = {
     queued: state.lang === "zh" ? "已排队" : "Queued",
     planning: state.lang === "zh" ? "规划中" : "Planning",
@@ -1227,6 +1718,29 @@ function formatResearchTaskState(task) {
     "downloading-paper": state.lang === "zh" ? "下载论文" : "Downloading Papers",
     "analyzing-paper": state.lang === "zh" ? "分析证据" : "Analyzing Evidence",
     "generating-summary": state.lang === "zh" ? "生成总结" : "Generating Summary",
+    persisting: state.lang === "zh" ? "持久化" : "Persisting",
+    completed: state.lang === "zh" ? "已完成" : "Completed",
+    failed: state.lang === "zh" ? "失败" : "Failed"
+  };
+  return labels[task.state] || task.state;
+}
+
+function formatResearchTaskState(task) {
+  const labels = {
+    queued: state.lang === "zh" ? "已排队" : "Queued",
+    briefing: "Briefing",
+    planning: state.lang === "zh" ? "规划中" : "Planning",
+    "idea-generation": "Idea Generation",
+    "novelty-check": "Novelty Check",
+    "candidate-comparison": "Candidate Comparison",
+    decision: "Decision",
+    "searching-paper": state.lang === "zh" ? "检索论文" : "Searching Papers",
+    "downloading-paper": state.lang === "zh" ? "下载论文" : "Downloading Papers",
+    "analyzing-paper": state.lang === "zh" ? "分析证据" : "Analyzing Evidence",
+    "checking-repo": "Checking Repo",
+    "extracting-module": "Extracting Module",
+    "generating-summary": state.lang === "zh" ? "生成总结" : "Generating Summary",
+    "generating-ppt": "Generating PPT",
     persisting: state.lang === "zh" ? "持久化" : "Persisting",
     completed: state.lang === "zh" ? "已完成" : "Completed",
     failed: state.lang === "zh" ? "失败" : "Failed"
@@ -1399,6 +1913,20 @@ function renderChannelNotes(status) {
   if (status.gatewayUrl) notes.push(`${state.lang === "zh" ? "\u7f51\u5173" : "Gateway"}: ${status.gatewayUrl}`);
   if (status.lastHealthyAt) notes.push(`${state.lang === "zh" ? "\u4e0a\u6b21\u5065\u5eb7" : "Last healthy"}: ${formatTime(status.lastHealthyAt)}`);
   if (status.lastRestartAt) notes.push(`${state.lang === "zh" ? "\u4e0a\u6b21\u91cd\u542f" : "Last restart"}: ${formatTime(status.lastRestartAt)}`);
+  if (status.providerMode !== "mock") {
+    notes.push(
+      state.lang === "zh"
+        ? "\u5982\u9700\u50cf OpenClaw \u4e00\u6837\u5e38\u9a7b\u8fd0\u884c\uff0c\u53ef\u7528 PM2 \u6216 Windows service \u811a\u672c\uff0c\u800c\u4e0d\u662f\u4e00\u76f4\u6302\u7740\u524d\u53f0\u7ec8\u7aef\u3002"
+        : "For always-on runtime, use PM2 or the bundled Windows service scripts instead of keeping a foreground terminal open."
+    );
+  }
+  if (status.providerMode === "openclaw") {
+    notes.push(
+      state.lang === "zh"
+        ? "OpenClaw \u63d2\u4ef6\u5b89\u88c5\u547d\u4ee4\uff1aopenclaw plugins install @sinlair/reagent-openclaw --yes"
+        : "OpenClaw plugin install: openclaw plugins install @sinlair/reagent-openclaw --yes"
+    );
+  }
 
   if (!notes.length) {
     els.channelNotes.className = "empty-state compact-empty";
@@ -1555,6 +2083,14 @@ function renderTransportMessages(messages) {
     .join("");
 }
 
+async function openMemoryFile(path) {
+  if (!path) return;
+  const payload = await requestJson(`/api/memory/file?path=${encodeURIComponent(path)}`);
+  state.selectedMemoryFilePath = path;
+  els.memoryFileViewer.textContent = payload.content;
+  renderMemoryFiles(state.memoryFiles);
+}
+
 function renderMemoryResults(results) {
   if (!results.length) {
     els.memoryResults.className = "empty-state";
@@ -1566,14 +2102,22 @@ function renderMemoryResults(results) {
   els.memoryResults.innerHTML = results
     .map(
       (result) => `
-        <article class="result-item">
+        <button class="result-item result-item--action" type="button" data-memory-open="${escapeHtml(result.path)}">
           <h3>${escapeHtml(result.title)}</h3>
           <p>${escapeHtml(result.snippet)}</p>
           <small>${escapeHtml(result.path)} - ${escapeHtml(String(result.startLine))}-${escapeHtml(String(result.endLine))} - ${escapeHtml(String(result.score))}</small>
-        </article>
+        </button>
       `
     )
     .join("");
+
+  els.memoryResults.querySelectorAll("[data-memory-open]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const path = button.dataset.memoryOpen;
+      if (!path) return;
+      await openMemoryFile(path);
+    });
+  });
 }
 
 function bindMemoryFileButtons() {
@@ -1581,10 +2125,7 @@ function bindMemoryFileButtons() {
     button.addEventListener("click", async () => {
       const path = button.dataset.path;
       if (!path) return;
-      const payload = await requestJson(`/api/memory/file?path=${encodeURIComponent(path)}`);
-      state.selectedMemoryFilePath = path;
-      els.memoryFileViewer.textContent = payload.content;
-      renderMemoryFiles(state.memoryFiles);
+      await openMemoryFile(path);
     });
   });
 }
@@ -1651,7 +2192,227 @@ function renderPill(text, tone = "") {
   return `<span class="report-pill ${tone ? `report-pill--${escapeHtml(tone)}` : ""}">${escapeHtml(text)}</span>`;
 }
 
-function renderResearchReport(report) {
+function renderStringList(items, emptyText) {
+  return items?.length
+    ? items.map((item) => `<article class="result-item"><p>${escapeHtml(item)}</p></article>`).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(emptyText)}</div>`;
+}
+
+function clearResearchBriefForm() {
+  if (els.researchBriefForm) {
+    els.researchBriefForm.reset();
+  }
+  if (els.researchBriefId) els.researchBriefId.value = "";
+  if (els.researchBriefLabel) els.researchBriefLabel.value = "";
+  if (els.researchBriefSummary) els.researchBriefSummary.value = "";
+  if (els.researchBriefTlDr) els.researchBriefTlDr.value = "";
+  if (els.researchBriefBackground) els.researchBriefBackground.value = "";
+  if (els.researchBriefTargetProblem) els.researchBriefTargetProblem.value = "";
+  if (els.researchBriefSuccessCriteria) els.researchBriefSuccessCriteria.value = "";
+  if (els.researchBriefKnownBaselines) els.researchBriefKnownBaselines.value = "";
+  if (els.researchBriefEvaluationPriorities) els.researchBriefEvaluationPriorities.value = "";
+  if (els.researchBriefShortTermValidationTargets) els.researchBriefShortTermValidationTargets.value = "";
+  if (els.researchBriefCurrentGoals) els.researchBriefCurrentGoals.value = "";
+  if (els.researchBriefOpenQuestions) els.researchBriefOpenQuestions.value = "";
+  if (els.researchBriefQueryHints) els.researchBriefQueryHints.value = "";
+  if (els.researchBriefBlockedDirections) els.researchBriefBlockedDirections.value = "";
+  if (els.researchBriefPreferredVenues) els.researchBriefPreferredVenues.value = "";
+  if (els.researchBriefPreferredDatasets) els.researchBriefPreferredDatasets.value = "";
+  if (els.researchBriefPreferredBenchmarks) els.researchBriefPreferredBenchmarks.value = "";
+  if (els.researchBriefPreferredPaperStyles) els.researchBriefPreferredPaperStyles.value = "";
+  if (els.researchBriefPriority) els.researchBriefPriority.value = "secondary";
+  if (els.researchBriefEnabled) els.researchBriefEnabled.checked = true;
+}
+
+function populateResearchBriefForm(brief) {
+  if (!brief) {
+    clearResearchBriefForm();
+    return;
+  }
+
+  if (els.researchBriefId) els.researchBriefId.value = brief.id || "";
+  if (els.researchBriefLabel) els.researchBriefLabel.value = brief.label || "";
+  if (els.researchBriefSummary) els.researchBriefSummary.value = brief.summary || "";
+  if (els.researchBriefTlDr) els.researchBriefTlDr.value = brief.tlDr || "";
+  if (els.researchBriefBackground) els.researchBriefBackground.value = brief.background || "";
+  if (els.researchBriefTargetProblem) els.researchBriefTargetProblem.value = brief.targetProblem || "";
+  if (els.researchBriefSuccessCriteria) els.researchBriefSuccessCriteria.value = formatListInput(brief.successCriteria);
+  if (els.researchBriefKnownBaselines) els.researchBriefKnownBaselines.value = formatListInput(brief.knownBaselines);
+  if (els.researchBriefEvaluationPriorities) els.researchBriefEvaluationPriorities.value = formatListInput(brief.evaluationPriorities);
+  if (els.researchBriefShortTermValidationTargets) els.researchBriefShortTermValidationTargets.value = formatListInput(brief.shortTermValidationTargets);
+  if (els.researchBriefCurrentGoals) els.researchBriefCurrentGoals.value = formatListInput(brief.currentGoals);
+  if (els.researchBriefOpenQuestions) els.researchBriefOpenQuestions.value = formatListInput(brief.openQuestions);
+  if (els.researchBriefQueryHints) els.researchBriefQueryHints.value = formatListInput(brief.queryHints);
+  if (els.researchBriefBlockedDirections) els.researchBriefBlockedDirections.value = formatListInput(brief.blockedDirections);
+  if (els.researchBriefPreferredVenues) els.researchBriefPreferredVenues.value = formatListInput(brief.preferredVenues);
+  if (els.researchBriefPreferredDatasets) els.researchBriefPreferredDatasets.value = formatListInput(brief.preferredDatasets);
+  if (els.researchBriefPreferredBenchmarks) els.researchBriefPreferredBenchmarks.value = formatListInput(brief.preferredBenchmarks);
+  if (els.researchBriefPreferredPaperStyles) els.researchBriefPreferredPaperStyles.value = formatListInput(brief.preferredPaperStyles);
+  if (els.researchBriefPriority) els.researchBriefPriority.value = brief.priority || "secondary";
+  if (els.researchBriefEnabled) els.researchBriefEnabled.checked = brief.enabled !== false;
+}
+
+function buildResearchBriefPayload() {
+  return {
+    id: els.researchBriefId?.value.trim() || undefined,
+    label: els.researchBriefLabel?.value.trim() || "",
+    summary: els.researchBriefSummary?.value.trim() || undefined,
+    tlDr: els.researchBriefTlDr?.value.trim() || undefined,
+    background: els.researchBriefBackground?.value.trim() || undefined,
+    targetProblem: els.researchBriefTargetProblem?.value.trim() || undefined,
+    successCriteria: parseListInput(els.researchBriefSuccessCriteria?.value),
+    knownBaselines: parseListInput(els.researchBriefKnownBaselines?.value),
+    evaluationPriorities: parseListInput(els.researchBriefEvaluationPriorities?.value),
+    shortTermValidationTargets: parseListInput(els.researchBriefShortTermValidationTargets?.value),
+    currentGoals: parseListInput(els.researchBriefCurrentGoals?.value),
+    openQuestions: parseListInput(els.researchBriefOpenQuestions?.value),
+    queryHints: parseListInput(els.researchBriefQueryHints?.value),
+    blockedDirections: parseListInput(els.researchBriefBlockedDirections?.value),
+    preferredVenues: parseListInput(els.researchBriefPreferredVenues?.value),
+    preferredDatasets: parseListInput(els.researchBriefPreferredDatasets?.value),
+    preferredBenchmarks: parseListInput(els.researchBriefPreferredBenchmarks?.value),
+    preferredPaperStyles: parseListInput(els.researchBriefPreferredPaperStyles?.value).filter((value) =>
+      ["theory", "engineering", "reproducibility", "application"].includes(value)
+    ),
+    priority: els.researchBriefPriority?.value || "secondary",
+    enabled: Boolean(els.researchBriefEnabled?.checked)
+  };
+}
+
+function setSelectedResearchBrief(brief) {
+  clearResearchSelections();
+  state.selectedResearchBrief = brief || null;
+  state.selectedResearchBriefId = brief?.id || null;
+  state.selectedResearchTaskId = null;
+}
+
+function renderResearchBrief(brief) {
+  if (!brief) {
+    els.researchReport.className = "empty-state";
+    els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
+    return;
+  }
+
+  const sections = [
+    [state.lang === "zh" ? "Summary" : "Summary", brief.summary],
+    [state.lang === "zh" ? "TL;DR" : "TL;DR", brief.tlDr],
+    [state.lang === "zh" ? "Background" : "Background", brief.background],
+    [state.lang === "zh" ? "Target Problem" : "Target Problem", brief.targetProblem]
+  ].filter(([, value]) => Boolean(value));
+
+  els.researchReport.className = "research-report";
+  els.researchReport.innerHTML = `
+    <article class="report-hero">
+      <div class="report-hero__head">
+        <div>
+          <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Research Brief" : "Research Brief")}</div>
+          <h3>${escapeHtml(brief.label)}</h3>
+          <p>${escapeHtml(brief.summary || brief.tlDr || brief.targetProblem || (state.lang === "zh" ? "暂无摘要。" : "No summary yet."))}</p>
+        </div>
+        <div class="report-chip-list">
+          ${renderPill(brief.priority || "secondary")}
+          ${renderPill(brief.enabled === false ? (state.lang === "zh" ? "disabled" : "disabled") : (state.lang === "zh" ? "enabled" : "enabled"), brief.enabled === false ? "warn" : "ok")}
+          ${renderPill(formatTime(brief.updatedAt))}
+        </div>
+      </div>
+      <div class="research-stat-grid">
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Brief ID" : "Brief ID")}</span>
+          <strong>${escapeHtml(brief.id)}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Goals" : "Goals")}</span>
+          <strong>${escapeHtml(String(brief.currentGoals?.length || 0))}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Baselines" : "Baselines")}</span>
+          <strong>${escapeHtml(String(brief.knownBaselines?.length || 0))}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Success Criteria" : "Success Criteria")}</span>
+          <strong>${escapeHtml(String(brief.successCriteria?.length || 0))}</strong>
+        </article>
+      </div>
+    </article>
+
+    <div class="research-report-layout">
+      <div class="stack research-report-main">
+        ${sections.map(([title, value]) => `
+          <article class="report-block">
+            <div class="report-item-head"><h3>${escapeHtml(title)}</h3></div>
+            <p>${escapeHtml(value)}</p>
+          </article>
+        `).join("")}
+
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Current Goals" : "Current Goals")}</h3>${renderPill(String(brief.currentGoals?.length || 0), "ok")}</div>
+          <div class="result-stack">${renderStringList(brief.currentGoals, state.lang === "zh" ? "暂无 current goals。" : "No current goals recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Open Questions" : "Open Questions")}</h3>${renderPill(String(brief.openQuestions?.length || 0), "warn")}</div>
+          <div class="result-stack">${renderStringList(brief.openQuestions, state.lang === "zh" ? "暂无 open questions。" : "No open questions recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Short-Term Validation Targets" : "Short-Term Validation Targets")}</h3>${renderPill(String(brief.shortTermValidationTargets?.length || 0))}</div>
+          <div class="result-stack">${renderStringList(brief.shortTermValidationTargets, state.lang === "zh" ? "暂无 validation targets。" : "No validation targets recorded.")}</div>
+        </article>
+      </div>
+
+      <aside class="stack research-report-side">
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Known Baselines" : "Known Baselines")}</h3>${renderPill(String(brief.knownBaselines?.length || 0))}</div>
+          <div class="result-stack">${renderStringList(brief.knownBaselines, state.lang === "zh" ? "暂无 baselines。" : "No baselines recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Evaluation Priorities" : "Evaluation Priorities")}</h3>${renderPill(String(brief.evaluationPriorities?.length || 0))}</div>
+          <div class="result-stack">${renderStringList(brief.evaluationPriorities, state.lang === "zh" ? "暂无 evaluation priorities。" : "No evaluation priorities recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Success Criteria" : "Success Criteria")}</h3>${renderPill(String(brief.successCriteria?.length || 0), "ok")}</div>
+          <div class="result-stack">${renderStringList(brief.successCriteria, state.lang === "zh" ? "暂无 success criteria。" : "No success criteria recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Blocked Directions" : "Blocked Directions")}</h3>${renderPill(String(brief.blockedDirections?.length || 0), "warn")}</div>
+          <div class="result-stack">${renderStringList(brief.blockedDirections, state.lang === "zh" ? "暂无 blocked directions。" : "No blocked directions recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Query Hints" : "Query Hints")}</h3>${renderPill(String(brief.queryHints?.length || 0))}</div>
+          <div class="result-stack">${renderStringList(brief.queryHints, state.lang === "zh" ? "暂无 query hints。" : "No query hints recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Preferred Signals" : "Preferred Signals")}</h3>${renderPill(String((brief.preferredVenues?.length || 0) + (brief.preferredDatasets?.length || 0) + (brief.preferredBenchmarks?.length || 0)))}</div>
+          <div class="report-stack-tight">
+            <div>
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Venues" : "Venues")}</div>
+              <div class="result-stack">${renderStringList(brief.preferredVenues, state.lang === "zh" ? "暂无 venues。" : "No preferred venues recorded.")}</div>
+            </div>
+            <div>
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Datasets" : "Datasets")}</div>
+              <div class="result-stack">${renderStringList(brief.preferredDatasets, state.lang === "zh" ? "暂无 datasets。" : "No preferred datasets recorded.")}</div>
+            </div>
+            <div>
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Benchmarks" : "Benchmarks")}</div>
+              <div class="result-stack">${renderStringList(brief.preferredBenchmarks, state.lang === "zh" ? "暂无 benchmarks。" : "No preferred benchmarks recorded.")}</div>
+            </div>
+            <div>
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Paper Styles" : "Paper Styles")}</div>
+              <div class="result-stack">${renderStringList(brief.preferredPaperStyles, state.lang === "zh" ? "暂无 paper styles。" : "No preferred paper styles recorded.")}</div>
+            </div>
+          </div>
+        </article>
+      </aside>
+    </div>
+  `;
+}
+
+function renderResearchReportLegacy(report) {
   if (!report) {
     els.researchReport.className = "empty-state";
     els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
@@ -1822,6 +2583,926 @@ function renderResearchReport(report) {
   `;
 }
 
+function renderResearchReport(report) {
+  if (!report) {
+    els.researchReport.className = "empty-state";
+    els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
+    return;
+  }
+
+  const papers = Array.isArray(report.papers) ? report.papers : [];
+  const critique = report.critique || {
+    verdict: "-",
+    summary: "",
+    issues: [],
+    recommendations: [],
+    supportedEvidenceCount: 0,
+    unsupportedEvidenceCount: 0,
+    coveredFindingsCount: 0,
+    citationDiversity: 0,
+    citationCoverage: 0
+  };
+
+  const findings = report.findings?.length
+    ? report.findings.map((finding) => `<article class="result-item"><p>${escapeHtml(finding)}</p></article>`).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(t("empty.findings", "No findings."))}</div>`;
+
+  const nextActions = report.nextActions?.length
+    ? report.nextActions.map((action) => `<article class="result-item"><p>${escapeHtml(action)}</p></article>`).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无下一步建议。" : "No next actions yet.")}</div>`;
+
+  const gaps = report.gaps?.length
+    ? report.gaps.map((gap) => `<article class="result-item"><p>${escapeHtml(gap)}</p></article>`).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无缺口记录。" : "No gaps recorded.")}</div>`;
+
+  const critiqueIssues = critique.issues?.length
+    ? critique.issues.map((issue) => `<article class="result-item"><p>${escapeHtml(issue)}</p></article>`).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无风险项。" : "No critique issues.")}</div>`;
+
+  const critiqueRecommendations = critique.recommendations?.length
+    ? critique.recommendations.map((item) => `<article class="result-item"><p>${escapeHtml(item)}</p></article>`).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无建议。" : "No recommendations yet.")}</div>`;
+
+  const evidence = report.evidence?.length
+    ? report.evidence
+        .map(
+          (item) => `
+            <article class="report-block report-block--dense report-evidence-card">
+              <div class="report-item-head">
+                <h3>${escapeHtml(item.claim)}</h3>
+                ${renderPill(item.confidence || item.sourceType, item.confidence === "high" ? "ok" : item.confidence === "medium" ? "warn" : "")}
+              </div>
+              <p>${escapeHtml(item.quote || item.support)}</p>
+              ${item.quote && item.support && item.quote !== item.support ? `<small>${escapeHtml(item.support)}</small>` : ""}
+              <div class="report-chip-list">
+                ${renderPill(item.sourceType)}
+                ${renderPill(item.paperId)}
+                ${renderPill(item.chunkId || "-")}
+                ${item.pageNumber ? renderPill(`${state.lang === "zh" ? "第" : "p."}${item.pageNumber}${state.lang === "zh" ? "页" : ""}`) : ""}
+              </div>
+            </article>
+          `
+        )
+        .join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(t("empty.evidence", "No evidence."))}</div>`;
+
+  const queries = report.plan?.searchQueries?.length
+    ? report.plan.searchQueries.map((query) => renderPill(query)).join("")
+    : `<span class="card-sub">${escapeHtml(state.lang === "zh" ? "无查询记录" : "No search queries recorded")}</span>`;
+
+  const subquestions = report.plan?.subquestions?.length
+    ? report.plan.subquestions.map((question) => `<article class="result-item"><p>${escapeHtml(question)}</p></article>`).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "无拆分问题。" : "No subquestions.")}</div>`;
+
+  const paperLibrary = papers.length
+    ? papers
+        .slice(0, 8)
+        .map(
+          (paper) => `
+            <article class="result-item research-paper-card">
+              <div class="report-item-head">
+                <h3>${escapeHtml(paper.title)}</h3>
+                <div class="report-chip-list">
+                  ${paper.year ? renderPill(String(paper.year)) : ""}
+                  ${paper.venue ? renderPill(paper.venue) : ""}
+                  ${renderPill(paper.source || "paper")}
+                </div>
+              </div>
+              <p>${escapeHtml(trimText(paper.relevanceReason || paper.abstract || "", 260) || (state.lang === "zh" ? "暂无摘要。" : "No abstract available."))}</p>
+              <small>${escapeHtml(trimText((paper.authors || []).join(", "), 120) || (state.lang === "zh" ? "作者未知" : "Unknown authors"))}</small>
+              <div class="report-chip-list">
+                ${paper.doi ? renderPill(paper.doi) : ""}
+                ${paper.url ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(paper.url)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开来源" : "Open source")}</a>` : ""}
+              </div>
+            </article>
+          `
+        )
+        .join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无候选论文。" : "No papers retrieved.")}</div>`;
+
+  const warnings = report.warnings?.length
+    ? `
+      <article class="report-block">
+        <div class="report-item-head">
+          <h3>${escapeHtml(state.lang === "zh" ? "Warnings" : "Warnings")}</h3>
+          ${renderPill(String(report.warnings.length), "warn")}
+        </div>
+        <div class="result-stack">
+          ${report.warnings.map((warning) => `<article class="result-item"><p>${escapeHtml(warning)}</p></article>`).join("")}
+        </div>
+      </article>
+    `
+    : "";
+
+  els.researchReport.className = "research-report";
+  els.researchReport.innerHTML = `
+    <article class="report-hero">
+      <div class="report-hero__head">
+        <div>
+          <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Evidence Report" : "Evidence Report")}</div>
+          <h3>${escapeHtml(report.topic)}</h3>
+          <p>${escapeHtml(report.summary)}</p>
+        </div>
+        <div class="report-chip-list">
+          ${renderPill(formatTime(report.generatedAt))}
+          ${renderPill(critique.verdict, verdictTone(critique.verdict))}
+          ${renderPill(`${papers.length} ${state.lang === "zh" ? "papers" : "papers"}`)}
+          ${renderPill(`${report.evidence.length} ${state.lang === "zh" ? "evidence" : "evidence"}`)}
+        </div>
+      </div>
+      <div class="research-stat-grid">
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Task ID" : "Task ID")}</span>
+          <strong>${escapeHtml(report.taskId)}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Objective" : "Objective")}</span>
+          <strong>${escapeHtml(report.plan?.objective || report.topic)}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Supported Evidence" : "Supported Evidence")}</span>
+          <strong>${escapeHtml(String(critique.supportedEvidenceCount ?? 0))}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Coverage" : "Coverage")}</span>
+          <strong>${escapeHtml(String(critique.citationCoverage ?? 0))}</strong>
+        </article>
+      </div>
+    </article>
+
+    <div class="research-report-layout">
+      <div class="stack research-report-main">
+        <article class="report-block report-block--feature">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Executive Findings" : "Executive Findings")}</h3>
+            ${renderPill(String(report.findings?.length || 0))}
+          </div>
+          <div class="result-stack">${findings}</div>
+        </article>
+
+        <article class="report-block report-block--feature">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Evidence Ledger" : "Evidence Ledger")}</h3>
+            ${renderPill(String(report.evidence?.length || 0))}
+          </div>
+          <div class="result-stack research-evidence-list">${evidence}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Source Library" : "Source Library")}</h3>
+            ${renderPill(String(papers.length))}
+          </div>
+          <div class="result-stack research-paper-grid">${paperLibrary}</div>
+        </article>
+      </div>
+
+      <aside class="stack research-report-side">
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Research Plan" : "Research Plan")}</h3>
+            ${renderPill(String(report.plan?.searchQueries?.length || 0))}
+          </div>
+          <div class="report-stack-tight">
+            <div>
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Search queries" : "Search queries")}</div>
+              <div class="report-chip-list">${queries}</div>
+            </div>
+            <div>
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Subquestions" : "Subquestions")}</div>
+              <div class="result-stack">${subquestions}</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Critique" : "Critique")}</h3>
+            ${renderPill(critique.verdict, verdictTone(critique.verdict))}
+          </div>
+          <p>${escapeHtml(critique.summary)}</p>
+          <div class="research-stat-grid research-stat-grid--compact">
+            <article class="research-stat">
+              <span>${escapeHtml(state.lang === "zh" ? "Supported" : "Supported")}</span>
+              <strong>${escapeHtml(String(critique.supportedEvidenceCount ?? 0))}</strong>
+            </article>
+            <article class="research-stat">
+              <span>${escapeHtml(state.lang === "zh" ? "Unsupported" : "Unsupported")}</span>
+              <strong>${escapeHtml(String(critique.unsupportedEvidenceCount ?? 0))}</strong>
+            </article>
+            <article class="research-stat">
+              <span>${escapeHtml(state.lang === "zh" ? "Coverage" : "Coverage")}</span>
+              <strong>${escapeHtml(String(critique.citationCoverage ?? 0))}</strong>
+            </article>
+            <article class="research-stat">
+              <span>${escapeHtml(state.lang === "zh" ? "Diversity" : "Diversity")}</span>
+              <strong>${escapeHtml(String(critique.citationDiversity ?? 0))}</strong>
+            </article>
+          </div>
+          <div class="report-stack-tight">
+            <div>
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Issues" : "Issues")}</div>
+              <div class="result-stack">${critiqueIssues}</div>
+            </div>
+            <div>
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Recommendations" : "Recommendations")}</div>
+              <div class="result-stack">${critiqueRecommendations}</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Next Actions" : "Next Actions")}</h3>
+            ${renderPill(String(report.nextActions?.length || 0), "ok")}
+          </div>
+          <div class="result-stack">${nextActions}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Evidence Gaps" : "Evidence Gaps")}</h3>
+            ${renderPill(String(report.gaps?.length || 0), "warn")}
+          </div>
+          <div class="result-stack">${gaps}</div>
+        </article>
+        ${warnings}
+      </aside>
+    </div>
+  `;
+}
+
+function renderDirectionReport(report) {
+  if (!report) {
+    els.researchReport.className = "empty-state";
+    els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
+    return;
+  }
+
+  const representativePapers = report.representativePapers?.length
+    ? report.representativePapers
+        .map(
+          (paper) => `
+            <article class="result-item research-paper-card">
+              <div class="report-item-head">
+                <h3>${escapeHtml(paper.title)}</h3>
+                <div class="report-chip-list">
+                  ${paper.sourceUrl ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(paper.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开来源" : "Open source")}</a>` : ""}
+                </div>
+              </div>
+              <p>${escapeHtml(paper.reason)}</p>
+            </article>
+          `
+        )
+        .join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无代表论文。" : "No representative papers.")}</div>`;
+
+  const renderStringList = (items, emptyText) =>
+    items?.length
+      ? items.map((item) => `<article class="result-item"><p>${escapeHtml(item)}</p></article>`).join("")
+      : `<div class="empty-state compact-empty">${escapeHtml(emptyText)}</div>`;
+
+  els.researchReport.className = "research-report";
+  els.researchReport.innerHTML = `
+    <article class="report-hero">
+      <div class="report-hero__head">
+        <div>
+          <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Direction Report" : "Direction Report")}</div>
+          <h3>${escapeHtml(report.topic)}</h3>
+          <p>${escapeHtml(report.overview)}</p>
+        </div>
+        <div class="report-chip-list">
+          ${report.directionId ? renderPill(report.directionId) : ""}
+          ${renderPill(formatTime(report.updatedAt))}
+          ${renderPill(String(report.representativePapers?.length || 0))}
+        </div>
+      </div>
+      <div class="research-stat-grid">
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Report ID" : "Report ID")}</span>
+          <strong>${escapeHtml(report.id)}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Direction" : "Direction")}</span>
+          <strong>${escapeHtml(report.directionId || report.topic)}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "代表论文" : "Representative papers")}</span>
+          <strong>${escapeHtml(String(report.representativePapers?.length || 0))}</strong>
+        </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "建议路线" : "Suggested routes")}</span>
+          <strong>${escapeHtml(String(report.suggestedRoutes?.length || 0))}</strong>
+        </article>
+      </div>
+    </article>
+
+    <div class="research-report-layout">
+      <div class="stack research-report-main">
+        <article class="report-block report-block--feature">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Representative Papers" : "Representative Papers")}</h3>
+            ${renderPill(String(report.representativePapers?.length || 0))}
+          </div>
+          <div class="result-stack research-paper-grid">${representativePapers}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Suggested Routes" : "Suggested Routes")}</h3>
+            ${renderPill(String(report.suggestedRoutes?.length || 0), "ok")}
+          </div>
+          <div class="result-stack">${renderStringList(report.suggestedRoutes, state.lang === "zh" ? "暂无建议路线。" : "No suggested routes.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Supporting Signals" : "Supporting Signals")}</h3>
+            ${renderPill(String(report.supportingSignals?.length || 0))}
+          </div>
+          <div class="result-stack">${renderStringList(report.supportingSignals, state.lang === "zh" ? "暂无 supporting signals。" : "No supporting signals.")}</div>
+        </article>
+      </div>
+
+      <aside class="stack research-report-side">
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Common Baselines" : "Common Baselines")}</h3>
+            ${renderPill(String(report.commonBaselines?.length || 0))}
+          </div>
+          <div class="result-stack">${renderStringList(report.commonBaselines, state.lang === "zh" ? "暂无 baseline。" : "No baselines recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Common Modules" : "Common Modules")}</h3>
+            ${renderPill(String(report.commonModules?.length || 0))}
+          </div>
+          <div class="result-stack">${renderStringList(report.commonModules, state.lang === "zh" ? "暂无模块。" : "No common modules recorded.")}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Open Problems" : "Open Problems")}</h3>
+            ${renderPill(String(report.openProblems?.length || 0), "warn")}
+          </div>
+          <div class="result-stack">${renderStringList(report.openProblems, state.lang === "zh" ? "暂无开放问题。" : "No open problems recorded.")}</div>
+        </article>
+      </aside>
+    </div>
+  `;
+}
+
+function renderPresentationArtifact(presentation) {
+  if (!presentation) {
+    els.researchReport.className = "empty-state";
+    els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
+    return;
+  }
+
+  const markdownHref = `/api/research/artifact?path=${encodeURIComponent(presentation.filePath)}`;
+  const pptxHref = presentation.pptxPath ? `/api/research/artifact?path=${encodeURIComponent(presentation.pptxPath)}` : "";
+
+  els.researchReport.className = "research-report";
+  els.researchReport.innerHTML = `
+    <article class="report-hero">
+      <div class="report-hero__head">
+        <div>
+          <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Presentation Artifact" : "Presentation Artifact")}</div>
+          <h3>${escapeHtml(presentation.title)}</h3>
+          <p>${escapeHtml(state.lang === "zh" ? "已生成的会议材料和导出文件。" : "Generated meeting material and export files.")}</p>
+        </div>
+        <div class="report-chip-list">
+          ${renderPill(formatTime(presentation.generatedAt))}
+          ${renderPill(String(presentation.sourceReportTaskIds?.length || 0))}
+          ${renderPill(String(presentation.imagePaths?.length || 0))}
+        </div>
+      </div>
+    </article>
+    <div class="research-report-layout">
+      <div class="stack research-report-main">
+        <article class="report-block report-block--feature">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Slide Markdown" : "Slide Markdown")}</h3>
+            ${renderPill(String((presentation.slideMarkdown || "").split("\n").length))}
+          </div>
+          <pre class="code-panel">${escapeHtml(clipBlock(presentation.slideMarkdown || "", 6000))}</pre>
+        </article>
+      </div>
+      <aside class="stack research-report-side">
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Artifacts" : "Artifacts")}</h3>
+          </div>
+          <div class="result-stack">
+            <article class="result-item">
+              <h3>${escapeHtml("Markdown")}</h3>
+              <p>${escapeHtml(presentation.filePath)}</p>
+              <small><a class="graph-inline-link" href="${escapeHtml(markdownHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
+            </article>
+            ${presentation.pptxPath ? `
+              <article class="result-item">
+                <h3>${escapeHtml("PPTX")}</h3>
+                <p>${escapeHtml(presentation.pptxPath)}</p>
+                <small><a class="graph-inline-link" href="${escapeHtml(pptxHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
+              </article>
+            ` : ""}
+          </div>
+        </article>
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Source Reports" : "Source Reports")}</h3>
+            ${renderPill(String(presentation.sourceReportTaskIds?.length || 0))}
+          </div>
+          <div class="result-stack">${renderStringList(presentation.sourceReportTaskIds, state.lang === "zh" ? "暂无 source reports。" : "No source reports recorded.")}</div>
+        </article>
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Image Assets" : "Image Assets")}</h3>
+            ${renderPill(String(presentation.imagePaths?.length || 0))}
+          </div>
+          <div class="result-stack">
+            ${(presentation.imagePaths || []).length
+              ? presentation.imagePaths.map((filePath) => `
+                  <article class="result-item">
+                    <p>${escapeHtml(filePath)}</p>
+                    <small><a class="graph-inline-link" href="/api/research/artifact?path=${encodeURIComponent(filePath)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
+                  </article>
+                `).join("")
+              : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无 image assets。" : "No image assets recorded.")}</div>`}
+          </div>
+        </article>
+      </aside>
+    </div>
+  `;
+}
+
+function renderModuleAsset(asset) {
+  if (!asset) {
+    els.researchReport.className = "empty-state";
+    els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
+    return;
+  }
+
+  const archiveHref = asset.archivePath ? `/api/research/artifact?path=${encodeURIComponent(asset.archivePath)}` : "";
+
+  els.researchReport.className = "research-report";
+  els.researchReport.innerHTML = `
+    <article class="report-hero">
+      <div class="report-hero__head">
+        <div>
+          <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Module Asset" : "Module Asset")}</div>
+          <h3>${escapeHtml(`${asset.owner}/${asset.repo}`)}</h3>
+          <p>${escapeHtml(state.lang === "zh" ? "已归档的可复用模块与仓库快照。" : "Archived reusable module selections and repository snapshot.")}</p>
+        </div>
+        <div class="report-chip-list">
+          ${renderPill(asset.id)}
+          ${asset.defaultBranch ? renderPill(asset.defaultBranch) : ""}
+          ${renderPill(formatTime(asset.updatedAt))}
+        </div>
+      </div>
+    </article>
+    <div class="research-report-layout">
+      <div class="stack research-report-main">
+        <article class="report-block report-block--feature">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Selected Paths" : "Selected Paths")}</h3>
+            ${renderPill(String(asset.selectedPaths?.length || 0))}
+          </div>
+          <div class="result-stack">${renderStringList(asset.selectedPaths, state.lang === "zh" ? "暂无 selected paths。" : "No selected paths recorded.")}</div>
+        </article>
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Notes" : "Notes")}</h3>
+            ${renderPill(String(asset.notes?.length || 0))}
+          </div>
+          <div class="result-stack">${renderStringList(asset.notes, state.lang === "zh" ? "暂无 notes。" : "No notes recorded.")}</div>
+        </article>
+      </div>
+      <aside class="stack research-report-side">
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Archive" : "Archive")}</h3>
+          </div>
+          <div class="result-stack">
+            <article class="result-item">
+              <h3>${escapeHtml(state.lang === "zh" ? "Repository URL" : "Repository URL")}</h3>
+              <p>${escapeHtml(asset.repoUrl)}</p>
+              <small><a class="graph-inline-link" href="${escapeHtml(asset.repoUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开仓库" : "Open repo")}</a></small>
+            </article>
+            ${asset.archivePath ? `
+              <article class="result-item">
+                <h3>${escapeHtml(state.lang === "zh" ? "Archive Path" : "Archive Path")}</h3>
+                <p>${escapeHtml(asset.archivePath)}</p>
+                <small><a class="graph-inline-link" href="${escapeHtml(archiveHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开归档" : "Open archive")}</a></small>
+              </article>
+            ` : ""}
+          </div>
+        </article>
+      </aside>
+    </div>
+  `;
+}
+
+function renderDirectionReportList(reports) {
+  if (!els.directionReportList) return;
+  if (!reports.length) {
+    els.directionReportList.className = "empty-state compact-empty";
+    els.directionReportList.textContent = state.lang === "zh" ? "暂无方向报告。" : "No direction reports yet.";
+    return;
+  }
+
+  els.directionReportList.className = "session-list";
+  els.directionReportList.innerHTML = reports
+    .map(
+      (report) => `
+        <button class="session-item ${state.selectedDirectionReportId === report.id ? "session-item--current" : ""}" type="button" data-direction-report-id="${escapeHtml(report.id)}">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml(report.topic)}</span>
+            <span>${escapeHtml(formatRelativeTime(report.updatedAt))}</span>
+          </div>
+          <p>${escapeHtml(trimText(report.overview, 140))}</p>
+          <small>${escapeHtml(report.directionId || "-")}</small>
+        </button>
+      `
+    )
+    .join("");
+
+  els.directionReportList.querySelectorAll("[data-direction-report-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const reportId = button.dataset.directionReportId;
+      if (!reportId) return;
+      await hydrateDirectionReport(reportId);
+    });
+  });
+}
+
+function renderResearchBriefList(briefs) {
+  if (!els.researchBriefList) return;
+  if (!briefs.length) {
+    els.researchBriefList.className = "empty-state compact-empty";
+    els.researchBriefList.textContent = state.lang === "zh" ? "暂无 research briefs。" : "No research briefs yet.";
+    return;
+  }
+
+  els.researchBriefList.className = "session-list";
+  els.researchBriefList.innerHTML = briefs
+    .map(
+      (brief) => `
+        <button class="session-item ${state.selectedResearchBriefId === brief.id ? "session-item--current" : ""}" type="button" data-brief-id="${escapeHtml(brief.id)}">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml(brief.label)}</span>
+            <span>${escapeHtml(formatRelativeTime(brief.updatedAt))}</span>
+          </div>
+          <p>${escapeHtml(trimText(brief.summary || brief.tlDr || brief.targetProblem || "", 140) || (state.lang === "zh" ? "暂无 brief summary。" : "No brief summary yet."))}</p>
+          <small>${escapeHtml(`${brief.priority || "secondary"}${brief.enabled === false ? " · disabled" : ""}`)}</small>
+        </button>
+      `
+    )
+    .join("");
+
+  els.researchBriefList.querySelectorAll("[data-brief-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const briefId = button.dataset.briefId;
+      if (!briefId) return;
+      await hydrateResearchBrief(briefId);
+    });
+  });
+}
+
+async function hydrateResearchBrief(briefId) {
+  const brief = await requestJson(`/api/research/directions/${encodeURIComponent(briefId)}`);
+  setSelectedResearchBrief(brief);
+  populateResearchBriefForm(brief);
+  renderResearchBrief(brief);
+  renderResearchBriefList(state.researchBriefs);
+  return brief;
+}
+
+async function loadResearchBriefs() {
+  const payload = await requestJson("/api/research/directions");
+  state.researchBriefs = payload.profiles || [];
+  if (state.selectedResearchBriefId) {
+    state.selectedResearchBrief =
+      state.researchBriefs.find((brief) => brief.id === state.selectedResearchBriefId) || null;
+    if (state.selectedResearchBrief) {
+      populateResearchBriefForm(state.selectedResearchBrief);
+      renderResearchBrief(state.selectedResearchBrief);
+    } else {
+      state.selectedResearchBriefId = null;
+      clearResearchBriefForm();
+    }
+  }
+  renderResearchBriefList(state.researchBriefs);
+  renderDiscoveryScheduler(state.discoveryScheduler);
+  renderLandingSurfaces();
+}
+
+function isSchedulerFormActive() {
+  return Boolean(els.discoverySchedulerForm && document.activeElement && els.discoverySchedulerForm.contains(document.activeElement));
+}
+
+function renderDiscoveryScheduler(status) {
+  state.discoveryScheduler = status || null;
+  if (!els.discoverySchedulerStatus) return;
+
+  const scheduler = status || {
+    running: false,
+    enabled: false,
+    dailyTimeLocal: "09:00",
+    directionIds: [],
+    topK: 5,
+    maxPapersPerQuery: 4,
+    lastRunDateByDirection: {},
+  };
+
+  if (!isSchedulerFormActive()) {
+    if (els.discoverySchedulerTime) els.discoverySchedulerTime.value = scheduler.dailyTimeLocal || "09:00";
+    if (els.discoverySchedulerEnabled) els.discoverySchedulerEnabled.checked = Boolean(scheduler.enabled);
+    if (els.discoverySchedulerSenderId) els.discoverySchedulerSenderId.value = scheduler.senderId || "";
+    if (els.discoverySchedulerSenderName) els.discoverySchedulerSenderName.value = scheduler.senderName || "";
+    if (els.discoverySchedulerDirectionIds) els.discoverySchedulerDirectionIds.value = formatListInput(scheduler.directionIds || []);
+    if (els.discoverySchedulerTopK) els.discoverySchedulerTopK.value = String(scheduler.topK || 5);
+    if (els.discoverySchedulerMaxPapers) els.discoverySchedulerMaxPapers.value = String(scheduler.maxPapersPerQuery || 4);
+  }
+
+  const directionMap = new Map((state.researchBriefs || []).map((brief) => [brief.id, brief.label]));
+  const selectedDirections = (scheduler.directionIds || []).length
+    ? scheduler.directionIds.map((directionId) => directionMap.get(directionId) ? `${directionMap.get(directionId)} (${directionId})` : directionId)
+    : [state.lang === "zh" ? "全部已启用 briefs" : "All enabled briefs"];
+  const lastRuns = Object.entries(scheduler.lastRunDateByDirection || {});
+
+  els.discoverySchedulerStatus.innerHTML = [
+    [state.lang === "zh" ? "后台调度器" : "Background scheduler", scheduler.running ? (state.lang === "zh" ? "运行中" : "Running") : (state.lang === "zh" ? "未挂载" : "Not mounted")],
+    [state.lang === "zh" ? "已启用" : "Enabled", String(Boolean(scheduler.enabled))],
+    [state.lang === "zh" ? "每日时间" : "Daily time", scheduler.dailyTimeLocal || "09:00"],
+    [state.lang === "zh" ? "推送目标" : "Push target", scheduler.senderId || "-"],
+    [state.lang === "zh" ? "方向范围" : "Directions", selectedDirections.join(" | ")],
+    ["Top K", String(scheduler.topK || 5)],
+    [state.lang === "zh" ? "每个 query 的论文数" : "Papers / query", String(scheduler.maxPapersPerQuery || 4)],
+    [state.lang === "zh" ? "最近更新" : "Updated", scheduler.updatedAt ? formatTime(scheduler.updatedAt) : "-"],
+    [state.lang === "zh" ? "最近执行" : "Recent runs", lastRuns.length ? lastRuns.map(([directionId, value]) => `${directionMap.get(directionId) || directionId}: ${value}`).join(" | ") : (state.lang === "zh" ? "暂无" : "None yet")],
+  ]
+    .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
+    .join("");
+}
+
+async function loadDiscoveryScheduler() {
+  const status = await requestJson("/api/research/discovery/scheduler");
+  renderDiscoveryScheduler(status);
+}
+
+function renderDiscoveryRuns() {
+  if (!els.discoverySchedulerRuns) return;
+
+  const runs = (state.discoveryRuns || []).slice(0, 6);
+  if (!runs.length) {
+    els.discoverySchedulerRuns.className = "empty-state compact-empty";
+    els.discoverySchedulerRuns.textContent = state.lang === "zh" ? "暂无 discovery runs。" : "No discovery runs yet.";
+    return;
+  }
+
+  els.discoverySchedulerRuns.className = "result-stack";
+  els.discoverySchedulerRuns.innerHTML = runs
+    .map(
+      (run) => `
+        <article class="result-item">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml((run.directionLabels || []).join(", ") || "-")}</span>
+            <span>${escapeHtml(formatRelativeTime(run.generatedAt))}</span>
+          </div>
+          <p>${escapeHtml(run.topTitle || (state.lang === "zh" ? "暂无 top paper。" : "No top paper recorded."))}</p>
+          <small>${escapeHtml(`${run.itemCount || 0} items · ${run.pushed ? "pushed" : "local"}`)}</small>
+        </article>
+      `
+    )
+    .join("");
+}
+
+async function loadDiscoveryRuns() {
+  const payload = await requestJson("/api/research/discovery/recent?limit=8");
+  state.discoveryRuns = payload.runs || [];
+  renderDiscoveryRuns();
+}
+
+function renderLifecycleAudit(items) {
+  state.wechatLifecycleAudit = Array.isArray(items) ? items : [];
+  if (!els.channelLifecycleAudit) return;
+
+  if (!state.wechatLifecycleAudit.length) {
+    els.channelLifecycleAudit.className = "empty-state compact-empty";
+    els.channelLifecycleAudit.textContent = state.lang === "zh" ? "暂无 lifecycle audit。" : "No lifecycle events yet.";
+    return;
+  }
+
+  els.channelLifecycleAudit.className = "result-stack";
+  els.channelLifecycleAudit.innerHTML = state.wechatLifecycleAudit
+    .map((entry) => {
+      const details = entry.details && typeof entry.details === "object"
+        ? Object.entries(entry.details).map(([key, value]) => `${key}=${value}`).join(" · ")
+        : "";
+      return `
+        <article class="result-item">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml(entry.event || "-")}</span>
+            <span>${escapeHtml(entry.ts ? formatTime(entry.ts) : "-")}</span>
+          </div>
+          <p>${escapeHtml([entry.state, entry.reason].filter(Boolean).join(" · ") || (state.lang === "zh" ? "无附加状态。" : "No additional state."))}</p>
+          <small>${escapeHtml(details || entry.providerMode || "-")}</small>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+async function loadLifecycleAudit() {
+  const payload = await requestJson("/api/channels/wechat/lifecycle-audit?limit=12");
+  renderLifecycleAudit(payload.items || []);
+}
+
+function renderFeedbackSummary(summary) {
+  if (!els.feedbackSummary) return;
+  if (!summary?.total) {
+    els.feedbackSummary.innerHTML = "";
+    return;
+  }
+
+  const positive = (summary.counts?.useful || 0) + (summary.counts?.["more-like-this"] || 0) + (summary.counts?.["worth-following"] || 0);
+  const negative = (summary.counts?.["not-useful"] || 0) + (summary.counts?.["less-like-this"] || 0) + (summary.counts?.["too-theoretical"] || 0) + (summary.counts?.["too-engineering-heavy"] || 0) + (summary.counts?.["not-worth-following"] || 0);
+
+  els.feedbackSummary.innerHTML = `
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Total" : "Total")}</span><strong>${escapeHtml(String(summary.total))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Positive signals" : "Positive signals")}</span><strong>${escapeHtml(String(positive))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Negative signals" : "Negative signals")}</span><strong>${escapeHtml(String(negative))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Updated" : "Updated")}</span><strong>${escapeHtml(formatTime(summary.updatedAt))}</strong></div>
+  `;
+}
+
+function renderFeedbackList(items) {
+  if (!els.feedbackList) return;
+  if (!items.length) {
+    els.feedbackList.className = "empty-state compact-empty";
+    els.feedbackList.textContent = state.lang === "zh" ? "暂无反馈记录。" : "No feedback recorded yet.";
+    return;
+  }
+
+  els.feedbackList.className = "result-stack";
+  els.feedbackList.innerHTML = items
+    .map(
+      (item) => `
+        <article class="result-item">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml(item.feedback)}</span>
+            <span>${escapeHtml(formatRelativeTime(item.updatedAt || item.createdAt))}</span>
+          </div>
+          <p>${escapeHtml(trimText(item.notes || item.paperTitle || item.topic || "-", 140))}</p>
+          <small>${escapeHtml(item.topic || item.paperTitle || item.directionId || "-")}</small>
+        </article>
+      `
+    )
+    .join("");
+}
+
+async function hydrateDirectionReport(reportId) {
+  const report = await requestJson(`/api/research/direction-reports/${encodeURIComponent(reportId)}`);
+  clearResearchSelections();
+  state.selectedDirectionReport = report;
+  state.selectedDirectionReportId = report.id;
+  renderDirectionReport(report);
+  renderDirectionReportList(state.directionReports);
+  return report;
+}
+
+async function loadDirectionReports() {
+  const payload = await requestJson("/api/research/direction-reports/recent?limit=12");
+  state.directionReports = payload.reports || [];
+  renderDirectionReportList(state.directionReports);
+}
+
+function renderPresentationList(presentations) {
+  if (!els.presentationList) return;
+  if (!presentations.length) {
+    els.presentationList.className = "empty-state compact-empty";
+    els.presentationList.textContent = state.lang === "zh" ? "暂无 presentations。" : "No presentations yet.";
+    return;
+  }
+
+  els.presentationList.className = "session-list";
+  els.presentationList.innerHTML = presentations
+    .map(
+      (presentation) => `
+        <button class="session-item ${state.selectedPresentationId === presentation.id ? "session-item--current" : ""}" type="button" data-presentation-id="${escapeHtml(presentation.id)}">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml(presentation.title)}</span>
+            <span>${escapeHtml(formatRelativeTime(presentation.generatedAt))}</span>
+          </div>
+          <p>${escapeHtml(trimText(presentation.filePath || presentation.id, 140))}</p>
+          <small>${escapeHtml(`${presentation.sourceReportTaskIds?.length || 0} reports${presentation.pptxPath ? " · pptx" : ""}`)}</small>
+        </button>
+      `
+    )
+    .join("");
+
+  els.presentationList.querySelectorAll("[data-presentation-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const presentationId = button.dataset.presentationId;
+      if (!presentationId) return;
+      await hydratePresentation(presentationId);
+    });
+  });
+}
+
+async function hydratePresentation(presentationId) {
+  const presentation = await requestJson(`/api/research/presentations/${encodeURIComponent(presentationId)}`);
+  clearResearchSelections();
+  state.selectedPresentation = presentation;
+  state.selectedPresentationId = presentation.id;
+  renderPresentationArtifact(presentation);
+  renderPresentationList(state.presentations);
+  return presentation;
+}
+
+async function loadPresentations() {
+  const payload = await requestJson("/api/research/presentations/recent?limit=12");
+  state.presentations = payload.presentations || [];
+  if (state.selectedPresentationId) {
+    state.selectedPresentation =
+      state.presentations.find((item) => item.id === state.selectedPresentationId) || state.selectedPresentation;
+    if (state.selectedPresentation) {
+      renderPresentationArtifact(state.selectedPresentation);
+    } else {
+      state.selectedPresentationId = null;
+    }
+  }
+  renderPresentationList(state.presentations);
+}
+
+function renderModuleAssetList(assets) {
+  if (!els.moduleAssetList) return;
+  if (!assets.length) {
+    els.moduleAssetList.className = "empty-state compact-empty";
+    els.moduleAssetList.textContent = state.lang === "zh" ? "暂无 module assets。" : "No module assets yet.";
+    return;
+  }
+
+  els.moduleAssetList.className = "session-list";
+  els.moduleAssetList.innerHTML = assets
+    .map(
+      (asset) => `
+        <button class="session-item ${state.selectedModuleAssetId === asset.id ? "session-item--current" : ""}" type="button" data-module-asset-id="${escapeHtml(asset.id)}">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml(`${asset.owner}/${asset.repo}`)}</span>
+            <span>${escapeHtml(formatRelativeTime(asset.updatedAt))}</span>
+          </div>
+          <p>${escapeHtml(trimText(asset.selectedPaths?.join(", ") || asset.archivePath || asset.id, 140))}</p>
+          <small>${escapeHtml(`${asset.selectedPaths?.length || 0} paths${asset.defaultBranch ? ` · ${asset.defaultBranch}` : ""}`)}</small>
+        </button>
+      `
+    )
+    .join("");
+
+  els.moduleAssetList.querySelectorAll("[data-module-asset-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const assetId = button.dataset.moduleAssetId;
+      if (!assetId) return;
+      await hydrateModuleAsset(assetId);
+    });
+  });
+}
+
+async function hydrateModuleAsset(assetId) {
+  const asset = await requestJson(`/api/research/module-assets/${encodeURIComponent(assetId)}`);
+  clearResearchSelections();
+  state.selectedModuleAsset = asset;
+  state.selectedModuleAssetId = asset.id;
+  renderModuleAsset(asset);
+  renderModuleAssetList(state.moduleAssets);
+  return asset;
+}
+
+async function loadModuleAssets() {
+  const payload = await requestJson("/api/research/module-assets/recent?limit=12");
+  state.moduleAssets = payload.assets || [];
+  if (state.selectedModuleAssetId) {
+    state.selectedModuleAsset =
+      state.moduleAssets.find((item) => item.id === state.selectedModuleAssetId) || state.selectedModuleAsset;
+    if (state.selectedModuleAsset) {
+      renderModuleAsset(state.selectedModuleAsset);
+    } else {
+      state.selectedModuleAssetId = null;
+    }
+  }
+  renderModuleAssetList(state.moduleAssets);
+}
+
+async function loadFeedback() {
+  const payload = await requestJson("/api/research/feedback?limit=12");
+  state.feedbackSummary = payload.summary || null;
+  state.feedbackItems = payload.items || [];
+  renderFeedbackSummary(state.feedbackSummary);
+  renderFeedbackList(state.feedbackItems);
+}
+
 function renderRuntimeLogs(payload) {
   els.runtimeLogStdoutPath.textContent = payload.stdout.path || t("logs.waitingStdout", "Waiting for stdout log...");
   els.runtimeLogStderrPath.textContent = payload.stderr.path || t("logs.waitingStderr", "Waiting for stderr log...");
@@ -1831,6 +3512,7 @@ function renderRuntimeLogs(payload) {
 
 async function hydrateResearchTask(taskId) {
   const task = await requestJson(`/api/research/tasks/${encodeURIComponent(taskId)}`);
+  clearResearchSelections();
   state.selectedResearchTaskId = task.taskId;
   state.selectedResearchTask = task;
   els.reportTaskId.value = task.taskId;
@@ -1850,7 +3532,7 @@ async function hydrateResearchTask(taskId) {
 async function hydrateReport(taskId) {
   const report = await requestJson(`/api/research/${encodeURIComponent(taskId)}`);
   state.latestReport = report;
-  state.selectedResearchTask = null;
+  clearResearchSelections();
   state.selectedResearchTaskId = report.taskId;
   els.reportTaskId.value = report.taskId;
   renderResearchReport(report);
@@ -1866,6 +3548,7 @@ async function loadResearchTasks() {
   const payload = await requestJson("/api/research/tasks?limit=12");
   state.researchTasks = payload.tasks || [];
   renderResearchTasks(state.researchTasks);
+  renderLandingSurfaces();
 
   const selectedTaskId = state.selectedResearchTaskId;
   if (!selectedTaskId) {
@@ -2499,6 +4182,7 @@ async function loadMemoryFiles() {
 async function loadRecentResearch(options = {}) {
   const payload = await requestJson("/api/research/recent?limit=20");
   state.recentReports = payload.reports || [];
+  renderLandingSurfaces();
   renderSessionCards(els.chatSessionList, state.recentReports.slice(0, 4), true);
   renderSessionCards(els.overviewSessionList, state.recentReports.slice(0, 5), true);
   renderSessionCards(els.researchSessionList, state.recentReports.slice(0, 5), true);
@@ -2541,13 +4225,29 @@ function updateGlobalSummary() {
   els.sidebarStatusText.textContent = healthOk ? (state.lang === "zh" ? "\u6b63\u5e38" : "Healthy") : "Error";
   setSidebarStatus(Boolean(healthOk));
   els.sidebarNote.textContent = wechat?.lastError || t("shell.sidebarNote", "");
+  renderLandingSurfaces();
+  renderOverviewCards(els.chatOverviewCards, true);
+  renderOverviewCards(els.overviewCards, false);
   renderOverviewNotes();
   renderSettingsOverview();
 }
 
+function openSettingsPanel(panelId) {
+  state.settingsPanel = panelId || "communications";
+  window.location.hash = "settings";
+  setActiveTab("settings");
+  renderSettingsOverview();
+}
+
 function bindOpenTabButtons(root = document) {
-  root.querySelectorAll("[data-open-tab]").forEach((button) => {
+  root.querySelectorAll("[data-open-tab], [data-open-settings-panel]").forEach((button) => {
     button.addEventListener("click", () => {
+      const settingsPanel = button.dataset.openSettingsPanel;
+      if (settingsPanel) {
+        openSettingsPanel(settingsPanel);
+        return;
+      }
+
       const tab = button.dataset.openTab;
       if (!tab) return;
       window.location.hash = tab;
@@ -2569,8 +4269,8 @@ function bindReportButtons(root) {
 }
 
 function setActiveTab(tab) {
-  const meta = i18n?.getTabMeta?.(state, tab) || i18n?.getTabMeta?.(state, "chat");
-  const next = meta ? tab : "chat";
+  const meta = i18n?.getTabMeta?.(state, tab) || i18n?.getTabMeta?.(state, "landing");
+  const next = meta ? tab : "landing";
   state.activeTab = next;
   els.navTabs.forEach((item) => item.classList.toggle("nav-item--active", item.dataset.tab === next));
   els.panels.forEach((panel) => panel.classList.toggle("workspace-panel--active", panel.dataset.panel === next));
@@ -2587,7 +4287,7 @@ function setActiveTab(tab) {
 }
 
 function syncTabFromHash() {
-  const tab = window.location.hash.replace(/^#/, "").trim() || "chat";
+  const tab = window.location.hash.replace(/^#/, "").trim() || "landing";
   setActiveTab(tab);
 }
 
@@ -2692,10 +4392,18 @@ async function refreshAll(options = {}) {
     loadAgentSession(),
     loadAgentSessions(),
     loadMessages(),
+    loadLifecycleAudit(),
     loadMemoryStatus(),
     loadMemoryFiles(),
     loadRecentResearch(options),
-    loadResearchTasks()
+    loadResearchBriefs(),
+    loadDiscoveryScheduler(),
+    loadDiscoveryRuns(),
+    loadResearchTasks(),
+    loadDirectionReports(),
+    loadPresentations(),
+    loadModuleAssets(),
+    loadFeedback()
   ]);
   if (state.activeTab === "logs") await loadRuntimeLogs();
   if (state.activeTab === "graph") await loadGraph();
@@ -2857,6 +4565,7 @@ document.querySelector("#research-form").addEventListener("submit", async (event
       maxPapers: 10
     })
   });
+  clearResearchSelections();
   state.selectedResearchTaskId = task.taskId;
   state.selectedResearchTask = null;
   els.reportTaskId.value = task.taskId;
@@ -2864,6 +4573,45 @@ document.querySelector("#research-form").addEventListener("submit", async (event
   await hydrateResearchTask(task.taskId);
   window.location.hash = "research";
   setActiveTab("research");
+});
+
+els.discoverySchedulerForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const senderId = els.discoverySchedulerSenderId?.value.trim() || "";
+  const enabled = Boolean(els.discoverySchedulerEnabled?.checked);
+  if (enabled && !senderId) {
+    throw new Error(state.lang === "zh" ? "启用 scheduler 前需要填写 WeChat sender id。" : "A WeChat sender id is required before enabling the scheduler.");
+  }
+
+  await requestJson("/api/research/discovery/scheduler", {
+    method: "POST",
+    body: JSON.stringify({
+      enabled,
+      dailyTimeLocal: els.discoverySchedulerTime?.value || "09:00",
+      ...(senderId ? { senderId } : {}),
+      ...(els.discoverySchedulerSenderName?.value.trim() ? { senderName: els.discoverySchedulerSenderName.value.trim() } : {}),
+      directionIds: parseListInput(els.discoverySchedulerDirectionIds?.value || ""),
+      topK: Number.parseInt(els.discoverySchedulerTopK?.value || "5", 10) || 5,
+      maxPapersPerQuery: Number.parseInt(els.discoverySchedulerMaxPapers?.value || "4", 10) || 4
+    })
+  });
+
+  await loadDiscoveryScheduler();
+});
+
+els.discoverySchedulerRun?.addEventListener("click", async () => {
+  const payload = await requestJson("/api/research/discovery/scheduler/tick", {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  renderDiscoveryScheduler(payload.status || null);
+  await Promise.all([
+    loadDiscoveryRuns().catch(() => {}),
+    loadResearchTasks().catch(() => {}),
+    loadDirectionReports().catch(() => {}),
+    loadRecentResearch().catch(() => {}),
+  ]);
 });
 
 document.querySelector("#load-report").addEventListener("click", async () => {
@@ -2876,6 +4624,143 @@ document.querySelector("#load-report").addEventListener("click", async () => {
   }
   window.location.hash = "research";
   setActiveTab("research");
+});
+
+els.directionReportForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const payload = {
+    topic: els.directionReportTopic?.value.trim() || undefined,
+    directionId: els.directionReportId?.value.trim() || undefined,
+    days: Number.parseInt(els.directionReportDays?.value || "14", 10) || 14
+  };
+
+  const report = await requestJson("/api/research/direction-reports/generate", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+
+  clearResearchSelections();
+  state.selectedDirectionReport = report;
+  state.selectedDirectionReportId = report.id;
+  state.selectedResearchTaskId = null;
+  renderDirectionReport(report);
+  await loadDirectionReports();
+  window.location.hash = "research";
+  setActiveTab("research");
+});
+
+els.researchBriefForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  clearResearchBriefStatus();
+
+  const payload = buildResearchBriefPayload();
+  if (!payload.label) {
+    setResearchBriefStatus(state.lang === "zh" ? "Brief label 不能为空。" : "Brief label is required.", "danger");
+    return;
+  }
+
+  const brief = await requestJson("/api/research/directions", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+
+  setSelectedResearchBrief(brief);
+  populateResearchBriefForm(brief);
+  renderResearchBrief(brief);
+  await loadResearchBriefs();
+  setResearchBriefStatus(state.lang === "zh" ? "Research brief 已保存。" : "Research brief saved.", "ok");
+  window.location.hash = "research";
+  setActiveTab("research");
+});
+
+els.researchBriefMarkdownForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  clearResearchBriefStatus();
+
+  const markdown = els.researchBriefMarkdown?.value.trim() || "";
+  if (!markdown) {
+    setResearchBriefStatus(state.lang === "zh" ? "请先粘贴 brief markdown。" : "Paste research brief markdown first.", "danger");
+    return;
+  }
+
+  const brief = await requestJson("/api/research/directions/import-markdown", {
+    method: "POST",
+    body: JSON.stringify({
+      markdown,
+      id: els.researchBriefId?.value.trim() || undefined
+    })
+  });
+
+  setSelectedResearchBrief(brief);
+  populateResearchBriefForm(brief);
+  renderResearchBrief(brief);
+  await loadResearchBriefs();
+  setResearchBriefStatus(state.lang === "zh" ? "Brief markdown 已导入。" : "Research brief markdown imported.", "ok");
+  window.location.hash = "research";
+  setActiveTab("research");
+});
+
+els.researchBriefNew?.addEventListener("click", () => {
+  clearResearchSelections();
+  clearResearchBriefForm();
+  clearResearchBriefStatus();
+  if (els.researchBriefMarkdown) els.researchBriefMarkdown.value = "";
+  renderResearchReport(state.latestReport);
+  renderResearchBriefList(state.researchBriefs);
+});
+
+els.researchBriefExport?.addEventListener("click", async () => {
+  clearResearchBriefStatus();
+  const briefId = state.selectedResearchBriefId || els.researchBriefId?.value.trim();
+  if (!briefId) {
+    setResearchBriefStatus(state.lang === "zh" ? "请先选择一个 brief 再导出。" : "Select a brief before exporting.", "danger");
+    return;
+  }
+
+  const markdown = await requestText(`/api/research/directions/${encodeURIComponent(briefId)}/brief-markdown`);
+  if (els.researchBriefMarkdown) els.researchBriefMarkdown.value = markdown;
+  setResearchBriefStatus(state.lang === "zh" ? "已将 markdown 导出到编辑框。" : "Markdown exported into the editor.", "ok");
+});
+
+els.researchBriefDelete?.addEventListener("click", async () => {
+  clearResearchBriefStatus();
+  const briefId = state.selectedResearchBriefId || els.researchBriefId?.value.trim();
+  if (!briefId) {
+    setResearchBriefStatus(state.lang === "zh" ? "请先选择一个 brief 再删除。" : "Select a brief before deleting.", "danger");
+    return;
+  }
+
+  await requestJson(`/api/research/directions/${encodeURIComponent(briefId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({})
+  }).catch(async (error) => {
+    throw error;
+  });
+
+  clearResearchSelections();
+  clearResearchBriefForm();
+  if (els.researchBriefMarkdown) els.researchBriefMarkdown.value = "";
+  await loadResearchBriefs();
+  renderResearchReport(state.latestReport);
+  setResearchBriefStatus(state.lang === "zh" ? "Research brief 已删除。" : "Research brief deleted.", "ok");
+});
+
+els.feedbackForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await requestJson("/api/research/feedback", {
+    method: "POST",
+    body: JSON.stringify({
+      feedback: els.feedbackSignal?.value,
+      topic: els.feedbackTopic?.value.trim() || undefined,
+      paperTitle: els.feedbackPaperTitle?.value.trim() || undefined,
+      notes: els.feedbackNotes?.value.trim() || undefined
+    })
+  });
+
+  if (els.feedbackTopic) els.feedbackTopic.value = "";
+  if (els.feedbackPaperTitle) els.feedbackPaperTitle.value = "";
+  if (els.feedbackNotes) els.feedbackNotes.value = "";
+  await loadFeedback();
 });
 
 els.agentRoleSelect?.addEventListener("change", async () => {
@@ -3122,6 +5007,7 @@ window.addEventListener("reagent-language-change", () => {
   els.navCollapseToggle.title = state.navCollapsed ? t("common.expandNav", "Expand navigation") : t("common.collapseNav", "Collapse navigation");
   renderMessages(state.latestMessages);
   renderTransportMessages(state.transportMessages);
+  renderLifecycleAudit(state.wechatLifecycleAudit);
   renderLatestReport(els.chatLatestReport, getLatestSummary());
   renderLatestReport(els.overviewLatestReport, getLatestSummary());
   renderAgentSession(state.agentSession);
@@ -3138,13 +5024,27 @@ window.addEventListener("reagent-language-change", () => {
   if (els.graphDateRange) {
     els.graphDateRange.value = state.graphDateRange;
   }
+  renderLandingSurfaces();
   renderSessionCards(els.chatSessionList, state.recentReports.slice(0, 4), true);
   renderSessionCards(els.overviewSessionList, state.recentReports.slice(0, 5), true);
   renderSessionCards(els.researchSessionList, state.recentReports.slice(0, 5), true);
   renderOverviewCards(els.chatOverviewCards, true);
   renderOverviewCards(els.overviewCards, false);
   renderOverviewNotes();
-  renderResearchReport(state.latestReport);
+  if (state.selectedResearchBrief) renderResearchBrief(state.selectedResearchBrief);
+  else if (state.selectedDirectionReport) renderDirectionReport(state.selectedDirectionReport);
+  else if (state.selectedPresentation) renderPresentationArtifact(state.selectedPresentation);
+  else if (state.selectedModuleAsset) renderModuleAsset(state.selectedModuleAsset);
+  else if (state.selectedResearchTask) renderResearchTaskDetail(state.selectedResearchTask);
+  else renderResearchReport(state.latestReport);
+  renderResearchBriefList(state.researchBriefs);
+  renderDiscoveryScheduler(state.discoveryScheduler);
+  renderDiscoveryRuns();
+  renderDirectionReportList(state.directionReports);
+  renderPresentationList(state.presentations);
+  renderModuleAssetList(state.moduleAssets);
+  renderFeedbackSummary(state.feedbackSummary);
+  renderFeedbackList(state.feedbackItems);
   renderSettingsOverview();
   updateGlobalSummary();
   renderGraphTypeFilters(state.graphData);
