@@ -26,6 +26,7 @@ const MAX_QR_REFRESH_COUNT = 3;
 const CLIENT_VERSION = "2.1.1";
 const ILINK_APP_ID = "bot";
 const UNSUPPORTED_MEDIA_REPLY = "\u5f53\u524d\u4ec5\u652f\u6301\u6587\u672c\u547d\u4ee4\u3002\u8bf7\u53d1\u9001 /research\u3001/memory \u6216 /remember\u3002";
+const INBOUND_DEDUP_TTL_MS = 15_000;
 
 interface NativeWeChatState {
   providerMode: "native";
@@ -324,6 +325,29 @@ function hasMedia(itemList?: MessageItem[]): boolean {
   return Boolean(itemList?.some((item) => item.type && item.type !== 1));
 }
 
+function buildInboundDedupFingerprint(params: {
+  senderId: string;
+  effectiveText: string;
+  contextToken?: string | undefined;
+  messageType?: number | undefined;
+  itemList?: MessageItem[] | undefined;
+}): string {
+  const itemSignature = JSON.stringify(
+    (params.itemList ?? []).map((item) => ({
+      type: item.type ?? null,
+      text: item.text_item?.text ?? "",
+      voice: item.voice_item?.text ?? "",
+    })),
+  );
+  return [
+    params.senderId.trim(),
+    params.contextToken?.trim() ?? "",
+    String(params.messageType ?? ""),
+    params.effectiveText,
+    itemSignature,
+  ].join("\u241f");
+}
+
 async function apiGetFetch(params: {
   baseUrl: string;
   endpoint: string;
@@ -498,6 +522,7 @@ async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 export class NativeWeChatChannelProvider {
   private readonly statePath: string;
   private readonly accountStore: NativeWeChatAccountStore;
+  private readonly recentInboundFingerprints = new Map<string, number>();
   private closed = false;
   private activeLogin: ActiveLogin | null = null;
   private monitorAbortController: AbortController | null = null;
@@ -720,6 +745,24 @@ export class NativeWeChatChannelProvider {
   private stopLoginMonitor(): void {
     this.loginAbortController?.abort();
     this.loginAbortController = null;
+  }
+
+  private markInboundFingerprint(fingerprint: string): void {
+    const now = Date.now();
+    for (const [key, seenAt] of this.recentInboundFingerprints) {
+      if (now - seenAt > INBOUND_DEDUP_TTL_MS) {
+        this.recentInboundFingerprints.delete(key);
+      }
+    }
+    this.recentInboundFingerprints.set(fingerprint, now);
+  }
+
+  private isDuplicateInboundFingerprint(fingerprint: string): boolean {
+    const seenAt = this.recentInboundFingerprints.get(fingerprint);
+    if (!seenAt) {
+      return false;
+    }
+    return Date.now() - seenAt <= INBOUND_DEDUP_TTL_MS;
   }
 
   private async ensureLoginSession(options: {
@@ -1111,6 +1154,18 @@ export class NativeWeChatChannelProvider {
     if (!effectiveText) {
       return;
     }
+
+    const fingerprint = buildInboundDedupFingerprint({
+      senderId,
+      effectiveText,
+      contextToken: message.context_token,
+      messageType: message.message_type,
+      itemList: message.item_list,
+    });
+    if (this.isDuplicateInboundFingerprint(fingerprint)) {
+      return;
+    }
+    this.markInboundFingerprint(fingerprint);
 
     const stateAfterInbound = await this.mutate((current) => {
       const nextTokens = { ...current.contextTokens };

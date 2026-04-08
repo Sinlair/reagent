@@ -4,10 +4,13 @@ import path from "node:path";
 
 import type { ResearchService } from "./researchService.js";
 import { ResearchMemoryFlushService } from "./researchMemoryFlushService.js";
+import { ResearchRoundService } from "./researchRoundService.js";
 import type { ResearchRequest } from "../types/research.js";
 import type {
+  ResearchTaskDetail,
   ResearchTaskProgressUpdate,
   ResearchTaskRecord,
+  ResearchTaskReviewStatus,
   ResearchTaskState,
   ResearchTaskSummary,
   ResearchTaskTransition
@@ -25,6 +28,11 @@ function nowIso(): string {
 
 function defaultStore(): ResearchTaskStore {
   return { tasks: [] };
+}
+
+function stripStoredReport(record: ResearchTaskRecord): ResearchTaskRecord {
+  const { report: _report, ...rest } = record;
+  return rest;
 }
 
 function progressForState(state: ResearchTaskState): number {
@@ -92,13 +100,26 @@ function toSummary(record: ResearchTaskRecord): ResearchTaskSummary {
     attempt: record.attempt,
     sourceTaskId: record.sourceTaskId,
     reportReady: record.reportReady,
-    generatedAt: record.generatedAt
+    generatedAt: record.generatedAt,
+    roundPath: record.roundPath,
+    handoffPath: record.handoffPath,
+    reviewStatus: record.reviewStatus,
+  };
+}
+
+function toDetail(record: ResearchTaskRecord): ResearchTaskDetail {
+  return {
+    ...toSummary(record),
+    transitions: record.transitions,
+    request: record.request,
+    error: record.error,
   };
 }
 
 export class ResearchTaskService {
   private readonly storePath: string;
   private readonly memoryFlushService: ResearchMemoryFlushService;
+  private readonly researchRoundService: ResearchRoundService;
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -107,6 +128,7 @@ export class ResearchTaskService {
   ) {
     this.storePath = path.join(workspaceDir, STORE_FILE);
     this.memoryFlushService = new ResearchMemoryFlushService(workspaceDir);
+    this.researchRoundService = new ResearchRoundService(workspaceDir);
   }
 
   private async readStore(): Promise<ResearchTaskStore> {
@@ -114,7 +136,11 @@ export class ResearchTaskService {
       const raw = await readFile(this.storePath, "utf8");
       const parsed = JSON.parse(raw) as Partial<ResearchTaskStore>;
       return {
-        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : []
+        tasks: Array.isArray(parsed.tasks)
+          ? parsed.tasks
+              .filter((task): task is ResearchTaskRecord => Boolean(task) && typeof task === "object")
+              .map((task) => stripStoredReport(task))
+          : []
       };
     } catch {
       return defaultStore();
@@ -123,7 +149,11 @@ export class ResearchTaskService {
 
   private async writeStore(store: ResearchTaskStore): Promise<void> {
     await mkdir(path.dirname(this.storePath), { recursive: true });
-    await writeFile(this.storePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+    await writeFile(
+      this.storePath,
+      `${JSON.stringify({ tasks: store.tasks.map((task) => stripStoredReport(task)) }, null, 2)}\n`,
+      "utf8",
+    );
   }
 
   private async mutateStore<T>(mutator: (store: ResearchTaskStore) => T | Promise<T>): Promise<T> {
@@ -149,14 +179,15 @@ export class ResearchTaskService {
   }
 
   async recoverInterruptedTasks(): Promise<void> {
-    await this.mutateStore((store) => {
+    const interruptedTasks = await this.mutateStore<ResearchTaskRecord[]>((store) => {
+      const interrupted: ResearchTaskRecord[] = [];
       store.tasks = store.tasks.map((task) => {
         if (task.state === "completed" || task.state === "failed") {
           return task;
         }
 
         const message = "ReAgent restarted before this task finished.";
-        return {
+        const nextTask: ResearchTaskRecord = {
           ...task,
           state: "failed",
           updatedAt: nowIso(),
@@ -165,8 +196,23 @@ export class ResearchTaskService {
           progress: progressForState("failed"),
           transitions: pushTransition(task.transitions ?? [], "failed", message)
         };
+        interrupted.push(nextTask);
+        return nextTask;
       });
+      return interrupted;
     });
+
+    await Promise.all(
+      interruptedTasks.map((task) =>
+        this.researchRoundService.recordTaskProgress({
+          taskId: task.taskId,
+          state: "failed",
+          progress: task.progress,
+          message: task.message,
+          reviewStatus: task.reviewStatus,
+        }),
+      ),
+    );
   }
 
   async createTask(request: ResearchRequest, sourceTaskId?: string): Promise<ResearchTaskRecord> {
@@ -175,29 +221,49 @@ export class ResearchTaskService {
       ...(request.question?.trim() ? { question: request.question.trim() } : {}),
       ...(request.maxPapers ? { maxPapers: request.maxPapers } : {})
     };
+    const sourceTask = sourceTaskId ? await this.getTask(sourceTaskId) : null;
+    const taskId = randomUUID();
+    const createdAt = nowIso();
+    const roundPointers = this.researchRoundService.getRoundPointers(taskId);
     const task: ResearchTaskRecord = {
-      taskId: randomUUID(),
+      taskId,
       topic: normalizedRequest.topic,
       question: normalizedRequest.question,
       request: normalizedRequest,
       state: "queued",
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
+      createdAt,
+      updatedAt: createdAt,
       message: "Task queued.",
       progress: progressForState("queued"),
-      attempt: 1,
+      attempt: sourceTaskId ? (sourceTask?.attempt ?? 0) + 1 : 1,
       reportReady: false,
+      roundPath: roundPointers.roundPath,
+      handoffPath: roundPointers.handoffPath,
+      reviewStatus: "pending",
       ...(sourceTaskId ? { sourceTaskId } : {}),
       transitions: pushTransition([], "queued", "Task queued.")
     };
 
-    await this.mutateStore((store) => {
-      if (sourceTaskId) {
-        const parent = store.tasks.find((entry) => entry.taskId === sourceTaskId);
-        task.attempt = (parent?.attempt ?? 0) + 1;
-      }
-      store.tasks = [task, ...store.tasks].slice(0, 200);
+    await this.researchRoundService.createRound({
+      taskId: task.taskId,
+      topic: task.topic,
+      question: task.question,
+      request: task.request,
+      attempt: task.attempt,
+      sourceTaskId: task.sourceTaskId,
+      createdAt: task.createdAt,
+      progress: task.progress,
+      message: task.message,
     });
+
+    try {
+      await this.mutateStore((store) => {
+        store.tasks = [task, ...store.tasks].slice(0, 200);
+      });
+    } catch (error) {
+      await this.researchRoundService.deleteRound(task.taskId).catch(() => {});
+      throw error;
+    }
 
     return task;
   }
@@ -224,6 +290,11 @@ export class ResearchTaskService {
     return store.tasks.find((task) => task.taskId === taskId) ?? null;
   }
 
+  async getTaskDetail(taskId: string): Promise<ResearchTaskDetail | null> {
+    const task = await this.getTask(taskId);
+    return task ? toDetail(task) : null;
+  }
+
   async retryTask(taskId: string): Promise<ResearchTaskSummary | null> {
     const existing = await this.getTask(taskId);
     if (!existing) {
@@ -239,13 +310,14 @@ export class ResearchTaskService {
     message?: string | undefined,
     extras: Partial<ResearchTaskRecord> = {}
   ): Promise<void> {
-    await this.mutateStore((store) => {
+    const nextTask = await this.mutateStore<ResearchTaskRecord | null>((store) => {
+      let updatedTask: ResearchTaskRecord | null = null;
       store.tasks = store.tasks.map((task) => {
         if (task.taskId !== taskId) {
           return task;
         }
 
-        return {
+        updatedTask = {
           ...task,
           ...extras,
           state,
@@ -254,7 +326,21 @@ export class ResearchTaskService {
           progress: progressForState(state),
           transitions: pushTransition(task.transitions ?? [], state, message)
         };
+        return updatedTask;
       });
+      return updatedTask;
+    });
+
+    if (!nextTask) {
+      return;
+    }
+
+    await this.researchRoundService.recordTaskProgress({
+      taskId,
+      state,
+      progress: nextTask.progress,
+      message: nextTask.message,
+      reviewStatus: nextTask.reviewStatus,
     });
   }
 
@@ -272,12 +358,15 @@ export class ResearchTaskService {
         }
       });
 
+      const reviewStatus: ResearchTaskReviewStatus =
+        report.critique.verdict === "weak" ? "needs-review" : "passed";
+      await this.researchRoundService.finalizeReport(taskId, report);
       await this.memoryFlushService.flushResearchReport(report).catch(() => {});
 
       await this.updateTaskState(taskId, "completed", "Research task completed.", {
         reportReady: true,
         generatedAt: report.generatedAt,
-        report
+        reviewStatus,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

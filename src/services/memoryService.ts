@@ -9,6 +9,7 @@ import type {
   MemoryStatus,
   RememberRequest
 } from "../types/memory.js";
+import { MemoryCompactionService } from "./memoryCompactionService.js";
 import { MemoryIndexService } from "./memoryIndexService.js";
 
 const LONG_TERM_FILE = "MEMORY.md";
@@ -305,10 +306,12 @@ function scoreChunk(
 }
 
 export class MemoryService {
+  private readonly memoryCompactionService: MemoryCompactionService;
   private readonly memoryIndexService: MemoryIndexService;
 
   constructor(private readonly workspaceDir: string) {
     this.memoryIndexService = new MemoryIndexService(workspaceDir);
+    this.memoryCompactionService = new MemoryCompactionService(workspaceDir);
   }
 
   private get longTermPath(): string {
@@ -442,6 +445,9 @@ export class MemoryService {
       createdAt,
       remember: input
     });
+    if (!(input.source ?? "").startsWith("memory-compaction:")) {
+      await this.memoryCompactionService.maybeAutoCompact().catch(() => null);
+    }
 
     return this.readAllowedFile(relativePath);
   }

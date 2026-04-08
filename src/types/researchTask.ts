@@ -17,6 +17,38 @@ export type ResearchTaskState =
   | "completed"
   | "failed";
 
+export type ResearchTaskReviewStatus = "pending" | "passed" | "needs-review";
+
+export interface ResearchTaskHandoffArtifactRef {
+  kind: "report" | "review";
+  id: string;
+  title: string;
+  path: string;
+  createdAt: string;
+  notes: string[];
+}
+
+export interface ResearchTaskHandoff {
+  taskId: string;
+  topic: string;
+  question?: string | undefined;
+  updatedAt: string;
+  state: ResearchTaskState;
+  progress: number;
+  currentMessage?: string | undefined;
+  reviewStatus: ResearchTaskReviewStatus;
+  nextRecommendedAction: string;
+  blockers: string[];
+  artifacts: ResearchTaskHandoffArtifactRef[];
+  roundPath: string;
+  briefPath: string;
+  progressLogPath: string;
+  handoffPath: string;
+  artifactsPath: string;
+  reportPath?: string | undefined;
+  reviewPath?: string | undefined;
+}
+
 export interface ResearchTaskTransition {
   state: ResearchTaskState;
   at: string;
@@ -36,12 +68,21 @@ export interface ResearchTaskSummary {
   sourceTaskId?: string | undefined;
   reportReady: boolean;
   generatedAt?: string | undefined;
+  roundPath?: string | undefined;
+  handoffPath?: string | undefined;
+  reviewStatus?: ResearchTaskReviewStatus | undefined;
 }
 
 export interface ResearchTaskRecord extends ResearchTaskSummary {
   transitions: ResearchTaskTransition[];
   request: ResearchRequest;
   report?: ResearchReport | undefined;
+  error?: string | undefined;
+}
+
+export interface ResearchTaskDetail extends ResearchTaskSummary {
+  transitions: ResearchTaskTransition[];
+  request: ResearchRequest;
   error?: string | undefined;
 }
 

@@ -131,7 +131,7 @@ WECHAT_PROVIDER=mock
 ```bash
 npm install -g @sinlair/reagent
 reagent init
-reagent gateway
+reagent service run
 ```
 
 🏷️ 发布包名是 `@sinlair/reagent`，安装后的命令是 `reagent`。
@@ -139,10 +139,10 @@ reagent gateway
 🔁 常驻 gateway 相关命令：
 
 ```bash
-reagent gateway install
-reagent gateway status
-reagent gateway restart
-reagent gateway stop
+reagent service install
+reagent service status
+reagent service restart
+reagent service stop
 ```
 
 ## 🔄 运行模式

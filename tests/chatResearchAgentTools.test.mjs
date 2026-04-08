@@ -120,6 +120,9 @@ async function main() {
         assert.ok(reply.includes("I extracted one paper candidate and one GitHub repo candidate."));
         assert.equal(requests.length, 2);
         assert.equal(requests[0].tools.some((tool) => tool.name === "link_ingest"), true);
+        assert.equal(requests[0].tools.some((tool) => tool.name === "graph_query"), true);
+        assert.equal(requests[0].tools.some((tool) => tool.name === "graph_report"), true);
+        assert.equal(requests[0].tools.some((tool) => tool.name === "graph_explain"), true);
         assert.equal(String(requests[1].input[0].output).includes("2501.12345"), true);
         assert.equal(String(requests[1].input[0].output).includes("research-repo"), true);
         assert.equal(String(requests[1].input[0].output).includes("autoChain"), true);

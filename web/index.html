@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f172a" />
     <title>ReAgent Workbench</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=20260408-uifix" />
   </head>
   <body>
     <div id="app-shell" class="shell">
@@ -1153,10 +1153,10 @@
           <div class="graph-shell">
             <article class="card graph-launchpad">
               <div class="graph-launchpad__copy">
-                <div class="section-kicker" data-i18n="graph.kicker">Research Map</div>
-                <h2 class="page-title" data-i18n="graph.heading">Research Map</h2>
+                <div class="section-kicker" data-i18n="graph.kicker">Paper Relationship Map</div>
+                <h2 class="page-title" data-i18n="graph.heading">Paper Relationship Map</h2>
                 <p class="panel-sub" data-i18n="graph.sub">
-                  Trace how directions, artifacts, modules, and reports connect across the workspace.
+                  Focus on papers only and see which papers are linked by shared discovery, sources, repos, and reports.
                 </p>
               </div>
               <div class="graph-launchpad__actions">
@@ -1169,12 +1169,12 @@
             <article class="card panel-card graph-toolbar graph-toolbar--product">
               <div class="graph-toolbar__search">
                 <label class="field">
-                  <span data-i18n="graph.searchLabel">Search graph</span>
+                  <span data-i18n="graph.searchLabel">Search papers</span>
                   <input
                     id="graph-search"
                     type="search"
                     data-i18n-placeholder="graph.searchPlaceholder"
-                    placeholder="Filter by topic, title, tag, or source"
+                    placeholder="Filter by title, venue, or keyword"
                   />
                 </label>
                 <label class="field graph-toolbar__range">
@@ -1188,6 +1188,9 @@
                 </label>
               </div>
               <div class="graph-toolbar__actions">
+                <button id="graph-reset-view" class="btn btn--ghost" type="button" data-i18n="graph.resetView">
+                  Reset map
+                </button>
                 <button id="graph-clear-filters" class="btn btn--ghost" type="button" data-i18n="graph.clearFilters">
                   Clear filters
                 </button>
@@ -1202,38 +1205,46 @@
                 <article class="card panel-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="graph.summaryTitle">Graph Summary</div>
+                      <div class="card-title" data-i18n="graph.summaryTitle">Current Scope</div>
                       <div class="card-sub" data-i18n="graph.summarySub">
-                        Coverage and shape of the current graph slice.
+                        Understand how many papers and links are visible right now.
                       </div>
                     </div>
                   </div>
                   <div id="graph-summary" class="detail-list empty-state compact-empty">
-                    <span data-i18n="graph.loading">Loading map...</span>
+                    <span data-i18n="graph.loading">Loading paper graph...</span>
                   </div>
                 </article>
 
                 <article class="card panel-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="graph.focusTitle">How to use</div>
-                      <div class="card-sub" data-i18n="graph.focusSub">
-                        Filter first, then inspect nodes, relationships, and attached artifacts.
+                      <div class="card-title" data-i18n="graph.legendTitle">How links are inferred</div>
+                      <div class="card-sub" data-i18n="graph.legendSub">
+                        This is a relationship map, not a citation graph. Links come from shared research context.
                       </div>
                     </div>
                   </div>
                   <div class="detail-list">
                     <div class="detail-row">
-                      <span>Selection</span>
-                      <strong>Choose a node</strong>
+                      <span data-i18n="graph.legendDiscoveryLabel">Same discovery batch</span>
+                      <strong data-i18n="graph.legendDiscoveryValue">Both papers appeared in the same discovery run.</strong>
                     </div>
                     <div class="detail-row">
-                      <span>Filter</span>
-                      <strong>Search, type, and time window</strong>
+                      <span data-i18n="graph.legendSourceLabel">Same source</span>
+                      <strong data-i18n="graph.legendSourceValue">The same article, page, or source item mentioned both papers.</strong>
                     </div>
                     <div class="detail-row">
-                      <span>Detail</span>
-                      <strong>Review connections and artifacts</strong>
+                      <span data-i18n="graph.legendRepoLabel">Same repository</span>
+                      <strong data-i18n="graph.legendRepoValue">Both papers point to the same implementation repository.</strong>
+                    </div>
+                    <div class="detail-row">
+                      <span data-i18n="graph.legendReportLabel">Same report</span>
+                      <strong data-i18n="graph.legendReportValue">The same research report or workflow used both papers.</strong>
+                    </div>
+                    <div class="detail-row">
+                      <span data-i18n="graph.legendMultiLabel">Multiple contexts</span>
+                      <strong data-i18n="graph.legendMultiValue">More than one of the above relationships is true.</strong>
                     </div>
                   </div>
                 </article>
@@ -1241,25 +1252,50 @@
                 <article class="card panel-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="graph.connectionsTitle">Map</div>
+                      <div class="card-title" data-i18n="graph.focusTitle">How to read</div>
+                      <div class="card-sub" data-i18n="graph.focusSub">
+                        Start from one paper, then look at why it connects to nearby papers.
+                      </div>
+                    </div>
+                  </div>
+                  <div class="detail-list">
+                    <div class="detail-row">
+                      <span data-i18n="graph.readStartLabel">Start</span>
+                      <strong data-i18n="graph.readStartValue">Pick one paper</strong>
+                    </div>
+                    <div class="detail-row">
+                      <span data-i18n="graph.readFilterLabel">Filter</span>
+                      <strong data-i18n="graph.readFilterValue">Search by title, keyword, or time</strong>
+                    </div>
+                    <div class="detail-row">
+                      <span data-i18n="graph.readExplainLabel">Explain</span>
+                      <strong data-i18n="graph.readExplainValue">See why two papers are related</strong>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="card panel-card">
+                  <div class="card-head">
+                    <div>
+                      <div class="card-title" data-i18n="graph.connectionsTitle">Paper Map</div>
                       <div class="card-sub" data-i18n="graph.connectionsSub">
-                        Explore visible nodes and inspect provenance from the graph itself.
+                        All visible papers and the inferred links between them.
                       </div>
                     </div>
                   </div>
-                  <div id="graph-canvas" class="graph-canvas empty-state compact-empty" data-i18n="graph.empty">No map data yet.</div>
+                  <div id="graph-canvas" class="graph-canvas empty-state compact-empty" data-i18n="graph.empty">No paper graph data yet.</div>
                 </article>
 
                 <article class="card panel-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="graph.relationshipsTitle">Relationships</div>
+                      <div class="card-title" data-i18n="graph.relationshipsTitle">Relationship List</div>
                       <div class="card-sub" data-i18n="graph.relationshipsSub">
-                        Edges around the current node selection.
+                        Complete list of visible relationships for the current selection.
                       </div>
                     </div>
                   </div>
-                  <div id="graph-edges" class="result-stack empty-state compact-empty" data-i18n="graph.empty">No map data yet.</div>
+                  <div id="graph-edges" class="result-stack empty-state compact-empty" data-i18n="graph.empty">No paper graph data yet.</div>
                 </article>
               </div>
 
@@ -1267,14 +1303,14 @@
                 <article class="card panel-card graph-detail-card">
                   <div class="card-head">
                     <div>
-                      <div class="card-title" data-i18n="graph.detailTitle">Details</div>
+                      <div class="card-title" data-i18n="graph.detailTitle">Paper Detail</div>
                       <div class="card-sub" data-i18n="graph.detailSub">
-                        Metadata, related nodes, structured conclusions, and raw artifacts.
+                        Read the paper context, its related papers, and the supporting source links.
                       </div>
                     </div>
                   </div>
                   <div id="graph-detail" class="empty-state compact-empty">
-                    <span data-i18n="graph.selectNode">Select a node to inspect it.</span>
+                    <span data-i18n="graph.selectNode">Pick a paper to see why it is connected to other papers.</span>
                   </div>
                 </article>
               </aside>
@@ -2082,10 +2118,10 @@ Select a file to preview its content.</pre
                 Settings
               </div>
               <h2 id="settings-heading" class="page-title" data-i18n="settings.heading">
-                Settings & Infrastructure
+                运行与交付
               </h2>
               <p id="settings-subtitle" class="panel-sub" data-i18n="settings.sub">
-                Communications, runtime, MCP status, and bridge configuration.
+                查看 runtime service、渠道、MCP 和 bridge 设置。
               </p>
             </div>
           </div>
@@ -2098,13 +2134,37 @@ Select a file to preview its content.</pre
             <div>
               <div id="logs-kicker" class="section-kicker" data-i18n="logs.kicker">Logs</div>
               <h2 id="logs-heading" class="page-title" data-i18n="logs.heading">
-                Runtime Logs
+                运行日志
               </h2>
               <p id="logs-subtitle" class="panel-sub" data-i18n="logs.sub">
-                Inspect stdout and stderr from the current runtime.
+                查看并跟随当前 runtime 的 stdout 和 stderr。
               </p>
             </div>
             <div class="panel-actions">
+              <button
+                id="logs-follow-toggle"
+                class="btn btn--ghost"
+                type="button"
+                aria-pressed="true"
+              >
+                自动跟随：开
+              </button>
+              <button
+                id="logs-clear-button"
+                class="btn btn--ghost"
+                type="button"
+                data-i18n="common.clear"
+              >
+                清空视图
+              </button>
+              <button
+                id="logs-copy-button"
+                class="btn btn--ghost"
+                type="button"
+                data-i18n="common.copy"
+              >
+                复制
+              </button>
               <button
                 id="refresh-logs"
                 class="btn btn--ghost"
@@ -2182,7 +2242,7 @@ Select a file to preview its content.</pre
         <div id="skill-detail"></div>
       </div>
     </div>
-    <script type="module" src="/i18n.js"></script>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/i18n.js?v=20260408-uifix"></script>
+    <script type="module" src="/app.js?v=20260408-uifix"></script>
   </body>
 </html>

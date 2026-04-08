@@ -9,6 +9,9 @@ import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerResearchRoutes } from "./routes/research.js";
 import { registerUiRoutes } from "./routes/ui.js";
 import { ChannelService } from "./services/channelService.js";
+import { MemoryCompactionSchedulerService } from "./services/memoryCompactionSchedulerService.js";
+import { MemoryCompactionService } from "./services/memoryCompactionService.js";
+import { MemoryRecallService } from "./services/memoryRecallService.js";
 import { MemoryService } from "./services/memoryService.js";
 import { ResearchDirectionService } from "./services/researchDirectionService.js";
 import { ResearchDiscoverySchedulerService } from "./services/researchDiscoverySchedulerService.js";
@@ -27,6 +30,9 @@ export async function createApp() {
   await researchTaskService.recoverInterruptedTasks();
   const researchDirectionService = new ResearchDirectionService(workspaceDir);
   const memoryService = new MemoryService(workspaceDir);
+  const memoryRecallService = new MemoryRecallService(workspaceDir, researchService);
+  const memoryCompactionService = new MemoryCompactionService(workspaceDir);
+  const memoryCompactionSchedulerService = new MemoryCompactionSchedulerService(memoryCompactionService, app.log);
   await memoryService.ensureWorkspace();
   const channelService = new ChannelService(workspaceDir, researchService, memoryService, {
     wechatProvider: env.WECHAT_PROVIDER,
@@ -58,13 +64,20 @@ export async function createApp() {
     researchDiscoveryService,
     researchDiscoverySchedulerService,
   );
-  await registerMemoryRoutes(app, memoryService);
+  await registerMemoryRoutes(
+    app,
+    memoryService,
+    memoryRecallService,
+    memoryCompactionService,
+    async () => memoryCompactionSchedulerService.refresh(),
+  );
   await registerChannelRoutes(app, channelService);
   await registerUiRoutes(app);
 
   try {
     await channelService.start();
     await researchDiscoverySchedulerService.start();
+    await memoryCompactionSchedulerService.start();
   } catch (error) {
     app.log.error(
       { err: error },
@@ -73,6 +86,7 @@ export async function createApp() {
   }
 
   app.addHook("onClose", async () => {
+    await memoryCompactionSchedulerService.stop();
     await researchDiscoverySchedulerService.stop();
     await channelService.close();
   });

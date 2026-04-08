@@ -1,5 +1,23 @@
 # ReAgent Agent Blueprint
 
+## 0. Current Product Reality
+
+截至 2026-04-08，ReAgent 的产品现实应以“单一 CLI 控制面 + 可选 Web 观察面板”为准，而不是多入口分裂心智。
+
+- 唯一主控制入口是 `reagent`
+- 运行控制统一收口到 `reagent service ...`
+- 运行检查统一收口到 `reagent runtime ...`
+- 研究工作流统一收口到 `reagent research ...`
+- 渠道、记忆、配置、插件统一收口到 `reagent channels ...`、`reagent memory ...`、`reagent config ...`、`reagent plugins ...`
+- `reagent gateway`、`reagent status`、`reagent health`、`reagent logs`、`reagent doctor` 只保留为兼容 alias，不再是推荐心智
+- Web UI 的定位是观察、浏览、辅助操作，不应再承担只有 UI 才能做的独占控制能力
+
+这意味着后续设计判断要遵守三个约束：
+
+1. 不再新增第二套“平行控制面”
+2. 新能力优先进入 `reagent ...`，UI 只做映射和可视化
+3. 文案、状态页、部署页、帮助页都应默认展示 `service/runtime/research/...`，而不是回退到 `gateway` 时代的命名
+
 ## 1. 一句话定义
 
 ReAgent 不是一个“带研究按钮的聊天机器人”，而是一个本地优先、可持续运行的 `Research Workspace / Research OS`。

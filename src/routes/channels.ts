@@ -235,4 +235,17 @@ export async function registerChannelRoutes(
 
     return reply.send(await channelService.receiveWeChatMessage(parsed.data));
   });
+
+  app.post("/api/channels/wechat/push", async (request, reply) => {
+    const parsed = InboundSchema.safeParse(request.body ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid WeChat push payload",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    return reply.send(await channelService.pushWeChatMessage(parsed.data));
+  });
 }

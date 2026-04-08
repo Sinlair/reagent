@@ -180,6 +180,68 @@ async function main() {
     });
   });
 
+  await runTest("NativeWeChatChannelProvider suppresses duplicated inbound deliveries", async () => {
+    await withTempDir(async (dir) => {
+      const sentBodies = [];
+      let commandCalls = 0;
+      let provider;
+      const originalFetch = global.fetch;
+      global.fetch = async (_url, options = {}) => {
+        sentBodies.push(String(options.body ?? ""));
+        return new Response("{}", {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      };
+
+      try {
+        provider = new NativeWeChatChannelProvider(dir, async () => {
+          commandCalls += 1;
+          return {
+            accepted: true,
+            reply: "你好！请问我能给你提供什么帮助吗？"
+          };
+        });
+
+        await provider.resumeMonitorIfNeeded();
+        await provider.writeState({
+          providerMode: "native",
+          configured: true,
+          linked: true,
+          running: true,
+          connected: true,
+          activeAccountId: "wx-bot-dedup",
+          accountId: "wx-bot-dedup",
+          accountName: "Native Bot",
+          botToken: "bot-token",
+          baseUrl: "https://example.com",
+          contextTokens: {},
+          updatedAt: new Date().toISOString(),
+          messages: []
+        });
+
+        const inbound = {
+          from_user_id: "wx-user-dup",
+          message_type: 1,
+          context_token: "ctx-dup-1",
+          item_list: [{ type: 1, text_item: { text: "你好" } }]
+        };
+
+        await provider.handleInboundFromWeixinMessage(inbound);
+        await provider.handleInboundFromWeixinMessage(inbound);
+
+        const messages = await provider.listMessages();
+        assert.equal(commandCalls, 1);
+        assert.equal(sentBodies.length, 1);
+        assert.equal(messages.filter((message) => message.direction === "inbound").length, 1);
+        assert.equal(messages.filter((message) => message.direction === "outbound").length, 1);
+      } finally {
+        await provider?.close();
+        global.fetch = originalFetch;
+      }
+    });
+  });
+
   await runTest("ChatService OpenAI runtime can execute local tools with role-aware instructions", async () => {
     await withTempDir(async (dir) => {
       const memory = new MemoryService(dir);

@@ -31,6 +31,8 @@ import { ResearchRepoAnalysisService } from "../services/researchRepoAnalysisSer
 import { ResearchModuleAssetService } from "../services/researchModuleAssetService.js";
 import { ResearchBaselineService } from "../services/researchBaselineService.js";
 import { ResearchPresentationService } from "../services/researchPresentationService.js";
+import { ResearchMemoryRegistryService } from "../services/researchMemoryRegistryService.js";
+import { MemoryCompactionService } from "../services/memoryCompactionService.js";
 import { MemoryRecallService } from "../services/memoryRecallService.js";
 import type { ResearchService } from "../services/researchService.js";
 import { McpRegistryService } from "../services/mcpRegistryService.js";
@@ -203,6 +205,19 @@ const REASONING_EFFORT_OPTIONS: Array<"default" | OpenAiReasoningEffort> = [
   "high",
   "xhigh",
 ];
+
+const GRAPH_NODE_TYPE_VALUES = [
+  "direction",
+  "discovery_run",
+  "source_item",
+  "paper",
+  "workflow_report",
+  "paper_report",
+  "repo",
+  "repo_report",
+  "module_asset",
+  "presentation",
+] as const;
 
 const MAX_TURNS_PER_SESSION = 16;
 const MEMORY_PRIMER_LIMIT = 2;
@@ -547,6 +562,8 @@ export class AgentRuntime {
   private readonly researchModuleAssetService: ResearchModuleAssetService;
   private readonly researchBaselineService: ResearchBaselineService;
   private readonly researchPresentationService: ResearchPresentationService | null;
+  private readonly researchMemoryRegistryService: ResearchMemoryRegistryService;
+  private readonly memoryCompactionService: MemoryCompactionService;
   private readonly memoryRecallService: MemoryRecallService;
   private readonly roleMap = new Map(ROLE_DEFINITIONS.map((role) => [role.id, role]));
   private readonly skillMap = new Map(SKILL_DEFINITIONS.map((skill) => [skill.id, skill]));
@@ -573,6 +590,8 @@ export class AgentRuntime {
       options.researchService && typeof options.researchService.getReport === "function"
         ? new ResearchPresentationService(workspaceDir, options.researchService)
         : null;
+    this.researchMemoryRegistryService = new ResearchMemoryRegistryService(workspaceDir, options.researchService);
+    this.memoryCompactionService = new MemoryCompactionService(workspaceDir);
     this.memoryRecallService = new MemoryRecallService(workspaceDir, options.researchService);
     this.injectedWireApi = options.wireApi;
     this.injectedModel = options.model;
@@ -1230,6 +1249,7 @@ export class AgentRuntime {
       "- If the user gives explicit positive or negative research feedback, use feedback_record so later discovery can adapt.",
       "- If the user asks for a direction overview, weekly synthesis, or topic summary, use direction_report_generate.",
       "- If the user asks for meeting slides or a weekly deck, use presentation_generate.",
+      "- If the user asks how papers, repos, or artifacts relate, use graph_query, graph_report, graph_explain, or graph_path.",
       "- Keep the final answer concise and actionable.",
       "- When tools or research actions were involved, structure the final answer as: What I understood / What I did / What you should do next.",
       "- Reply in the same language as the user.",
@@ -1551,6 +1571,43 @@ export class AgentRuntime {
           };
         },
       },
+      {
+        name: "memory_compact",
+        description: "Compact older memory notes into one long-term summary entry.",
+        skillId: "memory-ops",
+        toolsetIds: ["memory"],
+        inputSchema: z.object({
+          olderThanDays: z.number().int().min(1).max(365).optional(),
+          minEntries: z.number().int().min(2).max(50).optional(),
+          maxEntries: z.number().int().min(2).max(50).optional(),
+          dryRun: z.boolean().optional(),
+        }),
+        parameters: {
+          type: "object",
+          properties: {
+            olderThanDays: { type: "integer", minimum: 1, maximum: 365 },
+            minEntries: { type: "integer", minimum: 2, maximum: 50 },
+            maxEntries: { type: "integer", minimum: 2, maximum: 50 },
+            dryRun: { type: "boolean" },
+          },
+          additionalProperties: false,
+        },
+        execute: async (args) => {
+          const parsed = args as {
+            olderThanDays?: number | undefined;
+            minEntries?: number | undefined;
+            maxEntries?: number | undefined;
+            dryRun?: boolean | undefined;
+          };
+          return this.memoryCompactionService.compact({
+            source: "manual",
+            ...(typeof parsed.olderThanDays === "number" ? { olderThanDays: parsed.olderThanDays } : {}),
+            ...(typeof parsed.minEntries === "number" ? { minEntries: parsed.minEntries } : {}),
+            ...(typeof parsed.maxEntries === "number" ? { maxEntries: parsed.maxEntries } : {}),
+            ...(typeof parsed.dryRun === "boolean" ? { dryRun: parsed.dryRun } : {}),
+          });
+        },
+      },
     ];
 
     if (this.options.researchService) {
@@ -1637,6 +1694,172 @@ export class AgentRuntime {
         execute: async () => ({
           profiles: await this.researchDirectionService.listProfiles(),
         }),
+      },
+      {
+        name: "graph_query",
+        description: "Query the research memory graph and return the strongest nodes and links for the current filters.",
+        skillId: "research-ops",
+        toolsetIds: ["research-core"],
+        inputSchema: z.object({
+          view: z.enum(["asset", "paper"]).optional(),
+          types: z.array(z.enum(GRAPH_NODE_TYPE_VALUES)).optional(),
+          search: z.string().trim().min(1).optional(),
+          topic: z.string().trim().min(1).optional(),
+          dateFrom: z.string().trim().min(1).optional(),
+          dateTo: z.string().trim().min(1).optional(),
+          limit: z.number().int().min(1).max(12).optional(),
+        }),
+        parameters: {
+          type: "object",
+          properties: {
+            view: { type: "string", enum: ["asset", "paper"] },
+            types: { type: "array", items: { type: "string", enum: [...GRAPH_NODE_TYPE_VALUES] } },
+            search: { type: "string", minLength: 1 },
+            topic: { type: "string", minLength: 1 },
+            dateFrom: { type: "string", minLength: 1 },
+            dateTo: { type: "string", minLength: 1 },
+            limit: { type: "integer", minimum: 1, maximum: 12 },
+          },
+          additionalProperties: false,
+        },
+        execute: async (args) => {
+          const parsed = args as {
+            view?: "asset" | "paper" | undefined;
+            types?: Array<(typeof GRAPH_NODE_TYPE_VALUES)[number]> | undefined;
+            search?: string | undefined;
+            topic?: string | undefined;
+            dateFrom?: string | undefined;
+            dateTo?: string | undefined;
+            limit?: number | undefined;
+          };
+          return this.researchMemoryRegistryService.queryGraph(
+            {
+              ...(parsed.view ? { view: parsed.view } : {}),
+              ...(parsed.types?.length ? { types: parsed.types } : {}),
+              ...(parsed.search ? { search: parsed.search } : {}),
+              ...(parsed.topic ? { topic: parsed.topic } : {}),
+              ...(parsed.dateFrom ? { dateFrom: parsed.dateFrom } : {}),
+              ...(parsed.dateTo ? { dateTo: parsed.dateTo } : {}),
+            },
+            parsed.limit ?? 6,
+          );
+        },
+      },
+      {
+        name: "graph_report",
+        description: "Summarize the current research memory graph with hubs, clusters, and strongest links.",
+        skillId: "research-ops",
+        toolsetIds: ["research-core"],
+        inputSchema: z.object({
+          view: z.enum(["asset", "paper"]).optional(),
+          types: z.array(z.enum(GRAPH_NODE_TYPE_VALUES)).optional(),
+          search: z.string().trim().min(1).optional(),
+          topic: z.string().trim().min(1).optional(),
+          dateFrom: z.string().trim().min(1).optional(),
+          dateTo: z.string().trim().min(1).optional(),
+          limit: z.number().int().min(1).max(12).optional(),
+        }),
+        parameters: {
+          type: "object",
+          properties: {
+            view: { type: "string", enum: ["asset", "paper"] },
+            types: { type: "array", items: { type: "string", enum: [...GRAPH_NODE_TYPE_VALUES] } },
+            search: { type: "string", minLength: 1 },
+            topic: { type: "string", minLength: 1 },
+            dateFrom: { type: "string", minLength: 1 },
+            dateTo: { type: "string", minLength: 1 },
+            limit: { type: "integer", minimum: 1, maximum: 12 },
+          },
+          additionalProperties: false,
+        },
+        execute: async (args) => {
+          const parsed = args as {
+            view?: "asset" | "paper" | undefined;
+            types?: Array<(typeof GRAPH_NODE_TYPE_VALUES)[number]> | undefined;
+            search?: string | undefined;
+            topic?: string | undefined;
+            dateFrom?: string | undefined;
+            dateTo?: string | undefined;
+            limit?: number | undefined;
+          };
+          return this.researchMemoryRegistryService.buildGraphReport(
+            {
+              ...(parsed.view ? { view: parsed.view } : {}),
+              ...(parsed.types?.length ? { types: parsed.types } : {}),
+              ...(parsed.search ? { search: parsed.search } : {}),
+              ...(parsed.topic ? { topic: parsed.topic } : {}),
+              ...(parsed.dateFrom ? { dateFrom: parsed.dateFrom } : {}),
+              ...(parsed.dateTo ? { dateTo: parsed.dateTo } : {}),
+            },
+            parsed.limit ?? 6,
+          );
+        },
+      },
+      {
+        name: "graph_path",
+        description: "Find the shortest visible path between two research graph nodes.",
+        skillId: "research-ops",
+        toolsetIds: ["research-core"],
+        inputSchema: z.object({
+          fromNodeId: z.string().trim().min(1),
+          toNodeId: z.string().trim().min(1),
+          view: z.enum(["asset", "paper"]).optional(),
+        }),
+        parameters: {
+          type: "object",
+          properties: {
+            fromNodeId: { type: "string", minLength: 1 },
+            toNodeId: { type: "string", minLength: 1 },
+            view: { type: "string", enum: ["asset", "paper"] },
+          },
+          required: ["fromNodeId", "toNodeId"],
+          additionalProperties: false,
+        },
+        execute: async (args) => {
+          const parsed = args as {
+            fromNodeId: string;
+            toNodeId: string;
+            view?: "asset" | "paper" | undefined;
+          };
+          return this.researchMemoryRegistryService.findPath(
+            parsed.fromNodeId,
+            parsed.toNodeId,
+            parsed.view ? { view: parsed.view } : {},
+          );
+        },
+      },
+      {
+        name: "graph_explain",
+        description: "Explain why two research graph nodes are directly or indirectly related.",
+        skillId: "research-ops",
+        toolsetIds: ["research-core"],
+        inputSchema: z.object({
+          fromNodeId: z.string().trim().min(1),
+          toNodeId: z.string().trim().min(1),
+          view: z.enum(["asset", "paper"]).optional(),
+        }),
+        parameters: {
+          type: "object",
+          properties: {
+            fromNodeId: { type: "string", minLength: 1 },
+            toNodeId: { type: "string", minLength: 1 },
+            view: { type: "string", enum: ["asset", "paper"] },
+          },
+          required: ["fromNodeId", "toNodeId"],
+          additionalProperties: false,
+        },
+        execute: async (args) => {
+          const parsed = args as {
+            fromNodeId: string;
+            toNodeId: string;
+            view?: "asset" | "paper" | undefined;
+          };
+          return this.researchMemoryRegistryService.explainConnection(
+            parsed.fromNodeId,
+            parsed.toNodeId,
+            parsed.view ? { view: parsed.view } : {},
+          );
+        },
       },
       {
         name: "direction_upsert",

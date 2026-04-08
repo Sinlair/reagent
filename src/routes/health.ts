@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { env } from "../config/env.js";
+import { DEFAULT_GATEWAY_PORT, getGatewayServiceStatus } from "../gatewayService.js";
 import { LlmRegistryService } from "../services/llmRegistryService.js";
 import { McpRegistryService } from "../services/mcpRegistryService.js";
 
@@ -18,6 +19,41 @@ export async function registerHealthRoutes(app: FastifyInstance, workspaceDir?: 
     const servers = await registry.listServers();
     const activeAgentRoute = llmSummary.routes.agent;
     const effectiveWorkspaceDir = workspaceDir ?? env.PLATFORM_WORKSPACE_DIR;
+    const gatewayStatus = await getGatewayServiceStatus(env.PORT, {
+      probe: false,
+      runtimeOverride: {
+        healthReachable: true,
+        healthStatus: "ok",
+        runtimeWorkspaceDir: effectiveWorkspaceDir,
+        runtimeAgent: env.RESEARCH_AGENT_NAME,
+        runtimeLlmProvider: activeAgentRoute.providerType,
+        runtimeWechatProvider: env.WECHAT_PROVIDER,
+        runtimeOpenClawCli: env.OPENCLAW_CLI_PATH,
+        listenerPid: process.pid,
+      },
+    });
+    const gatewayModeLabel =
+      gatewayStatus.serviceManager === "launchd"
+        ? "launchd"
+        : gatewayStatus.serviceManager === "systemd"
+          ? "systemd user service"
+          : gatewayStatus.serviceManager === "schtasks"
+            ? "Scheduled Task"
+            : gatewayStatus.serviceManager === "startup"
+              ? "Startup Entry"
+              : "Gateway Service";
+    const defaultGatewayCommands = {
+      install: `reagent service install --port ${DEFAULT_GATEWAY_PORT}`,
+      start: "reagent service start",
+      restart: "reagent service restart",
+      status: "reagent service status",
+      deepStatus: "reagent service status --deep",
+      stop: "reagent service stop",
+      uninstall: "reagent service uninstall",
+      logs: "reagent service logs",
+      doctor: "reagent runtime doctor",
+      deepDoctor: "reagent runtime doctor --deep",
+    };
 
     return {
       agent: env.RESEARCH_AGENT_NAME,
@@ -54,41 +90,53 @@ export async function registerHealthRoutes(app: FastifyInstance, workspaceDir?: 
       },
       deployment: {
         workspaceDir: effectiveWorkspaceDir,
-        rootPackage: "reagent",
+        rootPackage: "@sinlair/reagent",
         rootRuntime: {
-          installCommand: "npm install",
-          startCommand: "npm start",
-          devCommand: "npm run dev",
+          installCommand: "npm install -g @sinlair/reagent",
+          startCommand: `reagent service run --port ${DEFAULT_GATEWAY_PORT}`,
+          devCommand: `reagent service run --port ${DEFAULT_GATEWAY_PORT}`,
           buildCommand: "npm run build"
         },
+        gateway: {
+          defaultPort: DEFAULT_GATEWAY_PORT,
+          runtimePort: env.PORT,
+          platform: gatewayStatus.platform,
+          serviceManager: gatewayStatus.serviceManager,
+          managerLabel: gatewayModeLabel,
+          runtime: {
+            currentProcessPid: process.pid,
+            currentProcessOwnsPort: gatewayStatus.listenerPid === process.pid,
+            healthUrl: gatewayStatus.healthUrl
+          },
+          commands: defaultGatewayCommands,
+          supervisor: gatewayStatus
+        },
         alwaysOn: {
-          supported: true,
-          modes: [
-            {
-              id: "pm2",
-              label: "PM2",
-              installCommand: "npm run pm2:start",
-              restartCommand: "npm run pm2:restart",
-              stopCommand: "npm run pm2:stop"
-            },
-            {
-              id: "windows-service",
-              label: "Windows Service",
-              installCommand: "npm run service:install",
-              startCommand: "npm run service:start",
-              statusCommand: "npm run service:status",
-              stopCommand: "npm run service:stop"
-            },
-            {
-              id: "openclaw-bridge",
-              label: "OpenClaw Bridge",
-              installCommand: "npm install && npm start",
-              statusCommand: "Open Settings > Channels to inspect pairing, lifecycle, and gateway state."
-            }
-          ],
+          supported: gatewayStatus.serviceSupported,
+          modes: gatewayStatus.serviceSupported
+            ? [
+                {
+                  id: gatewayStatus.installKind ?? "gateway-service",
+                  label: gatewayModeLabel,
+                  installCommand: defaultGatewayCommands.install,
+                  startCommand: defaultGatewayCommands.start,
+                  restartCommand: defaultGatewayCommands.restart,
+                  statusCommand: defaultGatewayCommands.status,
+                  deepStatusCommand: defaultGatewayCommands.deepStatus,
+                  stopCommand: defaultGatewayCommands.stop,
+                  uninstallCommand: defaultGatewayCommands.uninstall,
+                  logsCommand: defaultGatewayCommands.logs,
+                  doctorCommand: defaultGatewayCommands.doctor,
+                  deepDoctorCommand: defaultGatewayCommands.deepDoctor
+                }
+              ]
+            : [],
           notes: [
-            "The root runtime already supports health monitoring, reconnect gating, and automatic recovery for native/openclaw WeChat providers.",
-            "For always-on operation, use PM2 or the bundled Windows service scripts instead of keeping a foreground terminal open."
+            "The published CLI now exposes a single runtime surface aligned around reagent service and reagent runtime.",
+            "Use reagent service install/start/status/stop/restart/logs and reagent runtime doctor instead of npm scripts when running the packaged CLI.",
+            env.PORT === DEFAULT_GATEWAY_PORT
+              ? `The active runtime is already bound to the default gateway port ${DEFAULT_GATEWAY_PORT}.`
+              : `The active runtime is bound to port ${env.PORT}; install/start commands still default to ${DEFAULT_GATEWAY_PORT}.`
           ]
         },
         openclawPlugin: {

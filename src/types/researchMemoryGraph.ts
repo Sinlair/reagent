@@ -10,7 +10,10 @@ export type ResearchMemoryNodeType =
   | "module_asset"
   | "presentation";
 
+export type ResearchMemoryGraphView = "asset" | "paper";
+
 export interface ResearchMemoryGraphQuery {
+  view?: ResearchMemoryGraphView | undefined;
   types?: ResearchMemoryNodeType[] | undefined;
   search?: string | undefined;
   topic?: string | undefined;
@@ -35,6 +38,10 @@ export interface ResearchMemoryEdge {
   source: string;
   target: string;
   label: string;
+  kind?: string | undefined;
+  weight?: number | undefined;
+  supportingNodeIds?: string[] | undefined;
+  supportingLabels?: string[] | undefined;
 }
 
 export interface ResearchMemoryGraph {

@@ -102,6 +102,32 @@ The current web UI is organized around a small set of working surfaces:
 - 🔌 `Channels`: WeChat login, connection status, lifecycle changes, and channel events.
 - 🤖 `Agent Settings` and `Skills`: choose the role, model, and tool access used by chat.
 
+## Single CLI Surface
+
+The browser UI mirrors this CLI-first runtime surface. The `Runtime & Delivery` and `Runtime Logs` panels are intended as observability and copy-friendly control panels, not as a separate control plane.
+
+ReAgent is converging on `reagent` as the only required control surface.
+
+- Use `reagent service ...` to control the supervised runtime and `reagent runtime ...` to inspect it.
+- Use `reagent research ...` for tasks, directions, discovery, graph inspection, reports, and artifacts.
+- Use `reagent channels ...`, `reagent memory ...`, `reagent config ...`, and `reagent plugins ...` for the rest of the workspace runtime.
+- Treat the web UI as an optional inspection surface that mirrors the CLI runtime surface, not the only place where state can be changed.
+- `reagent gateway ...`, `reagent status`, `reagent health`, and `reagent logs` still work as compatibility aliases.
+
+Common CLI flows:
+
+```bash
+reagent service run
+reagent runtime status
+reagent runtime logs --follow
+reagent research recent
+reagent research tasks
+reagent research directions
+reagent channels status
+reagent memory recall "recent research choices"
+reagent config validate
+```
+
 ## 🚀 Quick Start
 
 1. 📄 Create a local env file from `.env.example`.
@@ -131,18 +157,29 @@ WECHAT_PROVIDER=mock
 ```bash
 npm install -g @sinlair/reagent
 reagent init
-reagent gateway
+reagent service run
 ```
 
 🏷️ The published package name is `@sinlair/reagent`, while the installed command is `reagent`.
 
+From there, stay inside the CLI:
+
+```bash
+reagent runtime status
+reagent runtime logs --follow
+reagent research recent
+reagent research graph report
+reagent channels login
+reagent plugins list
+```
+
 🔁 Always-on gateway lifecycle:
 
 ```bash
-reagent gateway install
-reagent gateway status
-reagent gateway restart
-reagent gateway stop
+reagent service install
+reagent service status
+reagent service restart
+reagent service stop
 ```
 
 ## 🔄 Run Modes

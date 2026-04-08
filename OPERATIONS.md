@@ -4,6 +4,16 @@
 
 Use the built-in Windows service scripts when you want ReAgent to come back after reboots and keep restarting after crashes.
 
+If you are operating the published CLI instead of the repo scripts, prefer `reagent service ...` for lifecycle control and `reagent runtime ...` for inspection.
+
+Published CLI equivalents:
+
+- Start in the foreground: `reagent service run`
+- Inspect runtime state: `reagent runtime status`
+- Follow logs: `reagent runtime logs --follow`
+- Install always-on supervision: `reagent service install`
+- Restart the supervised runtime: `reagent service restart`
+
 1. Copy `.env.example` to `.env`
 2. Set production values in `.env`
 3. Run `npm.cmd install`

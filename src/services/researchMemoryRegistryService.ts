@@ -17,6 +17,7 @@ import type {
   ResearchMemoryNodeDetail,
   ResearchMemoryNodeLink,
   ResearchMemoryNodeType,
+  ResearchMemoryGraphView,
 } from "../types/researchMemoryGraph.js";
 
 interface CanonicalPaperRecord {
@@ -28,6 +29,7 @@ interface CanonicalPaperRecord {
   tags: Set<string>;
   sourceItemIds: Set<string>;
   discoveryRunIds: Set<string>;
+  workflowReportIds: Set<string>;
   paperReportIds: Set<string>;
   repoKeys: Set<string>;
 }
@@ -50,13 +52,38 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function buildEdge(source: string, target: string, label: string): ResearchMemoryEdge {
+function buildEdge(
+  source: string,
+  target: string,
+  label: string,
+  extra: Partial<Omit<ResearchMemoryEdge, "id" | "source" | "target" | "label">> = {},
+): ResearchMemoryEdge {
   return {
     id: `${source}::${label}::${target}`,
     source,
     target,
     label,
+    ...extra,
   };
+}
+
+function buildPaperPairKey(source: string, target: string): string {
+  return [source, target].sort((left, right) => left.localeCompare(right)).join("::");
+}
+
+function describePaperRelation(node: ResearchMemoryNode): { kind: string; label: string } | null {
+  switch (node.type) {
+    case "discovery_run":
+      return { kind: "shared_discovery_run", label: "Discovered together" };
+    case "source_item":
+      return { kind: "shared_source_item", label: "Mentioned in the same source" };
+    case "repo":
+      return { kind: "shared_repo", label: "Share the same code repository" };
+    case "workflow_report":
+      return { kind: "shared_workflow_report", label: "Used in the same report" };
+    default:
+      return null;
+  }
 }
 
 function countByType(nodes: ResearchMemoryNode[]): Record<string, number> {
@@ -305,6 +332,151 @@ function chooseEarlierIso(current: string | undefined, candidate?: string | unde
   return nextMs < currentMs ? next : current;
 }
 
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+}
+
+function buildDegreeByNodeId(graph: ResearchMemoryGraph): Map<string, number> {
+  const degreeByNodeId = new Map<string, number>();
+  for (const node of graph.nodes) {
+    degreeByNodeId.set(node.id, 0);
+  }
+  for (const edge of graph.edges) {
+    degreeByNodeId.set(edge.source, (degreeByNodeId.get(edge.source) ?? 0) + 1);
+    degreeByNodeId.set(edge.target, (degreeByNodeId.get(edge.target) ?? 0) + 1);
+  }
+  return degreeByNodeId;
+}
+
+function compareInsightNodes(
+  left: ResearchMemoryNode,
+  right: ResearchMemoryNode,
+  degreeByNodeId: Map<string, number>,
+): number {
+  const degreeDelta = (degreeByNodeId.get(right.id) ?? 0) - (degreeByNodeId.get(left.id) ?? 0);
+  if (degreeDelta !== 0) {
+    return degreeDelta;
+  }
+
+  const timeDelta = (Date.parse(right.occurredAt ?? "") || 0) - (Date.parse(left.occurredAt ?? "") || 0);
+  if (timeDelta !== 0) {
+    return timeDelta;
+  }
+
+  return left.label.localeCompare(right.label);
+}
+
+function compareInsightEdges(left: ResearchMemoryEdge, right: ResearchMemoryEdge): number {
+  const weightDelta = (right.weight ?? 1) - (left.weight ?? 1);
+  if (weightDelta !== 0) {
+    return weightDelta;
+  }
+
+  const supportDelta = (right.supportingLabels?.length ?? 0) - (left.supportingLabels?.length ?? 0);
+  if (supportDelta !== 0) {
+    return supportDelta;
+  }
+
+  return left.label.localeCompare(right.label);
+}
+
+function buildAdjacency(
+  graph: ResearchMemoryGraph,
+): Map<string, Array<{ neighborId: string; edge: ResearchMemoryEdge }>> {
+  const adjacency = new Map<string, Array<{ neighborId: string; edge: ResearchMemoryEdge }>>();
+  for (const node of graph.nodes) {
+    adjacency.set(node.id, []);
+  }
+  for (const edge of graph.edges) {
+    const sourceNeighbors = adjacency.get(edge.source) ?? [];
+    sourceNeighbors.push({ neighborId: edge.target, edge });
+    adjacency.set(edge.source, sourceNeighbors);
+
+    const targetNeighbors = adjacency.get(edge.target) ?? [];
+    targetNeighbors.push({ neighborId: edge.source, edge });
+    adjacency.set(edge.target, targetNeighbors);
+  }
+  return adjacency;
+}
+
+function findShortestPath(
+  graph: ResearchMemoryGraph,
+  fromNodeId: string,
+  toNodeId: string,
+): { nodeIds: string[]; edges: ResearchMemoryEdge[] } | null {
+  const fromId = fromNodeId.trim();
+  const toId = toNodeId.trim();
+  if (!fromId || !toId) {
+    return null;
+  }
+
+  if (fromId === toId) {
+    return {
+      nodeIds: [fromId],
+      edges: [],
+    };
+  }
+
+  const adjacency = buildAdjacency(graph);
+  if (!adjacency.has(fromId) || !adjacency.has(toId)) {
+    return null;
+  }
+
+  const queue: string[] = [fromId];
+  const parents = new Map<string, { previousId: string; edge: ResearchMemoryEdge }>();
+  const visited = new Set<string>([fromId]);
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const neighbors = adjacency.get(currentId) ?? [];
+    for (const neighbor of neighbors) {
+      if (visited.has(neighbor.neighborId)) {
+        continue;
+      }
+
+      visited.add(neighbor.neighborId);
+      parents.set(neighbor.neighborId, {
+        previousId: currentId,
+        edge: neighbor.edge,
+      });
+
+      if (neighbor.neighborId === toId) {
+        queue.length = 0;
+        break;
+      }
+
+      queue.push(neighbor.neighborId);
+    }
+  }
+
+  if (!parents.has(toId)) {
+    return null;
+  }
+
+  const nodeIds: string[] = [];
+  const edges: ResearchMemoryEdge[] = [];
+  let cursor = toId;
+
+  while (cursor !== fromId) {
+    nodeIds.push(cursor);
+    const parent = parents.get(cursor);
+    if (!parent) {
+      return null;
+    }
+    edges.push(parent.edge);
+    cursor = parent.previousId;
+  }
+
+  nodeIds.push(fromId);
+  nodeIds.reverse();
+  edges.reverse();
+
+  return {
+    nodeIds,
+    edges,
+  };
+}
+
 export class ResearchMemoryRegistryService {
   private readonly directionService: ResearchDirectionService;
   private readonly discoveryService: ResearchDiscoveryService;
@@ -329,6 +501,22 @@ export class ResearchMemoryRegistryService {
     this.moduleAssetService = new ResearchModuleAssetService(workspaceDir);
     this.baselineService = new ResearchBaselineService(workspaceDir);
     this.presentationService = new ResearchPresentationService(workspaceDir, this.researchService);
+  }
+
+  private async resolveGraphForQuery(query: ResearchMemoryGraphQuery = {}): Promise<ResearchMemoryGraph> {
+    const fullGraph = await this.buildFullGraph();
+    const graph = query.view === "paper" ? this.buildPaperGraph(fullGraph) : fullGraph;
+    if (
+      !query.types?.length &&
+      !query.search?.trim() &&
+      !query.topic?.trim() &&
+      !query.dateFrom?.trim() &&
+      !query.dateTo?.trim()
+    ) {
+      return graph;
+    }
+
+    return this.filterGraph(graph, query);
   }
 
   private async buildFullGraph(): Promise<ResearchMemoryGraph> {
@@ -358,6 +546,15 @@ export class ResearchMemoryRegistryService {
     const moduleAssets = uniqueBy(moduleAssetsRaw, (asset) => asset.id);
     const presentations = uniqueBy(presentationsRaw, (item) => item.id);
     const workflowReports = uniqueBy(workflowReportsRaw, (report) => report.taskId);
+    const workflowReportDetails = uniqueBy(
+      (
+        await Promise.all(workflowReports.map((report) => this.researchService.getReport(report.taskId)))
+      ).filter((report): report is NonNullable<Awaited<ReturnType<ResearchService["getReport"]>>> => Boolean(report)),
+      (report) => report.taskId,
+    );
+    const workflowReportByTaskId = new Map(
+      workflowReportDetails.map((report) => [report.taskId, report]),
+    );
     const discoveryRunDetails = uniqueBy(
       (
         await Promise.all(discoveryRuns.map((run) => this.discoveryService.getRun(run.runId)))
@@ -407,6 +604,7 @@ export class ResearchMemoryRegistryService {
         tags: new Set((input.tags ?? []).map((tag) => tag.trim()).filter(Boolean)),
         sourceItemIds: new Set<string>(),
         discoveryRunIds: new Set<string>(),
+        workflowReportIds: new Set<string>(),
         paperReportIds: new Set<string>(),
         repoKeys: new Set<string>(),
       };
@@ -577,6 +775,7 @@ export class ResearchMemoryRegistryService {
     }
 
     for (const report of workflowReports) {
+      const fullReport = workflowReportByTaskId.get(report.taskId);
       nodes.push({
         id: `workflow:${report.taskId}`,
         type: "workflow_report",
@@ -590,6 +789,24 @@ export class ResearchMemoryRegistryService {
         },
         occurredAt: report.generatedAt,
       });
+
+      for (const paper of fullReport?.papers ?? []) {
+        const paperRecord = ensurePaperRecord({
+          doi: paper.doi,
+          url: paper.url ?? paper.pdfUrl,
+          title: paper.title,
+          occurredAt: report.generatedAt,
+          tags: [
+            paper.venue ?? "",
+            paper.year ? String(paper.year) : "",
+            report.topic,
+            report.critiqueVerdict,
+          ],
+        });
+        if (paperRecord) {
+          paperRecord.workflowReportIds.add(report.taskId);
+        }
+      }
     }
 
     for (const report of paperReports) {
@@ -756,6 +973,7 @@ export class ResearchMemoryRegistryService {
         meta: {
           sourceItems: paper.sourceItemIds.size,
           discoveryRuns: paper.discoveryRunIds.size,
+          workflowReports: paper.workflowReportIds.size,
           paperReports: paper.paperReportIds.size,
           linkedRepos: paper.repoKeys.size,
         },
@@ -791,6 +1009,9 @@ export class ResearchMemoryRegistryService {
       for (const runId of paper.discoveryRunIds) {
         edges.push(buildEdge(`discovery:${runId}`, paper.id, "ranked_paper"));
       }
+      for (const workflowReportId of paper.workflowReportIds) {
+        edges.push(buildEdge(`workflow:${workflowReportId}`, paper.id, "includes_paper"));
+      }
       for (const reportId of paper.paperReportIds) {
         edges.push(buildEdge(`paper-report:${reportId}`, paper.id, "analyzes_paper"));
       }
@@ -822,6 +1043,146 @@ export class ResearchMemoryRegistryService {
         byType: countByType(nodes),
       },
       nodes,
+      edges,
+    };
+  }
+
+  private buildPaperGraph(graph: ResearchMemoryGraph): ResearchMemoryGraph {
+    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const paperNodes = graph.nodes.filter((node) => node.type === "paper");
+    const paperNodeIds = new Set(paperNodes.map((node) => node.id));
+    const paperIdsByContextId = new Map<string, Set<string>>();
+
+    for (const edge of graph.edges) {
+      const sourceIsPaper = paperNodeIds.has(edge.source);
+      const targetIsPaper = paperNodeIds.has(edge.target);
+      if (sourceIsPaper === targetIsPaper) {
+        continue;
+      }
+
+      const paperId = sourceIsPaper ? edge.source : edge.target;
+      const contextId = sourceIsPaper ? edge.target : edge.source;
+      const contextNode = nodeById.get(contextId);
+      if (!contextNode) {
+        continue;
+      }
+
+      const relation = describePaperRelation(contextNode);
+      if (!relation) {
+        continue;
+      }
+
+      const paperIds = paperIdsByContextId.get(contextId) ?? new Set<string>();
+      paperIds.add(paperId);
+      paperIdsByContextId.set(contextId, paperIds);
+    }
+
+    const relationByPairKey = new Map<
+      string,
+      {
+        source: string;
+        target: string;
+        weight: number;
+        kinds: Set<string>;
+        labels: Set<string>;
+        supportingNodeIds: Set<string>;
+        supportingLabels: Set<string>;
+      }
+    >();
+
+    for (const [contextId, paperIds] of paperIdsByContextId) {
+      if (paperIds.size < 2) {
+        continue;
+      }
+
+      const contextNode = nodeById.get(contextId);
+      if (!contextNode) {
+        continue;
+      }
+
+      const relation = describePaperRelation(contextNode);
+      if (!relation) {
+        continue;
+      }
+
+      const sortedPaperIds = [...paperIds].sort((left, right) => left.localeCompare(right));
+      for (let index = 0; index < sortedPaperIds.length; index += 1) {
+        for (let nextIndex = index + 1; nextIndex < sortedPaperIds.length; nextIndex += 1) {
+          const source = sortedPaperIds[index]!;
+          const target = sortedPaperIds[nextIndex]!;
+          const pairKey = buildPaperPairKey(source, target);
+          const existing = relationByPairKey.get(pairKey) ?? {
+            source,
+            target,
+            weight: 0,
+            kinds: new Set<string>(),
+            labels: new Set<string>(),
+            supportingNodeIds: new Set<string>(),
+            supportingLabels: new Set<string>(),
+          };
+
+          existing.weight += 1;
+          existing.kinds.add(relation.kind);
+          existing.labels.add(relation.label);
+          existing.supportingNodeIds.add(contextNode.id);
+          existing.supportingLabels.add(contextNode.label);
+          relationByPairKey.set(pairKey, existing);
+        }
+      }
+    }
+
+    const edges = [...relationByPairKey.values()]
+      .map((relation) => {
+        const labels = [...relation.labels];
+        const label =
+          labels.length === 1
+            ? labels[0]!
+            : labels.length === 2
+              ? labels.join(" + ")
+              : "Connected in multiple research contexts";
+
+        return buildEdge(
+          relation.source,
+          relation.target,
+          label,
+          {
+            kind: relation.kinds.size === 1 ? [...relation.kinds][0] : "shared_context",
+            weight: relation.weight,
+            supportingNodeIds: [...relation.supportingNodeIds],
+            supportingLabels: [...relation.supportingLabels].sort((left, right) => left.localeCompare(right)),
+          },
+        );
+      })
+      .sort((left, right) => {
+        const weightDelta = (right.weight ?? 0) - (left.weight ?? 0);
+        if (weightDelta !== 0) {
+          return weightDelta;
+        }
+        return left.label.localeCompare(right.label);
+      });
+
+    const connectedPaperCountById = new Map<string, number>();
+    for (const edge of edges) {
+      connectedPaperCountById.set(edge.source, (connectedPaperCountById.get(edge.source) ?? 0) + 1);
+      connectedPaperCountById.set(edge.target, (connectedPaperCountById.get(edge.target) ?? 0) + 1);
+    }
+
+    const projectedPaperNodes = paperNodes.map((node) => ({
+      ...node,
+      meta: {
+        ...node.meta,
+        connectedPapers: connectedPaperCountById.get(node.id) ?? 0,
+      },
+    }));
+
+    return {
+      generatedAt: graph.generatedAt,
+      stats: {
+        nodes: projectedPaperNodes.length,
+        edges: edges.length,
+        byType: countByType(projectedPaperNodes),
+      },
+      nodes: projectedPaperNodes,
       edges,
     };
   }
@@ -1019,22 +1380,11 @@ export class ResearchMemoryRegistryService {
   }
 
   async buildGraph(query: ResearchMemoryGraphQuery = {}): Promise<ResearchMemoryGraph> {
-    const graph = await this.buildFullGraph();
-    if (
-      !query.types?.length &&
-      !query.search?.trim() &&
-      !query.topic?.trim() &&
-      !query.dateFrom?.trim() &&
-      !query.dateTo?.trim()
-    ) {
-      return graph;
-    }
-
-    return this.filterGraph(graph, query);
+    return this.resolveGraphForQuery(query);
   }
 
-  async getNodeDetail(nodeId: string): Promise<ResearchMemoryNodeDetail | null> {
-    const graph = await this.buildFullGraph();
+  async getNodeDetail(nodeId: string, query: ResearchMemoryGraphQuery = {}): Promise<ResearchMemoryNodeDetail | null> {
+    const graph = await this.resolveGraphForQuery(query);
     const node = graph.nodes.find((item) => item.id === nodeId.trim());
     if (!node) {
       return null;
@@ -1048,32 +1398,67 @@ export class ResearchMemoryRegistryService {
     );
     const relatedNodes = graph.nodes.filter((item) => relatedNodeIds.has(item.id));
     const persistedRaw = await this.resolveRawNodePayload(node.id);
-    const raw =
-      persistedRaw ??
-      (node.type === "paper" || node.type === "repo"
-        ? {
-            kind: node.type === "paper" ? "canonical_paper" : "canonical_repo",
-            canonicalId: node.id,
-            label: node.label,
-            externalUrl: node.externalUrl ?? null,
-            meta: node.meta,
-            relatedNodeIds: relatedNodes.map((item) => item.id),
-            relatedByType: Object.fromEntries(
-              [...new Set(relatedNodes.map((item) => item.type))].map((type) => [
-                type,
-                relatedNodes
-                  .filter((item) => item.type === type)
-                  .map((item) => ({ id: item.id, label: item.label })),
-              ]),
-            ),
-            provenance: relatedEdges.map((edge) => ({
-              edgeId: edge.id,
-              label: edge.label,
-              source: edge.source,
-              target: edge.target,
-            })),
-          }
-        : null);
+    const raw = (() => {
+      if (persistedRaw) {
+        return persistedRaw;
+      }
+
+      if (query.view === "paper" && node.type === "paper") {
+        return {
+          kind: "paper_relation_node",
+          canonicalId: node.id,
+          label: node.label,
+          externalUrl: node.externalUrl ?? null,
+          meta: node.meta,
+          connectedPaperCount: relatedNodes.length,
+          relationKinds: Object.fromEntries(
+            [...new Set(relatedEdges.map((edge) => edge.kind || "shared_context"))].map((kind) => [
+              kind,
+              relatedEdges.filter((edge) => (edge.kind || "shared_context") === kind).length,
+            ]),
+          ),
+          relations: relatedEdges.map((edge) => {
+            const peerId = edge.source === node.id ? edge.target : edge.source;
+            const peer = relatedNodes.find((item) => item.id === peerId);
+            return {
+              peerId,
+              peerLabel: peer?.label ?? peerId,
+              relation: edge.label,
+              relationKind: edge.kind ?? "shared_context",
+              weight: edge.weight ?? 1,
+              supportingLabels: edge.supportingLabels ?? [],
+            };
+          }),
+        };
+      }
+
+      if (node.type === "paper" || node.type === "repo") {
+        return {
+          kind: node.type === "paper" ? "canonical_paper" : "canonical_repo",
+          canonicalId: node.id,
+          label: node.label,
+          externalUrl: node.externalUrl ?? null,
+          meta: node.meta,
+          relatedNodeIds: relatedNodes.map((item) => item.id),
+          relatedByType: Object.fromEntries(
+            [...new Set(relatedNodes.map((item) => item.type))].map((type) => [
+              type,
+              relatedNodes
+                .filter((item) => item.type === type)
+                .map((item) => ({ id: item.id, label: item.label })),
+            ]),
+          ),
+          provenance: relatedEdges.map((edge) => ({
+            edgeId: edge.id,
+            label: edge.label,
+            source: edge.source,
+            target: edge.target,
+          })),
+        };
+      }
+
+      return null;
+    })();
 
     return {
       generatedAt: nowIso(),
@@ -1082,6 +1467,405 @@ export class ResearchMemoryRegistryService {
       relatedNodes,
       raw,
       links: this.buildNodeLinks(node, raw),
+    };
+  }
+
+  async queryGraph(query: ResearchMemoryGraphQuery = {}, limit = 6): Promise<{
+    generatedAt: string;
+    view: ResearchMemoryGraphView;
+    filters: ResearchMemoryGraphQuery;
+    stats: ResearchMemoryGraph["stats"];
+    topNodes: Array<{
+      node: ResearchMemoryNode;
+      degree: number;
+    }>;
+    strongestEdges: Array<ResearchMemoryEdge & {
+      sourceLabel: string;
+      targetLabel: string;
+    }>;
+    isolatedNodes: ResearchMemoryNode[];
+  }> {
+    const graph = await this.resolveGraphForQuery(query);
+    const boundedLimit = Math.max(1, Math.min(limit, 12));
+    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const degreeByNodeId = buildDegreeByNodeId(graph);
+    const connectedNodeIds = new Set(graph.edges.flatMap((edge) => [edge.source, edge.target]));
+
+    return {
+      generatedAt: graph.generatedAt,
+      view: query.view ?? "asset",
+      filters: query,
+      stats: graph.stats,
+      topNodes: [...graph.nodes]
+        .sort((left, right) => compareInsightNodes(left, right, degreeByNodeId))
+        .slice(0, boundedLimit)
+        .map((node) => ({
+          node,
+          degree: degreeByNodeId.get(node.id) ?? 0,
+        })),
+      strongestEdges: [...graph.edges]
+        .sort(compareInsightEdges)
+        .slice(0, boundedLimit)
+        .map((edge) => ({
+          ...edge,
+          sourceLabel: nodeById.get(edge.source)?.label ?? edge.source,
+          targetLabel: nodeById.get(edge.target)?.label ?? edge.target,
+        })),
+      isolatedNodes: graph.nodes
+        .filter((node) => !connectedNodeIds.has(node.id))
+        .sort((left, right) => left.label.localeCompare(right.label))
+        .slice(0, boundedLimit),
+    };
+  }
+
+  async findPath(
+    fromNodeId: string,
+    toNodeId: string,
+    query: ResearchMemoryGraphQuery = {},
+  ): Promise<{
+    generatedAt: string;
+    view: ResearchMemoryGraphView;
+    connected: boolean;
+    fromNode: ResearchMemoryNode | null;
+    toNode: ResearchMemoryNode | null;
+    hops: number;
+    pathNodeIds: string[];
+    pathNodes: ResearchMemoryNode[];
+    pathEdges: Array<ResearchMemoryEdge & { sourceLabel: string; targetLabel: string }>;
+    summary: string;
+  }> {
+    const graph = await this.resolveGraphForQuery(query);
+    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const fromNode = nodeById.get(fromNodeId.trim()) ?? null;
+    const toNode = nodeById.get(toNodeId.trim()) ?? null;
+
+    if (!fromNode || !toNode) {
+      return {
+        generatedAt: graph.generatedAt,
+        view: query.view ?? "asset",
+        connected: false,
+        fromNode,
+        toNode,
+        hops: 0,
+        pathNodeIds: [],
+        pathNodes: [],
+        pathEdges: [],
+        summary: "One or both nodes are missing in the current graph view.",
+      };
+    }
+
+    const path = findShortestPath(graph, fromNode.id, toNode.id);
+    if (!path) {
+      return {
+        generatedAt: graph.generatedAt,
+        view: query.view ?? "asset",
+        connected: false,
+        fromNode,
+        toNode,
+        hops: 0,
+        pathNodeIds: [],
+        pathNodes: [],
+        pathEdges: [],
+        summary: `${fromNode.label} and ${toNode.label} are not connected in the current graph view.`,
+      };
+    }
+
+    const pathNodes = path.nodeIds
+      .map((nodeId) => nodeById.get(nodeId))
+      .filter((node): node is ResearchMemoryNode => Boolean(node));
+    const pathEdges = path.edges.map((edge) => ({
+      ...edge,
+      sourceLabel: nodeById.get(edge.source)?.label ?? edge.source,
+      targetLabel: nodeById.get(edge.target)?.label ?? edge.target,
+    }));
+    const hops = Math.max(0, path.nodeIds.length - 1);
+
+    return {
+      generatedAt: graph.generatedAt,
+      view: query.view ?? "asset",
+      connected: true,
+      fromNode,
+      toNode,
+      hops,
+      pathNodeIds: path.nodeIds,
+      pathNodes,
+      pathEdges,
+      summary:
+        hops === 0
+          ? `${fromNode.label} and ${toNode.label} are the same node in the current graph view.`
+          : `${fromNode.label} reaches ${toNode.label} in ${hops} hop${hops === 1 ? "" : "s"}.`,
+    };
+  }
+
+  async explainConnection(
+    fromNodeId: string,
+    toNodeId: string,
+    query: ResearchMemoryGraphQuery = {},
+  ): Promise<{
+    generatedAt: string;
+    view: ResearchMemoryGraphView;
+    connected: boolean;
+    relationType: "missing" | "direct" | "indirect" | "disconnected";
+    fromNode: ResearchMemoryNode | null;
+    toNode: ResearchMemoryNode | null;
+    directEdges: Array<ResearchMemoryEdge & { sourceLabel: string; targetLabel: string }>;
+    sharedNeighbors: ResearchMemoryNode[];
+    supportingLabels: string[];
+    path: {
+      hops: number;
+      pathNodeIds: string[];
+      pathNodes: ResearchMemoryNode[];
+      pathEdges: Array<ResearchMemoryEdge & { sourceLabel: string; targetLabel: string }>;
+    } | null;
+    summary: string;
+  }> {
+    const graph = await this.resolveGraphForQuery(query);
+    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const fromNode = nodeById.get(fromNodeId.trim()) ?? null;
+    const toNode = nodeById.get(toNodeId.trim()) ?? null;
+
+    if (!fromNode || !toNode) {
+      return {
+        generatedAt: graph.generatedAt,
+        view: query.view ?? "asset",
+        connected: false,
+        relationType: "missing",
+        fromNode,
+        toNode,
+        directEdges: [],
+        sharedNeighbors: [],
+        supportingLabels: [],
+        path: null,
+        summary: "One or both nodes are missing in the current graph view.",
+      };
+    }
+
+    const directEdges = graph.edges
+      .filter(
+        (edge) =>
+          (edge.source === fromNode.id && edge.target === toNode.id) ||
+          (edge.source === toNode.id && edge.target === fromNode.id),
+      )
+      .sort(compareInsightEdges)
+      .map((edge) => ({
+        ...edge,
+        sourceLabel: nodeById.get(edge.source)?.label ?? edge.source,
+        targetLabel: nodeById.get(edge.target)?.label ?? edge.target,
+      }));
+
+    const adjacency = buildAdjacency(graph);
+    const fromNeighbors = new Set((adjacency.get(fromNode.id) ?? []).map((item) => item.neighborId));
+    const toNeighbors = new Set((adjacency.get(toNode.id) ?? []).map((item) => item.neighborId));
+    const sharedNeighbors = graph.nodes
+      .filter((node) => node.id !== fromNode.id && node.id !== toNode.id && fromNeighbors.has(node.id) && toNeighbors.has(node.id))
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .slice(0, 8);
+
+    if (directEdges.length > 0) {
+      const supportingLabels = uniqueStrings(directEdges.flatMap((edge) => edge.supportingLabels ?? []));
+      return {
+        generatedAt: graph.generatedAt,
+        view: query.view ?? "asset",
+        connected: true,
+        relationType: "direct",
+        fromNode,
+        toNode,
+        directEdges,
+        sharedNeighbors,
+        supportingLabels,
+        path: {
+          hops: 1,
+          pathNodeIds: [fromNode.id, toNode.id],
+          pathNodes: [fromNode, toNode],
+          pathEdges: directEdges,
+        },
+        summary: supportingLabels.length > 0
+          ? `${fromNode.label} and ${toNode.label} are directly connected. Shared evidence: ${supportingLabels.slice(0, 3).join(", ")}.`
+          : `${fromNode.label} and ${toNode.label} are directly connected in the current graph view.`,
+      };
+    }
+
+    const path = await this.findPath(fromNode.id, toNode.id, query);
+    if (!path.connected) {
+      return {
+        generatedAt: graph.generatedAt,
+        view: query.view ?? "asset",
+        connected: false,
+        relationType: "disconnected",
+        fromNode,
+        toNode,
+        directEdges: [],
+        sharedNeighbors,
+        supportingLabels: [],
+        path: null,
+        summary: `${fromNode.label} and ${toNode.label} do not share a visible path in the current graph view.`,
+      };
+    }
+
+    return {
+      generatedAt: graph.generatedAt,
+      view: query.view ?? "asset",
+      connected: true,
+      relationType: "indirect",
+      fromNode,
+      toNode,
+      directEdges: [],
+      sharedNeighbors,
+      supportingLabels: [],
+      path: {
+        hops: path.hops,
+        pathNodeIds: path.pathNodeIds,
+        pathNodes: path.pathNodes,
+        pathEdges: path.pathEdges,
+      },
+      summary: `${fromNode.label} reaches ${toNode.label} through ${path.hops} hop${path.hops === 1 ? "" : "s"} in the current graph view.`,
+    };
+  }
+
+  async buildGraphReport(
+    query: ResearchMemoryGraphQuery = {},
+    limit = 6,
+  ): Promise<{
+    generatedAt: string;
+    view: ResearchMemoryGraphView;
+    filters: ResearchMemoryGraphQuery;
+    stats: ResearchMemoryGraph["stats"];
+    isolatedNodeCount: number;
+    hubs: Array<{
+      node: ResearchMemoryNode;
+      degree: number;
+    }>;
+    strongestEdges: Array<ResearchMemoryEdge & {
+      sourceLabel: string;
+      targetLabel: string;
+    }>;
+    components: Array<{
+      id: string;
+      size: number;
+      edgeCount: number;
+      nodeTypes: Record<string, number>;
+      leadNodes: Array<{
+        id: string;
+        label: string;
+        type: ResearchMemoryNodeType;
+        degree: number;
+      }>;
+      supportingLabels: string[];
+    }>;
+    summary: string[];
+  }> {
+    const graph = await this.resolveGraphForQuery(query);
+    const boundedLimit = Math.max(1, Math.min(limit, 12));
+    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const degreeByNodeId = buildDegreeByNodeId(graph);
+    const connectedNodeIds = new Set(graph.edges.flatMap((edge) => [edge.source, edge.target]));
+    const adjacency = buildAdjacency(graph);
+    const visited = new Set<string>();
+    const components: Array<{
+      id: string;
+      size: number;
+      edgeCount: number;
+      nodeTypes: Record<string, number>;
+      leadNodes: Array<{
+        id: string;
+        label: string;
+        type: ResearchMemoryNodeType;
+        degree: number;
+      }>;
+      supportingLabels: string[];
+    }> = [];
+
+    for (const node of graph.nodes) {
+      if (visited.has(node.id)) {
+        continue;
+      }
+
+      const queue = [node.id];
+      const componentNodeIds = new Set<string>();
+      visited.add(node.id);
+
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        componentNodeIds.add(currentId);
+        for (const neighbor of adjacency.get(currentId) ?? []) {
+          if (visited.has(neighbor.neighborId)) {
+            continue;
+          }
+          visited.add(neighbor.neighborId);
+          queue.push(neighbor.neighborId);
+        }
+      }
+
+      if (componentNodeIds.size <= 1) {
+        continue;
+      }
+
+      const componentNodes = graph.nodes.filter((item) => componentNodeIds.has(item.id));
+      const componentEdges = graph.edges.filter(
+        (edge) => componentNodeIds.has(edge.source) && componentNodeIds.has(edge.target),
+      );
+
+      components.push({
+        id: `component-${components.length + 1}`,
+        size: componentNodes.length,
+        edgeCount: componentEdges.length,
+        nodeTypes: countByType(componentNodes),
+        leadNodes: [...componentNodes]
+          .sort((left, right) => compareInsightNodes(left, right, degreeByNodeId))
+          .slice(0, 3)
+          .map((componentNode) => ({
+            id: componentNode.id,
+            label: componentNode.label,
+            type: componentNode.type,
+            degree: degreeByNodeId.get(componentNode.id) ?? 0,
+          })),
+        supportingLabels: uniqueStrings(componentEdges.flatMap((edge) => edge.supportingLabels ?? [])).slice(0, 6),
+      });
+    }
+
+    components.sort((left, right) => right.size - left.size || right.edgeCount - left.edgeCount || left.id.localeCompare(right.id));
+
+    const hubs = [...graph.nodes]
+      .sort((left, right) => compareInsightNodes(left, right, degreeByNodeId))
+      .slice(0, boundedLimit)
+      .map((node) => ({
+        node,
+        degree: degreeByNodeId.get(node.id) ?? 0,
+      }));
+
+    const strongestEdges = [...graph.edges]
+      .sort(compareInsightEdges)
+      .slice(0, boundedLimit)
+      .map((edge) => ({
+        ...edge,
+        sourceLabel: nodeById.get(edge.source)?.label ?? edge.source,
+        targetLabel: nodeById.get(edge.target)?.label ?? edge.target,
+      }));
+
+    const summary = uniqueStrings([
+      `${graph.stats.nodes} nodes and ${graph.stats.edges} edges are visible in the ${query.view ?? "asset"} graph view.`,
+      hubs[0] ? `Top hub: ${hubs[0].node.label} (${hubs[0].degree} links).` : undefined,
+      strongestEdges[0]
+        ? `Strongest link: ${strongestEdges[0].sourceLabel} <-> ${strongestEdges[0].targetLabel} (${strongestEdges[0].weight ?? 1}).`
+        : undefined,
+      components[0]
+        ? `Largest cluster: ${components[0].size} nodes around ${components[0].leadNodes.map((node) => node.label).join(", ")}.`
+        : undefined,
+      graph.nodes.length - connectedNodeIds.size > 0
+        ? `${graph.nodes.length - connectedNodeIds.size} nodes are currently isolated in this filtered view.`
+        : undefined,
+    ]);
+
+    return {
+      generatedAt: graph.generatedAt,
+      view: query.view ?? "asset",
+      filters: query,
+      stats: graph.stats,
+      isolatedNodeCount: graph.nodes.length - connectedNodeIds.size,
+      hubs,
+      strongestEdges,
+      components: components.slice(0, boundedLimit),
+      summary,
     };
   }
 }

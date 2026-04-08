@@ -34,52 +34,95 @@ async function withTempDir(fn) {
   }
 }
 
-function buildStubResearchService() {
-  const generatedAt = new Date().toISOString();
-  const report = {
-    taskId: "task-1",
-    topic: "Weekly RAG Synthesis",
-    question: "What changed this week?",
-    generatedAt,
-    plan: {
-      objective: "Weekly RAG Synthesis",
-      subquestions: ["What changed?"],
-      searchQueries: ["multimodal rag"]
-    },
-    papers: [
-      {
-        id: "paper-1",
-        title: "A Strong Multimodal RAG Baseline",
-        authors: ["A. Researcher"],
-        url: "https://example.com/paper-1",
-        source: "crossref"
-      }
-    ],
-    chunks: [],
-    summary: "Weekly RAG summary.",
-    findings: ["Finding one"],
-    gaps: [],
-    nextActions: ["Follow up on repo code paths"],
-    evidence: [],
-    warnings: [],
-    critique: {
-      verdict: "moderate",
-      summary: "Some evidence was collected.",
-      issues: [],
-      recommendations: [],
-      supportedEvidenceCount: 1,
-      unsupportedEvidenceCount: 0,
-      coveredFindingsCount: 1,
-      citationDiversity: 1,
-      citationCoverage: 1
+async function sleep(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitFor(predicate, timeoutMs = 1500, intervalMs = 25) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await predicate();
+    if (value) {
+      return value;
     }
-  };
+    await sleep(intervalMs);
+  }
+  throw new Error("Timed out waiting for condition.");
+}
+
+function buildStubResearchService() {
+  const reports = new Map();
+
+  function buildReport(taskId = "task-1", request = {}) {
+    return {
+      taskId,
+      topic: request.topic || "Weekly RAG Synthesis",
+      question: request.question || "What changed this week?",
+      generatedAt: new Date().toISOString(),
+      plan: {
+        objective: request.topic || "Weekly RAG Synthesis",
+        subquestions: ["What changed?"],
+        searchQueries: [request.topic || "multimodal rag"]
+      },
+      papers: [
+        {
+          id: "paper-1",
+          title: "A Strong Multimodal RAG Baseline",
+          authors: ["A. Researcher"],
+          url: "https://example.com/paper-1",
+          source: "crossref"
+        },
+        {
+          id: "paper-2",
+          title: "Retriever Planning for Multimodal Agents",
+          authors: ["B. Scientist"],
+          url: "https://example.com/paper-2",
+          source: "crossref"
+        }
+      ],
+      chunks: [],
+      summary: "Weekly RAG summary.",
+      findings: ["Finding one"],
+      gaps: [],
+      nextActions: ["Follow up on repo code paths"],
+      evidence: [],
+      warnings: [],
+      critique: {
+        verdict: "moderate",
+        summary: "Some evidence was collected.",
+        issues: [],
+        recommendations: [],
+        supportedEvidenceCount: 1,
+        unsupportedEvidenceCount: 0,
+        coveredFindingsCount: 1,
+        citationDiversity: 1,
+        citationCoverage: 1
+      }
+    };
+  }
 
   return {
-    async runResearch() {
+    async runResearch(request = {}, options = {}) {
+      const report = buildReport(options.taskId || "task-1", request);
+      reports.set(report.taskId, report);
       return report;
     },
     async listRecentReports() {
+      const recent = [...reports.values()];
+      if (recent.length > 0) {
+        return recent.map((report) => ({
+          taskId: report.taskId,
+          topic: report.topic,
+          question: report.question,
+          generatedAt: report.generatedAt,
+          summary: report.summary,
+          critiqueVerdict: report.critique.verdict,
+          paperCount: report.papers.length,
+          evidenceCount: report.evidence.length
+        }));
+      }
+
+      const report = buildReport();
       return [
         {
           taskId: report.taskId,
@@ -94,7 +137,7 @@ function buildStubResearchService() {
       ];
     },
     async getReport(taskId) {
-      return taskId === report.taskId ? report : null;
+      return reports.get(taskId) || (taskId === "task-1" ? buildReport() : null);
     }
   };
 }
@@ -283,6 +326,53 @@ async function main() {
         assert.ok(canonicalPaperDetail);
         assert.equal(canonicalPaperDetail.raw.kind, "canonical_paper");
         assert.equal(canonicalPaperDetail.relatedEdges.some((edge) => edge.label === "analyzes_paper"), true);
+
+        const workflowPaper = graph.nodes.find(
+          (node) => node.type === "paper" && node.label === "Retriever Planning for Multimodal Agents"
+        );
+        assert.ok(workflowPaper);
+        assert.equal(Number(workflowPaper.meta.workflowReports || 0) > 0, true);
+
+        const paperGraph = await registry.buildGraph({ view: "paper" });
+        assert.equal(paperGraph.nodes.every((node) => node.type === "paper"), true);
+        assert.equal(
+          paperGraph.edges.some((edge) => edge.kind === "shared_workflow_report"),
+          true
+        );
+
+        const paperDetail = await registry.getNodeDetail(workflowPaper.id, { view: "paper" });
+        assert.ok(paperDetail);
+        assert.equal(paperDetail.raw.kind, "paper_relation_node");
+        assert.equal(
+          paperDetail.relatedNodes.some((node) => node.label === "A Strong Multimodal RAG Baseline"),
+          true
+        );
+
+        const graphQuery = await registry.queryGraph({ view: "paper", search: "Retriever" }, 4);
+        assert.equal(graphQuery.view, "paper");
+        assert.equal(
+          graphQuery.topNodes.some((item) => item.node.label === "Retriever Planning for Multimodal Agents"),
+          true
+        );
+
+        const paperBaseline = paperGraph.nodes.find((node) => node.label === "A Strong Multimodal RAG Baseline");
+        assert.ok(paperBaseline);
+
+        const pathResult = await registry.findPath(paperBaseline.id, workflowPaper.id, { view: "paper" });
+        assert.equal(pathResult.connected, true);
+        assert.equal(pathResult.hops, 1);
+        assert.deepEqual(pathResult.pathNodeIds, [paperBaseline.id, workflowPaper.id]);
+
+        const explainResult = await registry.explainConnection(paperBaseline.id, workflowPaper.id, { view: "paper" });
+        assert.equal(explainResult.connected, true);
+        assert.equal(explainResult.relationType, "direct");
+        assert.equal(explainResult.directEdges.some((edge) => edge.kind === "shared_workflow_report"), true);
+
+        const report = await registry.buildGraphReport({ view: "paper" }, 5);
+        assert.equal(report.view, "paper");
+        assert.equal(report.hubs.length > 0, true);
+        assert.equal(report.components.length > 0, true);
+        assert.equal(report.summary.length > 0, true);
       } finally {
         seeded.restoreFetch();
       }
@@ -313,6 +403,15 @@ async function main() {
           }
         );
 
+        const createdTask = await taskService.enqueueTask({
+          topic: "Retryable research round",
+          question: "What should be reviewed?"
+        });
+        const completedTask = await waitFor(async () => {
+          const current = await taskService.getTask(createdTask.taskId);
+          return current?.state === "completed" ? current : null;
+        });
+
         const graphResponse = await app.inject({
           method: "GET",
           url: "/api/research/memory-graph?types=repo_report&search=research-repo"
@@ -331,6 +430,18 @@ async function main() {
         assert.equal(canonicalGraphPayload.nodes.some((node) => node.type === "paper"), true);
         assert.equal(canonicalGraphPayload.nodes.some((node) => node.type === "repo"), true);
 
+        const paperGraphResponse = await app.inject({
+          method: "GET",
+          url: "/api/research/memory-graph?view=paper"
+        });
+        assert.equal(paperGraphResponse.statusCode, 200);
+        const paperGraphPayload = paperGraphResponse.json();
+        assert.equal(paperGraphPayload.nodes.every((node) => node.type === "paper"), true);
+        assert.equal(
+          paperGraphPayload.edges.some((edge) => edge.kind === "shared_workflow_report"),
+          true
+        );
+
         const nodeId = encodeURIComponent(graphPayload.nodes[0].id);
         const detailResponse = await app.inject({
           method: "GET",
@@ -341,6 +452,49 @@ async function main() {
         assert.equal(detailPayload.node.type, "repo_report");
         assert.equal(detailPayload.raw.url, "https://github.com/example/research-repo");
 
+        const paperNodeId = encodeURIComponent(
+          paperGraphPayload.nodes.find((node) => node.label === "Retriever Planning for Multimodal Agents").id
+        );
+        const paperDetailResponse = await app.inject({
+          method: "GET",
+          url: `/api/research/memory-graph/${paperNodeId}?view=paper`
+        });
+        assert.equal(paperDetailResponse.statusCode, 200);
+        const paperDetailPayload = paperDetailResponse.json();
+        assert.equal(paperDetailPayload.raw.kind, "paper_relation_node");
+
+        const paperBaselineId = encodeURIComponent(
+          paperGraphPayload.nodes.find((node) => node.label === "A Strong Multimodal RAG Baseline").id
+        );
+
+        const pathResponse = await app.inject({
+          method: "GET",
+          url: `/api/research/memory-graph/path?from=${paperBaselineId}&to=${paperNodeId}&view=paper`
+        });
+        assert.equal(pathResponse.statusCode, 200);
+        const pathPayload = pathResponse.json();
+        assert.equal(pathPayload.connected, true);
+        assert.equal(pathPayload.hops, 1);
+
+        const explainResponse = await app.inject({
+          method: "GET",
+          url: `/api/research/memory-graph/explain?from=${paperBaselineId}&to=${paperNodeId}&view=paper`
+        });
+        assert.equal(explainResponse.statusCode, 200);
+        const explainPayload = explainResponse.json();
+        assert.equal(explainPayload.connected, true);
+        assert.equal(explainPayload.relationType, "direct");
+
+        const reportResponse = await app.inject({
+          method: "GET",
+          url: "/api/research/memory-graph/report?view=paper&limit=4"
+        });
+        assert.equal(reportResponse.statusCode, 200);
+        const reportPayload = reportResponse.json();
+        assert.equal(reportPayload.view, "paper");
+        assert.equal(reportPayload.hubs.length > 0, true);
+        assert.equal(reportPayload.components.length > 0, true);
+
         const artifactResponse = await app.inject({
           method: "GET",
           url: "/api/research/artifact?path=research/presentations/deck.md"
@@ -348,6 +502,43 @@ async function main() {
         assert.equal(artifactResponse.statusCode, 200);
         assert.equal(artifactResponse.headers["content-type"], "text/markdown; charset=utf-8");
         assert.ok(artifactResponse.body.includes("# Deck"));
+
+        const blockedArtifactResponse = await app.inject({
+          method: "GET",
+          url: "/api/research/artifact?path=package.json"
+        });
+        assert.equal(blockedArtifactResponse.statusCode, 400);
+
+        const taskResponse = await app.inject({
+          method: "GET",
+          url: `/api/research/tasks/${completedTask.taskId}`
+        });
+        assert.equal(taskResponse.statusCode, 200);
+        const taskPayload = taskResponse.json();
+        assert.equal(taskPayload.taskId, completedTask.taskId);
+        assert.equal(taskPayload.handoff.taskId, completedTask.taskId);
+        assert.equal(taskPayload.handoff.reviewStatus, "passed");
+        assert.equal(taskPayload.handoff.handoffPath, `research/rounds/${completedTask.taskId}/handoff.json`);
+        assert.equal("report" in taskPayload, false);
+
+        const handoffResponse = await app.inject({
+          method: "GET",
+          url: `/api/research/tasks/${completedTask.taskId}/handoff`
+        });
+        assert.equal(handoffResponse.statusCode, 200);
+        const handoffPayload = handoffResponse.json();
+        assert.equal(handoffPayload.taskId, completedTask.taskId);
+        assert.equal(handoffPayload.state, "completed");
+
+        const reportResponseWithTaskMeta = await app.inject({
+          method: "GET",
+          url: `/api/research/${completedTask.taskId}`
+        });
+        assert.equal(reportResponseWithTaskMeta.statusCode, 200);
+        const reportWithTaskMetaPayload = reportResponseWithTaskMeta.json();
+        assert.equal(reportWithTaskMetaPayload.taskId, completedTask.taskId);
+        assert.equal(reportWithTaskMetaPayload.taskMeta.taskId, completedTask.taskId);
+        assert.equal(reportWithTaskMetaPayload.taskMeta.handoff.taskId, completedTask.taskId);
       } finally {
         seeded.restoreFetch();
         await app.close();

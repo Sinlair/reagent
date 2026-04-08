@@ -907,6 +907,13 @@ svg {
   border: 1px solid color-mix(in srgb, var(--border) 96%, transparent);
   border-radius: var(--radius-md);
   background: rgba(255, 252, 246, 0.76);
+  text-decoration: none;
+  color: inherit;
+}
+
+.route-chip:hover {
+  border-color: rgba(148, 163, 184, 0.36);
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .route-chip__copy {
@@ -2127,6 +2134,48 @@ select {
   gap: 10px;
 }
 
+.graph-insight-list {
+  display: grid;
+  gap: 10px;
+}
+
+.graph-compare-form {
+  display: grid;
+  gap: 10px;
+}
+
+.graph-compare-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.graph-connection-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.graph-connection-card p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.graph-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-path__arrow {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .graph-detail__toggle {
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: var(--radius-md);
@@ -2206,6 +2255,18 @@ select {
   gap: 10px;
 }
 
+.graph-edge-group {
+  display: grid;
+  gap: 10px;
+}
+
+.graph-edge-group__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .graph-edge-item__nodes {
   display: flex;
   align-items: center;
@@ -2251,12 +2312,19 @@ select {
     radial-gradient(circle at top right, rgba(49, 95, 133, 0.07), transparent 28%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.44), transparent 36%),
     color-mix(in srgb, var(--bg-elevated) 94%, transparent);
-  overflow: auto;
+  overflow: hidden;
 }
 
 .graph-svg {
   width: 100%;
   min-height: 420px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.graph-canvas--panning .graph-svg {
+  cursor: grabbing;
 }
 
 .graph-lane__rail {
@@ -2269,6 +2337,7 @@ select {
   fill: none;
   stroke: rgba(49, 95, 133, 0.14);
   stroke-width: 1.4;
+  stroke-linecap: round;
 }
 
 .graph-link--active {
@@ -2277,7 +2346,7 @@ select {
 }
 
 .graph-node-group {
-  cursor: pointer;
+  cursor: grab;
 }
 
 .graph-node {
@@ -2296,7 +2365,22 @@ select {
   filter: drop-shadow(0 8px 22px rgba(49, 95, 133, 0.14));
 }
 
-.graph-node-group--active .graph-node-label {
+.graph-node-group--dragging {
+  cursor: grabbing;
+}
+
+.graph-node-group--dragging .graph-node {
+  stroke: rgba(37, 99, 235, 0.52);
+  filter: drop-shadow(0 10px 24px rgba(37, 99, 235, 0.18));
+}
+
+.graph-node-group--related .graph-node {
+  stroke: rgba(49, 95, 133, 0.3);
+  filter: drop-shadow(0 6px 18px rgba(49, 95, 133, 0.1));
+}
+
+.graph-node-group--active .graph-node-label,
+.graph-node-group--related .graph-node-label {
   fill: var(--text-strong);
 }
 
@@ -2323,6 +2407,10 @@ select {
   fill: var(--text);
   font-size: 11px;
   pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(246, 249, 253, 0.96);
+  stroke-width: 4px;
+  stroke-linejoin: round;
 }
 
 @media (max-width: 1100px) {
@@ -3094,6 +3182,27 @@ textarea {
 
 .btn--ghost:hover {
   background: rgba(226, 232, 240, 0.56);
+}
+
+.btn--ghost.btn--active {
+  color: #0f172a;
+  background: rgba(191, 219, 254, 0.82);
+  border-color: rgba(59, 130, 246, 0.36);
+}
+
+.settings-command {
+  align-items: flex-start;
+}
+
+.settings-command code {
+  display: block;
+  margin-top: 4px;
+  color: #334155;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .chat-compose__actions .btn {

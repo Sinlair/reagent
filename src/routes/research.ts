@@ -13,6 +13,7 @@ import { ResearchPaperAnalysisService } from "../services/researchPaperAnalysisS
 import { ResearchDirectionReportService } from "../services/researchDirectionReportService.js";
 import { ResearchPresentationService } from "../services/researchPresentationService.js";
 import { ResearchRepoAnalysisService } from "../services/researchRepoAnalysisService.js";
+import { ResearchRoundService } from "../services/researchRoundService.js";
 import type { ResearchDirectionService } from "../services/researchDirectionService.js";
 import type { ResearchDiscoverySchedulerService } from "../services/researchDiscoverySchedulerService.js";
 import type { ResearchDiscoveryService } from "../services/researchDiscoveryService.js";
@@ -132,11 +133,22 @@ const FeedbackRecordSchema = z.object({
 });
 
 const MemoryGraphQuerySchema = z.object({
+  view: z.enum(["asset", "paper"]).optional(),
   types: z.string().trim().optional(),
   search: z.string().trim().optional(),
   topic: z.string().trim().optional(),
   dateFrom: z.string().trim().optional(),
   dateTo: z.string().trim().optional(),
+});
+
+const MemoryGraphConnectionQuerySchema = z.object({
+  from: z.string().trim().min(1),
+  to: z.string().trim().min(1),
+  view: z.enum(["asset", "paper"]).optional(),
+});
+
+const MemoryGraphReportQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(12).optional().default(6),
 });
 
 const DiscoveryRunRequestSchema = z.object({
@@ -222,6 +234,7 @@ function parseGraphQuery(rawQuery: unknown):
   return {
     success: true,
     data: {
+      ...(parsed.data.view ? { view: parsed.data.view } : {}),
       ...(types.length > 0 ? { types } : {}),
       ...(parsed.data.search ? { search: parsed.data.search } : {}),
       ...(parsed.data.topic ? { topic: parsed.data.topic } : {}),
@@ -236,6 +249,11 @@ function resolveWorkspaceArtifactPath(workspaceDir: string, requestedPath: strin
   const resolved = path.resolve(workspaceDir, normalized);
   const relative = path.relative(workspaceDir, resolved);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+
+  const relativePosix = relative.replace(/[\\]+/gu, "/");
+  if (!relativePosix.startsWith("research/")) {
     return null;
   }
 
@@ -274,6 +292,7 @@ export async function registerResearchRoutes(
   const directionReportService = new ResearchDirectionReportService(workspaceDir);
   const presentationService = new ResearchPresentationService(workspaceDir, researchService);
   const researchMemoryRegistryService = new ResearchMemoryRegistryService(workspaceDir, researchService);
+  const researchRoundService = new ResearchRoundService(workspaceDir);
 
   app.get("/api/research/recent", async (request, reply) => {
     const parsedQuery = RecentReportsQuerySchema.safeParse(request.query ?? {});
@@ -315,14 +334,44 @@ export async function registerResearchRoutes(
       });
     }
 
-    const task = await researchTaskService.getTask(parsedParams.data.taskId);
+    const task = await researchTaskService.getTaskDetail(parsedParams.data.taskId);
     if (!task) {
       return reply.code(404).send({
         message: "Research task not found"
       });
     }
 
-    return reply.send(task);
+    return reply.send({
+      ...task,
+      handoff: await researchRoundService.getHandoff(parsedParams.data.taskId)
+    });
+  });
+
+  app.get("/api/research/tasks/:taskId/handoff", async (request, reply) => {
+    const parsedParams = ResearchTaskParamsSchema.safeParse(request.params);
+
+    if (!parsedParams.success) {
+      return reply.code(400).send({
+        message: "Invalid research task id",
+        issues: parsedParams.error.flatten()
+      });
+    }
+
+    const task = await researchTaskService.getTaskDetail(parsedParams.data.taskId);
+    if (!task) {
+      return reply.code(404).send({
+        message: "Research task not found"
+      });
+    }
+
+    const handoff = await researchRoundService.getHandoff(parsedParams.data.taskId);
+    if (!handoff) {
+      return reply.code(404).send({
+        message: "Research task handoff not found"
+      });
+    }
+
+    return reply.send(handoff);
   });
 
   app.post("/api/research/tasks", async (request, reply) => {
@@ -373,6 +422,7 @@ export async function registerResearchRoutes(
 
   app.get("/api/research/memory-graph/:nodeId", async (request, reply) => {
     const parsedParams = MemoryGraphNodeParamsSchema.safeParse(request.params);
+    const parsedQuery = parseGraphQuery(request.query);
 
     if (!parsedParams.success) {
       return reply.code(400).send({
@@ -381,7 +431,14 @@ export async function registerResearchRoutes(
       });
     }
 
-    const detail = await researchMemoryRegistryService.getNodeDetail(parsedParams.data.nodeId);
+    if (!parsedQuery.success) {
+      return reply.code(400).send({
+        message: parsedQuery.message,
+        ...(parsedQuery.issues ? { issues: parsedQuery.issues } : {})
+      });
+    }
+
+    const detail = await researchMemoryRegistryService.getNodeDetail(parsedParams.data.nodeId, parsedQuery.data);
     if (!detail) {
       return reply.code(404).send({
         message: "Research memory graph node not found"
@@ -389,6 +446,77 @@ export async function registerResearchRoutes(
     }
 
     return reply.send(detail);
+  });
+
+  app.get("/api/research/memory-graph/path", async (request, reply) => {
+    const parsedPair = MemoryGraphConnectionQuerySchema.safeParse(request.query ?? {});
+    if (!parsedPair.success) {
+      return reply.code(400).send({
+        message: "Invalid research memory graph path query",
+        issues: parsedPair.error.flatten()
+      });
+    }
+
+    const result = await researchMemoryRegistryService.findPath(
+      parsedPair.data.from,
+      parsedPair.data.to,
+      parsedPair.data.view ? { view: parsedPair.data.view } : {}
+    );
+
+    if (!result.fromNode || !result.toNode) {
+      return reply.code(404).send({
+        message: "One or both research memory graph nodes were not found"
+      });
+    }
+
+    return reply.send(result);
+  });
+
+  app.get("/api/research/memory-graph/explain", async (request, reply) => {
+    const parsedPair = MemoryGraphConnectionQuerySchema.safeParse(request.query ?? {});
+    if (!parsedPair.success) {
+      return reply.code(400).send({
+        message: "Invalid research memory graph explain query",
+        issues: parsedPair.error.flatten()
+      });
+    }
+
+    const result = await researchMemoryRegistryService.explainConnection(
+      parsedPair.data.from,
+      parsedPair.data.to,
+      parsedPair.data.view ? { view: parsedPair.data.view } : {}
+    );
+
+    if (!result.fromNode || !result.toNode) {
+      return reply.code(404).send({
+        message: "One or both research memory graph nodes were not found"
+      });
+    }
+
+    return reply.send(result);
+  });
+
+  app.get("/api/research/memory-graph/report", async (request, reply) => {
+    const parsedQuery = parseGraphQuery(request.query);
+    const parsedOptions = MemoryGraphReportQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsedQuery.success) {
+      return reply.code(400).send({
+        message: parsedQuery.message,
+        ...(parsedQuery.issues ? { issues: parsedQuery.issues } : {})
+      });
+    }
+
+    if (!parsedOptions.success) {
+      return reply.code(400).send({
+        message: "Invalid research memory graph report query",
+        issues: parsedOptions.error.flatten()
+      });
+    }
+
+    return reply.send(
+      await researchMemoryRegistryService.buildGraphReport(parsedQuery.data, parsedOptions.data.limit)
+    );
   });
 
   app.get("/api/research/artifact", async (request, reply) => {
@@ -872,7 +1000,13 @@ export async function registerResearchRoutes(
       });
     }
 
-    return reply.send(report);
+    const taskMeta = await researchTaskService.getTaskDetail(parsedParams.data.taskId);
+    const handoff = taskMeta ? await researchRoundService.getHandoff(parsedParams.data.taskId) : null;
+
+    return reply.send({
+      ...report,
+      ...(taskMeta ? { taskMeta: { ...taskMeta, handoff } } : {})
+    });
   });
 
   app.post("/api/research", async (request, reply) => {

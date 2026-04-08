@@ -48,13 +48,27 @@ const state = {
   memoryFiles: [],
   selectedMemoryFilePath: null,
   graphData: null,
+  graphReport: null,
   graphDetail: null,
   graphSearch: "",
   graphDateRange: "all",
   graphTypeFilters: [],
+  graphCompareNodeId: null,
+  graphConnectionMode: "explain",
+  graphConnectionPending: false,
+  graphConnectionResult: null,
+  runtimeLogsPayload: null,
+  runtimeLogsBaseline: null,
+  graphViewport: {
+    x: 0,
+    y: 0,
+    scale: 1,
+  },
+  graphNodePositions: {},
   selectedGraphNodeId: null,
   selectedResearchTaskId: null,
-  selectedResearchTask: null
+  selectedResearchTask: null,
+  logsAutoFollow: true
 };
 
 const els = {
@@ -206,6 +220,7 @@ const els = {
   graphSearch: document.querySelector("#graph-search"),
   graphDateRange: document.querySelector("#graph-date-range"),
   graphTypeFilters: document.querySelector("#graph-type-filters"),
+  graphResetView: document.querySelector("#graph-reset-view"),
   graphClearFilters: document.querySelector("#graph-clear-filters"),
   memoryQuery: document.querySelector("#memory-query"),
   memoryResults: document.querySelector("#memory-results"),
@@ -218,6 +233,9 @@ const els = {
   runtimeLogStderrPath: document.querySelector("#runtime-log-stderr-path"),
   runtimeLogOutput: document.querySelector("#runtime-log-output"),
   runtimeLogError: document.querySelector("#runtime-log-error"),
+  logsFollowToggle: document.querySelector("#logs-follow-toggle"),
+  logsClearButton: document.querySelector("#logs-clear-button"),
+  logsCopyButton: document.querySelector("#logs-copy-button"),
   navBackdrop: document.querySelector("#nav-backdrop"),
   navToggle: document.querySelector("#nav-toggle"),
   navCollapseToggle: document.querySelector("#nav-collapse-toggle"),
@@ -235,6 +253,8 @@ const QUICK_ACTIONS = [
   { id: "cmd-memory", label: "/memory user preference", desc: "actions.insertPrompt", prompt: "/memory user preference" },
   { id: "cmd-remember", label: "/remember user prefers TypeScript", desc: "actions.insertPrompt", prompt: "/remember user prefers TypeScript" }
 ];
+
+const GRAPH_VIEW = "paper";
 
 const GRAPH_TYPE_ORDER = [
   "direction",
@@ -264,7 +284,10 @@ const GRAPH_TYPE_LABELS = {
 
 let graphLoadToken = 0;
 let graphDetailToken = 0;
+let graphConnectionToken = 0;
 let graphSearchTimerId = 0;
+let logsPollTimerId = 0;
+let runtimeLogsRequestInFlight = false;
 
 function copy() {
   return i18n?.getCopy?.(state) ?? {};
@@ -324,8 +347,72 @@ function clipBlock(value, max = 2400) {
   return value.length <= max ? value : `${value.slice(0, max).trimEnd()}\n...`;
 }
 
-function formatGraphType(type) {
-  return GRAPH_TYPE_LABELS[type] || type;
+function buildPaperGraphLayout(graph) {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+  const degreeByNodeId = new Map();
+
+  edges.forEach((edge) => {
+    degreeByNodeId.set(edge.source, (degreeByNodeId.get(edge.source) || 0) + 1);
+    degreeByNodeId.set(edge.target, (degreeByNodeId.get(edge.target) || 0) + 1);
+  });
+
+  const orderedNodes = [...nodes].sort((left, right) => {
+    const degreeDelta = (degreeByNodeId.get(right.id) || 0) - (degreeByNodeId.get(left.id) || 0);
+    if (degreeDelta !== 0) {
+      return degreeDelta;
+    }
+    return left.label.localeCompare(right.label);
+  });
+
+  const maxDegree = orderedNodes.reduce((max, node) => Math.max(max, degreeByNodeId.get(node.id) || 0), 1);
+  const ringCount = Math.max(1, Math.ceil(Math.sqrt(Math.max(orderedNodes.length, 1)) / 2));
+  const width = Math.max(980, 920 + ringCount * 180);
+  const height = Math.max(620, 620 + Math.max(0, ringCount - 2) * 140);
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const ringGap = Math.max(84, Math.min(132, Math.min(width, height) / (ringCount * 2.4)));
+  const rings = Array.from({ length: ringCount }, () => []);
+
+  orderedNodes.forEach((node, index) => {
+    const degree = degreeByNodeId.get(node.id) || 0;
+    const normalized = maxDegree > 0 ? 1 - degree / maxDegree : 1;
+    const preferredRing = Math.min(ringCount - 1, Math.max(0, Math.round(normalized * (ringCount - 1))));
+    rings[preferredRing].push({ node, degree, index });
+  });
+
+  const positions = [];
+  rings.forEach((items, ringIndex) => {
+    if (!items.length) {
+      return;
+    }
+    const radius = 110 + ringIndex * ringGap;
+    items.forEach((entry, itemIndex) => {
+      const angle = ((itemIndex / items.length) * Math.PI * 2) + (ringIndex % 2 ? Math.PI / Math.max(items.length, 2) : 0);
+      positions.push({
+        id: entry.node.id,
+        x: Math.min(width - 60, Math.max(60, centerX + Math.cos(angle) * radius)),
+        y: Math.min(height - 60, Math.max(60, centerY + Math.sin(angle) * radius))
+      });
+    });
+  });
+
+  positions.forEach((position) => {
+    const override = state.graphNodePositions?.[position.id];
+    if (!override) {
+      return;
+    }
+
+    position.x = override.x;
+    position.y = override.y;
+  });
+
+  return {
+    width,
+    height,
+    degreeByNodeId,
+    positions: new Map(positions.map((position) => [position.id, position]))
+  };
 }
 
 function getGraphDateFrom() {
@@ -337,10 +424,11 @@ function getGraphDateFrom() {
 
 function buildGraphUrl() {
   const params = new URLSearchParams();
+  params.set("view", GRAPH_VIEW);
   if (state.graphSearch.trim()) {
     params.set("search", state.graphSearch.trim());
   }
-  if (state.graphTypeFilters.length > 0) {
+  if (GRAPH_VIEW !== "paper" && state.graphTypeFilters.length > 0) {
     params.set("types", state.graphTypeFilters.join(","));
   }
   const dateFrom = getGraphDateFrom();
@@ -349,6 +437,62 @@ function buildGraphUrl() {
   }
   const query = params.toString();
   return query ? `/api/research/memory-graph?${query}` : "/api/research/memory-graph";
+}
+
+function buildGraphDetailUrl(nodeId) {
+  const params = new URLSearchParams();
+  params.set("view", GRAPH_VIEW);
+  return `/api/research/memory-graph/${encodeURIComponent(nodeId)}?${params.toString()}`;
+}
+
+function buildGraphReportUrl() {
+  const params = new URLSearchParams();
+  params.set("view", GRAPH_VIEW);
+  params.set("limit", "6");
+  if (state.graphSearch.trim()) {
+    params.set("search", state.graphSearch.trim());
+  }
+  if (GRAPH_VIEW !== "paper" && state.graphTypeFilters.length > 0) {
+    params.set("types", state.graphTypeFilters.join(","));
+  }
+  const dateFrom = getGraphDateFrom();
+  if (dateFrom) {
+    params.set("dateFrom", dateFrom);
+  }
+  return `/api/research/memory-graph/report?${params.toString()}`;
+}
+
+function buildGraphConnectionUrl(mode, fromNodeId, toNodeId) {
+  const params = new URLSearchParams();
+  params.set("from", fromNodeId);
+  params.set("to", toNodeId);
+  params.set("view", GRAPH_VIEW);
+  return `/api/research/memory-graph/${mode === "path" ? "path" : "explain"}?${params.toString()}`;
+}
+
+function clampGraphScale(scale) {
+  return Math.min(2.8, Math.max(0.55, scale));
+}
+
+function graphSceneTransform() {
+  return `translate(${state.graphViewport.x} ${state.graphViewport.y}) scale(${state.graphViewport.scale})`;
+}
+
+function resetGraphViewport() {
+  state.graphViewport = { x: 0, y: 0, scale: 1 };
+  state.graphNodePositions = {};
+  if (state.graphData) {
+    renderGraphCanvas(state.graphData);
+  }
+}
+
+function clearGraphConnectionState(options = {}) {
+  graphConnectionToken += 1;
+  state.graphConnectionPending = false;
+  state.graphConnectionResult = null;
+  if (!options.preserveCompare) {
+    state.graphCompareNodeId = null;
+  }
 }
 
 function adjustTextareaHeight() {
@@ -399,6 +543,71 @@ async function requestText(url, options) {
   return response.text();
 }
 
+async function copyTextToClipboard(value) {
+  const text = String(value ?? "");
+  if (!text) {
+    return false;
+  }
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.setAttribute("readonly", "true");
+  input.style.position = "fixed";
+  input.style.top = "-1000px";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  const ok = document.execCommand("copy");
+  document.body.removeChild(input);
+  return ok;
+}
+
+function setButtonFeedback(button, label) {
+  if (!button) return;
+  const original = button.dataset.originalLabel || button.textContent || "";
+  button.dataset.originalLabel = original;
+  button.textContent = label;
+  window.clearTimeout(Number(button.dataset.resetTimer || 0));
+  const timerId = window.setTimeout(() => {
+    button.textContent = button.dataset.originalLabel || original;
+    button.dataset.resetTimer = "";
+  }, 1200);
+  button.dataset.resetTimer = String(timerId);
+}
+
+function splitLogLines(content) {
+  const normalized = String(content || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!normalized.trim()) {
+    return [];
+  }
+  return normalized.split("\n");
+}
+
+function diffLogLines(previousContent, nextContent) {
+  const previousLines = splitLogLines(previousContent);
+  const nextLines = splitLogLines(nextContent);
+  const maxOverlap = Math.min(previousLines.length, nextLines.length);
+
+  for (let overlap = maxOverlap; overlap >= 0; overlap -= 1) {
+    let matches = true;
+    for (let index = 0; index < overlap; index += 1) {
+      if (previousLines[previousLines.length - overlap + index] !== nextLines[index]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return nextLines.slice(overlap).join("\n").trim();
+    }
+  }
+
+  return nextLines.join("\n").trim();
+}
+
 async function startResearchTask(topic, question, options = {}) {
   const task = await requestJson("/api/research/tasks", {
     method: "POST",
@@ -437,10 +646,16 @@ async function openResearchTaskOrReport(taskId, options = {}) {
     throw new Error(state.lang === "zh" ? "\u8bf7\u8f93\u5165\u4efb\u52a1\u7f16\u53f7\u3002" : "Please enter a task number.");
   }
 
-  try {
-    await hydrateResearchTask(taskId);
-  } catch {
+  const knownTask = state.researchTasks.find((task) => task.taskId === taskId);
+
+  if (knownTask?.reportReady && knownTask.state === "completed") {
     await hydrateReport(taskId);
+  } else {
+    try {
+      await hydrateResearchTask(taskId);
+    } catch {
+      await hydrateReport(taskId);
+    }
   }
 
   if (options.openResearch) {
@@ -626,12 +841,12 @@ function renderWorkspacePulse() {
     headline = state.lang === "zh"
       ? "\u7814\u7a76\u8fd0\u884c\u8fdb\u884c\u4e2d\uff0c\u8bc1\u636e\u8fd8\u5728\u7d2f\u79ef\u3002"
       : "A research run is in flight and evidence is still accumulating.";
-    subtitle = `${formatResearchTaskState(activeTask)} · ${trimText(activeTask.topic || activeTask.taskId || "-", 92)}`;
+    subtitle = `${formatResearchTaskState(activeTask)} 路 ${trimText(activeTask.topic || activeTask.taskId || "-", 92)}`;
   } else if (summary) {
     headline = state.lang === "zh"
       ? "\u6700\u65b0\u4ea7\u51fa\u5df2\u5c31\u7eea\uff0c\u53ef\u4ee5\u7ee7\u7eed\u5ba1\u9605\u6216\u4ea4\u4ed8\u3002"
       : "The latest output is ready for review or delivery.";
-    subtitle = `${trimText(summary.topic || summary.taskId || "-", 92)} · ${formatRelativeTime(summary.generatedAt)}`;
+    subtitle = `${trimText(summary.topic || summary.taskId || "-", 92)} 路 ${formatRelativeTime(summary.generatedAt)}`;
   }
 
   if (els.workspacePulseKicker) {
@@ -711,7 +926,7 @@ function renderWorkspacePulse() {
   if (activeTask) {
     actions.push({
       label: state.lang === "zh" ? "\u8ddf\u8fdb\u6d3b\u8dc3\u8fd0\u884c" : "Follow active run",
-      hint: `${formatResearchTaskState(activeTask)} · ${trimText(activeTask.topic || activeTask.taskId || "-", 64)}`,
+      hint: `${formatResearchTaskState(activeTask)} 路 ${trimText(activeTask.topic || activeTask.taskId || "-", 64)}`,
       tab: "research"
     });
   } else if (briefsCount) {
@@ -777,7 +992,7 @@ function renderLandingCommandBar() {
       ? {
           eyebrow: t("landing.commandLatestEyebrow", "Latest Deliverable"),
           title: t("landing.commandLatestTitle", "Review the latest deliverable"),
-          meta: `${formatRelativeTime(summary.generatedAt)} · ${trimText(summary.topic || summary.taskId, 52)}`,
+          meta: `${formatRelativeTime(summary.generatedAt)} 路 ${trimText(summary.topic || summary.taskId, 52)}`,
           taskId: summary.taskId,
           tone: "accent"
         }
@@ -812,7 +1027,7 @@ function renderLandingCommandBar() {
         ? t("landing.commandMemoryReadyTitle", "Reuse workspace memory")
         : t("landing.commandMemoryEmptyTitle", "Write the first working memory"),
       meta: state.memoryStatus?.searchMode
-        ? `${memoryFiles} files · ${state.memoryStatus.searchMode}`
+        ? `${memoryFiles} files 路 ${state.memoryStatus.searchMode}`
         : (state.lang === "zh" ? "\u67e5\u770b\u5df2\u4fdd\u5b58\u6587\u4ef6\u5e76\u6253\u5f00\u539f\u59cb\u4e0a\u4e0b\u6587" : "Inspect saved files and reopen raw context."),
       tab: "memory"
     },
@@ -820,8 +1035,8 @@ function renderLandingCommandBar() {
       eyebrow: t("landing.commandDeliveryEyebrow", "Delivery"),
       title: t("landing.commandDeliveryStatusTitle", "Delivery status"),
       meta: transport.tone === "warn" || transport.tone === "danger"
-        ? `${formatResearchTaskState(activeTask)} · ${transport.value}`
-        : `${transport.value} · ${transport.hint || "-"}`,
+        ? `${formatResearchTaskState(activeTask)} 路 ${transport.value}`
+        : `${transport.value} 路 ${transport.hint || "-"}`,
       tab: "channels",
       tone: transport.tone === "warn" || transport.tone === "danger" ? "warn" : ""
     },
@@ -1089,7 +1304,11 @@ function buildSkillsCatalogMarkup(session) {
             <input data-agent-skill-toggle type="checkbox" value="${escapeHtml(skill.id)}" ${enabled ? "checked" : ""} />
             <span class="agent-skill__copy">
               <strong>${escapeHtml(skill.label)}</strong>
-              <span>${escapeHtml(enabled ? (state.lang === "zh" ? "当前聊天可用" : "Available in this chat") : (state.lang === "zh" ? "当前聊天未启用" : "Not enabled in this chat"))}</span>
+              <span>${escapeHtml(
+                enabled
+                  ? (state.lang === "zh" ? "\u5f53\u524d\u804a\u5929\u53ef\u7528" : "Available in this chat")
+                  : (state.lang === "zh" ? "\u5f53\u524d\u804a\u5929\u672a\u542f\u7528" : "Not enabled in this chat")
+              )}</span>
             </span>
           </label>
         </article>
@@ -1109,13 +1328,17 @@ function renderSkillsCatalog(session) {
 function renderSkillDetail(session) {
   if (!els.skillDetail) return;
   if (!session || !state.selectedSkillId) {
-    els.skillDetail.innerHTML = `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "选择一个技能后，可在这里查看详情。" : "Select a skill to inspect its details.")}</div>`;
+    els.skillDetail.innerHTML = `<div class="empty-state compact-empty">${escapeHtml(
+      state.lang === "zh" ? "选择一个技能后，可在这里查看详情。" : "Select a skill to inspect its details."
+    )}</div>`;
     return;
   }
 
   const skill = (session.availableSkills || []).find((item) => item.id === state.selectedSkillId);
   if (!skill) {
-    els.skillDetail.innerHTML = `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "选择一个技能后，可在这里查看详情。" : "Select a skill to inspect its details.")}</div>`;
+    els.skillDetail.innerHTML = `<div class="empty-state compact-empty">${escapeHtml(
+      state.lang === "zh" ? "选择一个技能后，可在这里查看详情。" : "Select a skill to inspect its details."
+    )}</div>`;
     return;
   }
 
@@ -1275,10 +1498,12 @@ function renderAgentSessionsList(sessions) {
           <div class="message__meta">
             <span>${escapeHtml(session.roleLabel)} (${escapeHtml(session.roleId)})</span>
             <span>${escapeHtml(session.activeEntrySource || "-")}</span>
-            <span>${escapeHtml(state.lang === "zh" ? `${String(session.turnCount)} 轮对话` : `${String(session.turnCount)} turns`)}</span>
+            <span>${escapeHtml(
+              state.lang === "zh" ? `${String(session.turnCount)} \u8f6e\u5bf9\u8bdd` : `${String(session.turnCount)} turns`
+            )}</span>
             <span>${escapeHtml(`${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}`)}</span>
             <span>${escapeHtml(session.skillLabels.join(", ") || "-")}</span>
-            ${isCurrent ? `<span>${escapeHtml(state.lang === "zh" ? "当前聊天" : "Current chat")}</span>` : ""}
+            ${isCurrent ? `<span>${escapeHtml(state.lang === "zh" ? "褰撳墠鑱婂ぉ" : "Current chat")}</span>` : ""}
           </div>
         </article>
       `;
@@ -1293,10 +1518,9 @@ function renderSettingsOverview() {
   const wechat = state.channels?.wechat;
   const agent = state.agentSession;
   const deployment = meta?.deployment;
-  const alwaysOnModes = deployment?.alwaysOn?.modes || [];
-  const pm2Mode = alwaysOnModes.find((mode) => mode.id === "pm2");
-  const windowsServiceMode = alwaysOnModes.find((mode) => mode.id === "windows-service");
-  const openclawBridgeMode = alwaysOnModes.find((mode) => mode.id === "openclaw-bridge");
+  const gateway = deployment?.gateway || null;
+  const gatewaySupervisor = gateway?.supervisor || null;
+  const gatewayCommands = gateway?.commands || {};
 
   function formatSettingsValue(value) {
     if (Array.isArray(value)) {
@@ -1308,22 +1532,45 @@ function renderSettingsOverview() {
     return String(value);
   }
 
+  function isCommandValue(value) {
+    if (Array.isArray(value) || value == null) return false;
+    const normalized = String(value).trim();
+    return /^(reagent|openclaw|npm(?:\.cmd)?|npx(?:\.cmd)?|node)\b/i.test(normalized);
+  }
+
+  function renderSettingsRow(label, value) {
+    if (isCommandValue(value)) {
+      const commandValue = String(value).trim();
+      return `
+        <div class="route-chip settings-command">
+          <span class="route-chip__copy">
+            <strong>${escapeHtml(label)}</strong>
+            <code>${escapeHtml(commandValue)}</code>
+          </span>
+          <button class="route-chip__remove" type="button" data-copy-command="${escapeHtml(commandValue)}">${escapeHtml(t("common.copy", state.lang === "zh" ? "\u590d\u5236" : "Copy"))}</button>
+        </div>
+      `;
+    }
+
+    return `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatSettingsValue(value))}</strong></div>`;
+  }
+
   const sections = {
     communications: [
       {
-        title: state.lang === "zh" ? "\u5fae\u4fe1\u6e20\u9053" : "WeChat Channel",
+        title: state.lang === "zh" ? "WeChat Channel" : "WeChat Channel",
         rows: [
-          [state.lang === "zh" ? "\u63d0\u4f9b\u65b9" : "Provider", wechat?.providerMode || meta?.wechatProvider || "-"],
-          [state.lang === "zh" ? "\u8fde\u63a5" : "Connected", String(Boolean(wechat?.connected))],
-          [state.lang === "zh" ? "\u6700\u540e\u72b6\u6001" : "Last status", wechat?.lastMessage || wechat?.lastError || "-"]
+          ["Provider", wechat?.providerMode || meta?.wechatProvider || "-"],
+          ["Connected", String(Boolean(wechat?.connected))],
+          ["Last Status", wechat?.lastMessage || wechat?.lastError || "-"]
         ]
       },
       {
-        title: state.lang === "zh" ? "\u7814\u7a76\u7b14\u8bb0" : "Research Notes",
+        title: state.lang === "zh" ? "Research Notes" : "Research Notes",
         rows: [
-          [state.lang === "zh" ? "\u8def\u5f84" : "Path", state.memoryStatus?.workspaceDir || meta?.workspaceDir || "-"],
-          [state.lang === "zh" ? "\u6587\u4ef6\u6570" : "Files", String(state.memoryStatus?.files ?? 0)],
-          [state.lang === "zh" ? "\u641c\u7d22" : "Search mode", state.memoryStatus?.searchMode || "-"]
+          ["Path", state.memoryStatus?.workspaceDir || meta?.workspaceDir || "-"],
+          ["Files", String(state.memoryStatus?.files ?? 0)],
+          ["Search Mode", state.memoryStatus?.searchMode || "-"]
         ]
       }
     ],
@@ -1346,7 +1593,7 @@ function renderSettingsOverview() {
           : [["Registry", "workspace/channels/mcp-servers.json"], ["Configured", "0"]],
       },
       {
-        title: state.lang === "zh" ? "\u6865\u63a5" : "Bridge",
+        title: "Bridge",
         rows: [
           ["Gateway", meta?.openclaw?.gatewayUrl || "-"],
           ["CLI", meta?.openclaw?.cliPath || "-"],
@@ -1356,67 +1603,102 @@ function renderSettingsOverview() {
     ],
     aiAgents: [
       {
-        title: state.lang === "zh" ? "AI Runtime" : "AI Runtime",
+        title: "AI Runtime",
         rows: [
           ["LLM", meta?.llmProvider || "-"],
           ["Model", meta?.llmModel || "-"],
           ["Wire API", meta?.llmWireApi || agent?.wireApi || "-"],
           ["Route", agent ? `${agent.providerLabel || agent.providerId}/${agent.modelLabel || agent.modelId}` : "-"],
-          ["Route status", agent ? `${agent.llmStatus || "-"} (${agent.llmSource || "-"})` : "-"],
+          ["Route Status", agent ? `${agent.llmStatus || "-"} (${agent.llmSource || "-"})` : "-"],
           ["Role", agent?.roleLabel || agent?.roleId || "-"],
           ["Skills", agent?.skillLabels?.join(", ") || "-"]
         ]
       },
       {
-        title: state.lang === "zh" ? "Sessions" : "Sessions",
+        title: "Sessions",
         rows: [
           ["Tracked", String(state.agentSessions?.length ?? 0)],
           ["Current", UI_AGENT_SENDER_ID],
           ["Providers", String(meta?.llm?.providers?.length ?? 0)],
-          ["Node env", meta?.nodeEnv || "-"]
+          ["Node Env", meta?.nodeEnv || "-"]
         ]
       }
     ],
     deployment: [
       {
-        title: state.lang === "zh" ? "Root Runtime" : "Root Runtime",
+        title: "Root Runtime",
         rows: [
-          [state.lang === "zh" ? "工作区" : "Workspace", deployment?.workspaceDir || meta?.workspaceDir || "-"],
-          [state.lang === "zh" ? "安装" : "Install", deployment?.rootRuntime?.installCommand || "npm install"],
-          [state.lang === "zh" ? "启动" : "Start", deployment?.rootRuntime?.startCommand || "npm start"],
-          [state.lang === "zh" ? "开发" : "Dev", deployment?.rootRuntime?.devCommand || "npm run dev"],
-          [state.lang === "zh" ? "构建" : "Build", deployment?.rootRuntime?.buildCommand || "npm run build"]
+          ["Workspace", deployment?.workspaceDir || meta?.workspaceDir || "-"],
+          ["Install", deployment?.rootRuntime?.installCommand || "npm install -g @sinlair/reagent"],
+          ["Start", deployment?.rootRuntime?.startCommand || "reagent service run"],
+          ["Dev", deployment?.rootRuntime?.devCommand || "reagent service run"],
+          ["Build", deployment?.rootRuntime?.buildCommand || "npm run build"]
         ]
       },
       {
-        title: state.lang === "zh" ? "常驻运行" : "Always-On Modes",
+        title: state.lang === "zh" ? "\u8fd0\u884c\u670d\u52a1" : "Runtime Service",
         rows: [
-          ["PM2", pm2Mode ? [pm2Mode.installCommand, pm2Mode.restartCommand, pm2Mode.stopCommand] : "-"],
-          [state.lang === "zh" ? "Windows \u670d\u52a1" : "Windows Service", windowsServiceMode ? [windowsServiceMode.installCommand, windowsServiceMode.startCommand, windowsServiceMode.statusCommand, windowsServiceMode.stopCommand] : "-"],
-          ["OpenClaw Bridge", openclawBridgeMode ? [openclawBridgeMode.installCommand, openclawBridgeMode.statusCommand] : "-"],
-          [state.lang === "zh" ? "说明" : "Notes", deployment?.alwaysOn?.notes?.[0] || "-"]
+          ["Platform", gatewaySupervisor?.platform || "-"],
+          ["Manager", gateway?.managerLabel || gatewaySupervisor?.serviceManager || "-"],
+          ["Install Kind", gatewaySupervisor?.installKind || "-"],
+          ["Installed", String(Boolean(gatewaySupervisor?.installed))],
+          ["Loaded", gatewaySupervisor?.loadedText || String(Boolean(gatewaySupervisor?.loaded))],
+          ["Health", gatewaySupervisor?.healthReachable ? (gatewaySupervisor?.healthStatus || "ok") : "unreachable"],
+          ["Port", String(gatewaySupervisor?.port ?? gateway?.runtimePort ?? gateway?.defaultPort ?? "-")],
+          ["Health URL", gatewaySupervisor?.healthUrl || gateway?.runtime?.healthUrl || "-"],
+          ["Service Config", gatewaySupervisor?.serviceConfigPath || "-"],
+          ["Supervisor PID", gatewaySupervisor?.serviceRuntimePid ?? "-"],
+          ["Listener PID", gatewaySupervisor?.listenerPid ?? "-"],
+          ["Extra Installs", (gatewaySupervisor?.extraInstallations || []).map((item) => `${item.manager}:${item.label}`)],
+          ["Issues", gatewaySupervisor?.issues || "-"],
+          ["Hints", gatewaySupervisor?.hints || deployment?.alwaysOn?.notes || "-"]
         ]
       },
       {
-        title: state.lang === "zh" ? "\u5f53\u524d\u8fd0\u884c\u72b6\u6001" : "Current Runtime Status",
+        title: state.lang === "zh" ? "\u8fd0\u884c\u547d\u4ee4" : "Runtime Commands",
         rows: [
-          [state.lang === "zh" ? "Provider" : "Provider", wechat?.providerMode || meta?.wechatProvider || "-"],
-          [state.lang === "zh" ? "生命周期" : "Lifecycle", wechat?.lifecycleState || "-"],
-          [state.lang === "zh" ? "原因" : "Reason", wechat?.lifecycleReason || "-"],
-          [state.lang === "zh" ? "运行中" : "Running", String(Boolean(wechat?.running))],
-          [state.lang === "zh" ? "已连接" : "Connected", String(Boolean(wechat?.connected))],
-          [state.lang === "zh" ? "需人工处理" : "Human action", String(Boolean(wechat?.requiresHumanAction))],
-          [state.lang === "zh" ? "最近健康时间" : "Last healthy", wechat?.lastHealthyAt ? formatTime(wechat.lastHealthyAt) : "-"],
-          [state.lang === "zh" ? "最近重启时间" : "Last restart", wechat?.lastRestartAt ? formatTime(wechat.lastRestartAt) : "-"]
+          ["Install", gatewayCommands.install || "-"],
+          ["Start", gatewayCommands.start || "-"],
+          ["Restart", gatewayCommands.restart || "-"],
+          ["Status", gatewayCommands.status || "-"],
+          ["Deep Status", gatewayCommands.deepStatus || "-"],
+          ["Stop", gatewayCommands.stop || "-"],
+          ["Uninstall", gatewayCommands.uninstall || "-"],
+          ["Logs", gatewayCommands.logs || "-"],
+          ["Doctor", gatewayCommands.doctor || "-"],
+          ["Deep Doctor", gatewayCommands.deepDoctor || "-"]
         ]
       },
       {
-        title: state.lang === "zh" ? "OpenClaw \u63d2\u4ef6" : "OpenClaw Plugin",
+        title: "Current Runtime",
         rows: [
-          [state.lang === "zh" ? "\u5305\u540d" : "Package", deployment?.openclawPlugin?.packageName || "@sinlair/reagent-openclaw"],
-          [state.lang === "zh" ? "\u5b89\u88c5\u547d\u4ee4" : "Install", deployment?.openclawPlugin?.installCommand || "openclaw plugins install @sinlair/reagent-openclaw --yes"],
-          [state.lang === "zh" ? "\u5f53\u524d\u63d2\u4ef6" : "Plugin state", wechat?.providerMode === "openclaw" ? (wechat?.pluginInstalled ? wechat?.pluginVersion || "installed" : "missing") : (state.lang === "zh" ? "\u672a\u542f\u7528 openclaw provider" : "openclaw provider not active")],
-          [state.lang === "zh" ? "\u793a\u4f8b\u547d\u4ee4" : "Sample commands", deployment?.openclawPlugin?.sampleCommands || "-"]
+          ["Provider", wechat?.providerMode || meta?.wechatProvider || "-"],
+          ["Lifecycle", wechat?.lifecycleState || "-"],
+          ["Reason", wechat?.lifecycleReason || "-"],
+          ["Running", String(Boolean(wechat?.running))],
+          ["Connected", String(Boolean(wechat?.connected))],
+          ["Human Action", String(Boolean(wechat?.requiresHumanAction))],
+          ["Current PID", gateway?.runtime?.currentProcessPid ?? "-"],
+          ["Owns Port", String(Boolean(gateway?.runtime?.currentProcessOwnsPort))],
+          ["Workspace", meta?.workspaceDir || "-"],
+          ["Last Healthy", wechat?.lastHealthyAt ? formatTime(wechat.lastHealthyAt) : "-"],
+          ["Last Restart", wechat?.lastRestartAt ? formatTime(wechat.lastRestartAt) : "-"],
+          ["Stdout Log", gatewaySupervisor?.stdoutLogPath || "-"],
+          ["Stderr Log", gatewaySupervisor?.stderrLogPath || "-"]
+        ]
+      },
+      {
+        title: "OpenClaw Plugin",
+        rows: [
+          ["Package", deployment?.openclawPlugin?.packageName || "@sinlair/reagent-openclaw"],
+          ["Install", deployment?.openclawPlugin?.installCommand || "openclaw plugins install @sinlair/reagent-openclaw --yes"],
+          [
+            "Plugin State",
+            wechat?.providerMode === "openclaw"
+              ? (wechat?.pluginInstalled ? wechat?.pluginVersion || "installed" : "missing")
+              : "openclaw provider not active"
+          ],
+          ["Sample Commands", deployment?.openclawPlugin?.sampleCommands || "-"]
         ]
       }
     ]
@@ -1435,10 +1717,7 @@ function renderSettingsOverview() {
           </div>
           <div class="detail-list">
             ${card.rows
-              .map(
-                ([label, value]) =>
-                  `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatSettingsValue(value))}</strong></div>`,
-              )
+              .map(([label, value]) => renderSettingsRow(label, value))
               .join("")}
           </div>
         </article>
@@ -1446,6 +1725,7 @@ function renderSettingsOverview() {
     )
     .join("")}</div>`;
   bindSettingsTabs();
+  bindCopyCommandButtons();
 }
 
 function buildAgentModelOptions(session) {
@@ -1779,7 +2059,7 @@ function renderOverviewActivity(messages) {
 function renderProductAlerts() {
   if (!els.productAlerts) return;
 
-  const alertsAllowedTabs = new Set(["channels"]);
+  const alertsAllowedTabs = new Set(["channels", "settings"]);
   if (!alertsAllowedTabs.has(state.activeTab)) {
     els.productAlerts.hidden = true;
     els.productAlerts.innerHTML = "";
@@ -1789,25 +2069,34 @@ function renderProductAlerts() {
   const alerts = [];
   const wechat = state.channels?.wechat;
   const researchRoute = state.runtimeMeta?.llm?.routes?.research;
+  const gatewaySupervisor = state.runtimeMeta?.deployment?.gateway?.supervisor;
 
   if (researchRoute?.providerType === "fallback") {
     alerts.push({
       tone: "danger",
-      title: state.lang === "zh" ? "研究结果处于降级模式" : "Research Is In Fallback Mode",
+      title: state.lang === "zh" ? "Research Is In Fallback Mode" : "Research Is In Fallback Mode",
       body:
         state.lang === "zh"
-          ? "当前研究工作流正在使用 fallback LLM。输出可用于占位和流程联调，不应视为正式模型分析。"
+          ? "The research workflow is currently using the fallback LLM. Outputs are useful for scaffolding, not as final model analysis."
           : "The research workflow is using the fallback LLM. Outputs are useful for scaffolding, not as final model analysis."
+    });
+  }
+
+  if (gatewaySupervisor?.issues?.length) {
+    alerts.push({
+      tone: "warn",
+      title: state.lang === "zh" ? "\u8fd0\u884c\u670d\u52a1\u9700\u8981\u5173\u6ce8" : "Runtime Service Needs Attention",
+      body: gatewaySupervisor.issues[0]
     });
   }
 
   if (wechat?.providerMode === "openclaw" && wechat?.pluginInstalled === false) {
     alerts.push({
       tone: "warn",
-      title: state.lang === "zh" ? "OpenClaw \u63d2\u4ef6\u672a\u5b89\u88c5" : "OpenClaw Plugin Missing",
+      title: state.lang === "zh" ? "OpenClaw Plugin Missing" : "OpenClaw Plugin Missing",
       body:
         state.lang === "zh"
-          ? "\u5f53\u524d bridge \u5904\u4e8e openclaw \u6a21\u5f0f\uff0c\u4f46\u63d2\u4ef6\u672a\u5c31\u7eea\u3002\u5230 Settings > Deployment \u67e5\u770b\u5b89\u88c5\u547d\u4ee4\u3002"
+          ? "The bridge is in openclaw mode, but the plugin is not ready. Open Settings > Deployment for the install command."
           : "The bridge is in openclaw mode, but the plugin is not ready. Open Settings > Deployment for the install command."
     });
   }
@@ -1864,21 +2153,6 @@ function researchTaskTone(task) {
   return "warn";
 }
 
-function formatResearchTaskStateLegacy(task) {
-  const labels = {
-    queued: state.lang === "zh" ? "已排队" : "Queued",
-    planning: state.lang === "zh" ? "规划中" : "Planning",
-    "searching-paper": state.lang === "zh" ? "检索论文" : "Searching Papers",
-    "downloading-paper": state.lang === "zh" ? "下载论文" : "Downloading Papers",
-    "analyzing-paper": state.lang === "zh" ? "分析证据" : "Analyzing Evidence",
-    "generating-summary": state.lang === "zh" ? "生成总结" : "Generating Summary",
-    persisting: state.lang === "zh" ? "持久化" : "Persisting",
-    completed: state.lang === "zh" ? "已完成" : "Completed",
-    failed: state.lang === "zh" ? "失败" : "Failed"
-  };
-  return labels[task.state] || task.state;
-}
-
 function formatResearchTaskState(task) {
   const labels = {
     queued: state.lang === "zh" ? "已排队" : "Queued",
@@ -1902,10 +2176,146 @@ function formatResearchTaskState(task) {
   return labels[task.state] || task.state;
 }
 
+function formatResearchReviewStatus(status) {
+  const labels = {
+    pending: state.lang === "zh" ? "待审核" : "Pending",
+    passed: state.lang === "zh" ? "已通过" : "Passed",
+    "needs-review": state.lang === "zh" ? "需要复核" : "Needs Review"
+  };
+  return labels[status] || status || "-";
+}
+
+function researchReviewTone(status) {
+  if (status === "passed") return "ok";
+  if (status === "needs-review") return "warn";
+  return "info";
+}
+
+function buildResearchDossierFiles(task, handoff) {
+  return [
+    {
+      label: state.lang === "zh" ? "Brief" : "Brief",
+      path: handoff?.briefPath
+    },
+    {
+      label: state.lang === "zh" ? "Progress Log" : "Progress Log",
+      path: handoff?.progressLogPath
+    },
+    {
+      label: state.lang === "zh" ? "Handoff" : "Handoff",
+      path: task?.handoffPath || handoff?.handoffPath
+    },
+    {
+      label: state.lang === "zh" ? "Artifacts" : "Artifacts",
+      path: handoff?.artifactsPath
+    },
+    {
+      label: state.lang === "zh" ? "Review" : "Review",
+      path: handoff?.reviewPath
+    },
+    {
+      label: state.lang === "zh" ? "Report" : "Report",
+      path: handoff?.reportPath
+    }
+  ].filter((item) => item.path);
+}
+
+function renderResearchDossierLinks(dossierFiles) {
+  return dossierFiles.length
+    ? dossierFiles
+        .map(
+          (item) => `
+            <a class="route-chip" href="/api/research/artifact?path=${encodeURIComponent(item.path)}" target="_blank" rel="noopener noreferrer">
+              <span class="route-chip__copy">
+                <strong>${escapeHtml(item.label)}</strong>
+                <span>${escapeHtml(item.path)}</span>
+              </span>
+            </a>
+          `
+        )
+        .join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无 dossier 文件。" : "No dossier files yet.")}</div>`;
+}
+
+function renderResearchArtifactLinks(artifacts) {
+  return artifacts.length
+    ? artifacts
+        .map(
+          (artifact) => `
+            <a class="route-chip" href="/api/research/artifact?path=${encodeURIComponent(artifact.path)}" target="_blank" rel="noopener noreferrer">
+              <span class="route-chip__copy">
+                <strong>${escapeHtml(artifact.title || artifact.kind || "-")}</strong>
+                <span>${escapeHtml(`${artifact.kind || "artifact"} | ${artifact.path}`)}</span>
+              </span>
+              <span class="route-chip__copy">
+                <span>${escapeHtml(formatTime(artifact.createdAt))}</span>
+              </span>
+            </a>
+          `
+        )
+        .join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(
+        state.lang === "zh" ? "\u6682\u65e0\u6301\u4e45\u5316\u4ea7\u7269\u3002" : "No persisted artifacts yet."
+      )}</div>`;
+}
+
+function canRetryResearchTask(task, reviewStatus) {
+  if (!task) return false;
+  const normalizedReviewStatus = reviewStatus || task.reviewStatus || task.handoff?.reviewStatus || "pending";
+  return task.state === "failed" || (task.reportReady && task.state === "completed" && normalizedReviewStatus === "needs-review");
+}
+
+async function retryResearchTask(taskId) {
+  const nextTask = await requestJson(`/api/research/tasks/${encodeURIComponent(taskId)}/retry`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  state.selectedResearchTaskId = nextTask.taskId;
+  await loadResearchTasks();
+  return nextTask;
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("[data-task-retry]");
+  if (!button) {
+    return;
+  }
+
+  const taskId = button.dataset.taskRetry;
+  if (!taskId) {
+    return;
+  }
+
+  retryResearchTask(taskId).catch(showError);
+});
+
 function renderResearchTaskDetail(task) {
   if (!task) {
     return;
   }
+
+  const handoff = task.handoff || null;
+  const reviewStatus = handoff?.reviewStatus || task.reviewStatus || "pending";
+  const blockers = Array.isArray(handoff?.blockers) ? handoff.blockers : [];
+  const artifacts = Array.isArray(handoff?.artifacts) ? handoff.artifacts : [];
+  const normalizedDossierFiles = buildResearchDossierFiles(task, handoff);
+  const normalizedDossierLinks = renderResearchDossierLinks(normalizedDossierFiles);
+  const normalizedArtifactLinks = renderResearchArtifactLinks(artifacts);
+  const retryAction = canRetryResearchTask(task, reviewStatus)
+    ? `
+      <div class="button-row">
+        <button class="btn btn--ghost" type="button" data-task-retry="${escapeHtml(task.taskId)}">
+          ${escapeHtml(t("common.retry", "Retry"))}
+        </button>
+      </div>
+    `
+    : "";
+
+  const blockersHtml = blockers.length
+    ? blockers
+        .map((item) => `<article class="result-item"><p>${escapeHtml(item)}</p></article>`)
+        .join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "当前没有阻塞项。" : "No blockers recorded.")}</div>`;
 
   const transitions = (task.transitions || [])
     .slice()
@@ -1936,6 +2346,7 @@ function renderResearchTaskDetail(task) {
         <div class="report-chip-list">
           ${renderPill(formatResearchTaskState(task), researchTaskTone(task))}
           ${renderPill(`${task.progress}%`)}
+          ${renderPill(formatResearchReviewStatus(reviewStatus), researchReviewTone(reviewStatus))}
           ${renderPill(formatTime(task.updatedAt))}
         </div>
       </div>
@@ -1956,7 +2367,48 @@ function renderResearchTaskDetail(task) {
           <span>${escapeHtml(state.lang === "zh" ? "尝试次数" : "Attempt")}</span>
           <strong>${escapeHtml(String(task.attempt ?? 1))}</strong>
         </article>
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "审核状态" : "Review")}</span>
+          <strong>${escapeHtml(formatResearchReviewStatus(reviewStatus))}</strong>
+        </article>
       </div>
+      ${retryAction}
+    </article>
+
+    <article class="report-block">
+      <div class="report-item-head">
+        <h3>${escapeHtml(state.lang === "zh" ? "Next Step" : "Next Step")}</h3>
+        ${renderPill(formatResearchReviewStatus(reviewStatus), researchReviewTone(reviewStatus))}
+      </div>
+      <p>${escapeHtml(handoff?.nextRecommendedAction || (state.lang === "zh" ? "等待下一次状态推进。" : "Wait for the next task transition."))}</p>
+      <div class="detail-list">
+        <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Round Path" : "Round Path")}</span><strong>${escapeHtml(task.roundPath || handoff?.roundPath || "-")}</strong></div>
+        <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Handoff Updated" : "Handoff Updated")}</span><strong>${escapeHtml(handoff?.updatedAt ? formatTime(handoff.updatedAt) : "-")}</strong></div>
+      </div>
+    </article>
+
+    <article class="report-block">
+      <div class="report-item-head">
+        <h3>${escapeHtml(state.lang === "zh" ? "Blockers" : "Blockers")}</h3>
+        ${renderPill(String(blockers.length), blockers.length > 0 ? "warn" : "ok")}
+      </div>
+      <div class="result-stack">${blockersHtml}</div>
+    </article>
+
+    <article class="report-block">
+      <div class="report-item-head">
+        <h3>${escapeHtml(state.lang === "zh" ? "Dossier Files" : "Dossier Files")}</h3>
+        ${renderPill(String(normalizedDossierFiles.length))}
+      </div>
+      <div class="result-stack">${normalizedDossierLinks}</div>
+    </article>
+
+    <article class="report-block">
+      <div class="report-item-head">
+        <h3>${escapeHtml(state.lang === "zh" ? "Artifacts" : "Artifacts")}</h3>
+        ${renderPill(String(artifacts.length))}
+      </div>
+      <div class="result-stack">${normalizedArtifactLinks}</div>
     </article>
 
     <article class="report-block">
@@ -1981,6 +2433,8 @@ function renderResearchTasks(tasks) {
   els.researchTaskList.innerHTML = tasks
     .map((task) => {
       const completed = task.reportReady && task.state === "completed";
+      const showReviewStatus = Boolean(task.reviewStatus) && (task.reviewStatus !== "pending" || completed);
+      const showRetryAction = canRetryResearchTask(task, task.reviewStatus);
       return `
         <article class="session-item ${state.selectedResearchTaskId === task.taskId ? "session-item--current" : ""}">
           <div class="message__meta">
@@ -1990,6 +2444,7 @@ function renderResearchTasks(tasks) {
           <p>${escapeHtml(task.message || formatResearchTaskState(task))}</p>
           <div class="message__meta">
             <span>${renderPill(formatResearchTaskState(task), researchTaskTone(task))}</span>
+            ${showReviewStatus ? `<span>${renderPill(formatResearchReviewStatus(task.reviewStatus), researchReviewTone(task.reviewStatus))}</span>` : ""}
             <span>${escapeHtml(`${task.progress}%`)}</span>
             <span>${escapeHtml(`attempt ${task.attempt ?? 1}`)}</span>
           </div>
@@ -1997,7 +2452,7 @@ function renderResearchTasks(tasks) {
             <button class="btn btn--ghost" type="button" data-task-open="${escapeHtml(task.taskId)}">
               ${escapeHtml(completed ? t("common.load", "Load") : (state.lang === "zh" ? "查看" : "Inspect"))}
             </button>
-            ${task.state === "failed"
+            ${showRetryAction
               ? `<button class="btn btn--ghost" type="button" data-task-retry="${escapeHtml(task.taskId)}">${escapeHtml(t("common.retry", "Retry"))}</button>`
               : ""}
           </div>
@@ -2010,22 +2465,15 @@ function renderResearchTasks(tasks) {
     button.addEventListener("click", async () => {
       const taskId = button.dataset.taskOpen;
       if (!taskId) return;
+      const task = state.researchTasks.find((item) => item.taskId === taskId);
+      if (task?.reportReady && task.state === "completed") {
+        await hydrateReport(taskId);
+        return;
+      }
       await hydrateResearchTask(taskId);
     });
   });
 
-  els.researchTaskList.querySelectorAll("[data-task-retry]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const taskId = button.dataset.taskRetry;
-      if (!taskId) return;
-      const nextTask = await requestJson(`/api/research/tasks/${encodeURIComponent(taskId)}/retry`, {
-        method: "POST",
-        body: JSON.stringify({})
-      });
-      state.selectedResearchTaskId = nextTask.taskId;
-      await loadResearchTasks();
-    });
-  });
 }
 
 function renderStatusRows(status) {
@@ -2058,7 +2506,7 @@ function renderChannelNotes(status) {
     notes.unshift(`Lifecycle: ${status.lifecycleState}${status.lifecycleReason ? ` (${status.lifecycleReason})` : ""}`);
   }
   if (status.requiresHumanAction) {
-    notes.unshift(state.lang === "zh" ? "需要人工处理当前微信连接状态。" : "Manual action is required for the current WeChat state.");
+    notes.unshift(state.lang === "zh" ? "当前微信连接状态需要人工处理。" : "Manual action is required for the current WeChat state.");
   }
   if (status.reconnectPausedUntil) {
     notes.unshift(`${state.lang === "zh" ? "\u81ea\u52a8\u6062\u590d\u6682\u505c\u5230" : "Reconnect paused until"}: ${formatTime(status.reconnectPausedUntil)}`);
@@ -2070,8 +2518,8 @@ function renderChannelNotes(status) {
   if (status.providerMode !== "mock") {
     notes.push(
       state.lang === "zh"
-        ? "\u5982\u9700\u50cf OpenClaw \u4e00\u6837\u5e38\u9a7b\u8fd0\u884c\uff0c\u53ef\u7528 PM2 \u6216 Windows service \u811a\u672c\uff0c\u800c\u4e0d\u662f\u4e00\u76f4\u6302\u7740\u524d\u53f0\u7ec8\u7aef\u3002"
-        : "For always-on runtime, use PM2 or the bundled Windows service scripts instead of keeping a foreground terminal open."
+        ? "\u5982\u9700\u50cf OpenClaw \u4e00\u6837\u5e38\u9a7b\u8fd0\u884c\uff0c\u8bf7\u4f18\u5148\u4f7f\u7528 reagent service install / start / status\uff0c\u800c\u4e0d\u662f\u4e00\u76f4\u6302\u7740\u524d\u53f0\u7ec8\u7aef\u3002"
+        : "For always-on runtime, prefer reagent service install / start / status instead of leaving a foreground terminal open."
     );
   }
   if (status.providerMode === "openclaw") {
@@ -2314,23 +2762,23 @@ function verdictTone(verdict) {
 
 function supportKindLabel(kind) {
   const labels = {
-    paper: state.lang === "zh" ? "论文证据" : "Paper",
-    code: state.lang === "zh" ? "代码证据" : "Code",
-    inference: state.lang === "zh" ? "推断" : "Inference",
-    speculation: state.lang === "zh" ? "猜测" : "Speculation"
+    paper: state.lang === "zh" ? "璁烘枃璇佹嵁" : "Paper",
+    code: state.lang === "zh" ? "浠ｇ爜璇佹嵁" : "Code",
+    inference: state.lang === "zh" ? "鎺ㄦ柇" : "Inference",
+    speculation: state.lang === "zh" ? "鐚滄祴" : "Speculation"
   };
   return labels[kind] || kind;
 }
 
 function conclusionKindLabel(kind) {
   const labels = {
-    problem_statement: state.lang === "zh" ? "问题定义" : "Problem",
-    core_method: state.lang === "zh" ? "核心方法" : "Method",
+    problem_statement: state.lang === "zh" ? "闂瀹氫箟" : "Problem",
+    core_method: state.lang === "zh" ? "鏍稿績鏂规硶" : "Method",
     innovation: state.lang === "zh" ? "创新点" : "Innovation",
-    strength: state.lang === "zh" ? "优势" : "Strength",
-    weakness: state.lang === "zh" ? "风险/弱点" : "Weakness",
-    baseline: state.lang === "zh" ? "基线" : "Baseline",
-    recommendation: state.lang === "zh" ? "建议" : "Recommendation",
+    strength: state.lang === "zh" ? "浼樺娍" : "Strength",
+    weakness: state.lang === "zh" ? "椋庨櫓/寮辩偣" : "Weakness",
+    baseline: state.lang === "zh" ? "鍩虹嚎" : "Baseline",
+    recommendation: state.lang === "zh" ? "寤鸿" : "Recommendation",
     repo_availability: state.lang === "zh" ? "代码可用性" : "Code Availability"
   };
   return labels[kind] || kind;
@@ -2500,44 +2948,44 @@ function renderResearchBrief(brief) {
 
         <article class="report-block">
           <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Current Goals" : "Current Goals")}</h3>${renderPill(String(brief.currentGoals?.length || 0), "ok")}</div>
-          <div class="result-stack">${renderStringList(brief.currentGoals, state.lang === "zh" ? "暂无 current goals。" : "No current goals recorded.")}</div>
+          <div class="result-stack">${renderStringList(brief.currentGoals, state.lang === "zh" ? "暂无当前目标。" : "No current goals recorded.")}</div>
         </article>
 
         <article class="report-block">
           <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Open Questions" : "Open Questions")}</h3>${renderPill(String(brief.openQuestions?.length || 0), "warn")}</div>
-          <div class="result-stack">${renderStringList(brief.openQuestions, state.lang === "zh" ? "暂无 open questions。" : "No open questions recorded.")}</div>
+          <div class="result-stack">${renderStringList(brief.openQuestions, state.lang === "zh" ? "暂无开放问题。" : "No open questions recorded.")}</div>
         </article>
 
         <article class="report-block">
           <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Short-Term Validation Targets" : "Short-Term Validation Targets")}</h3>${renderPill(String(brief.shortTermValidationTargets?.length || 0))}</div>
-          <div class="result-stack">${renderStringList(brief.shortTermValidationTargets, state.lang === "zh" ? "暂无 validation targets。" : "No validation targets recorded.")}</div>
+          <div class="result-stack">${renderStringList(brief.shortTermValidationTargets, state.lang === "zh" ? "暂无验证目标。" : "No validation targets recorded.")}</div>
         </article>
       </div>
 
       <aside class="stack research-report-side">
         <article class="report-block">
           <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Known Baselines" : "Known Baselines")}</h3>${renderPill(String(brief.knownBaselines?.length || 0))}</div>
-          <div class="result-stack">${renderStringList(brief.knownBaselines, state.lang === "zh" ? "暂无 baselines。" : "No baselines recorded.")}</div>
+          <div class="result-stack">${renderStringList(brief.knownBaselines, state.lang === "zh" ? "暂无基线记录。" : "No baselines recorded.")}</div>
         </article>
 
         <article class="report-block">
           <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Evaluation Priorities" : "Evaluation Priorities")}</h3>${renderPill(String(brief.evaluationPriorities?.length || 0))}</div>
-          <div class="result-stack">${renderStringList(brief.evaluationPriorities, state.lang === "zh" ? "暂无 evaluation priorities。" : "No evaluation priorities recorded.")}</div>
+          <div class="result-stack">${renderStringList(brief.evaluationPriorities, state.lang === "zh" ? "暂无评估优先级。" : "No evaluation priorities recorded.")}</div>
         </article>
 
         <article class="report-block">
           <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Success Criteria" : "Success Criteria")}</h3>${renderPill(String(brief.successCriteria?.length || 0), "ok")}</div>
-          <div class="result-stack">${renderStringList(brief.successCriteria, state.lang === "zh" ? "暂无 success criteria。" : "No success criteria recorded.")}</div>
+          <div class="result-stack">${renderStringList(brief.successCriteria, state.lang === "zh" ? "暂无成功标准。" : "No success criteria recorded.")}</div>
         </article>
 
         <article class="report-block">
           <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Blocked Directions" : "Blocked Directions")}</h3>${renderPill(String(brief.blockedDirections?.length || 0), "warn")}</div>
-          <div class="result-stack">${renderStringList(brief.blockedDirections, state.lang === "zh" ? "暂无 blocked directions。" : "No blocked directions recorded.")}</div>
+          <div class="result-stack">${renderStringList(brief.blockedDirections, state.lang === "zh" ? "暂无屏蔽方向。" : "No blocked directions recorded.")}</div>
         </article>
 
         <article class="report-block">
           <div class="report-item-head"><h3>${escapeHtml(state.lang === "zh" ? "Query Hints" : "Query Hints")}</h3>${renderPill(String(brief.queryHints?.length || 0))}</div>
-          <div class="result-stack">${renderStringList(brief.queryHints, state.lang === "zh" ? "暂无 query hints。" : "No query hints recorded.")}</div>
+          <div class="result-stack">${renderStringList(brief.queryHints, state.lang === "zh" ? "暂无查询提示。" : "No query hints recorded.")}</div>
         </article>
 
         <article class="report-block">
@@ -2545,195 +2993,24 @@ function renderResearchBrief(brief) {
           <div class="report-stack-tight">
             <div>
               <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Venues" : "Venues")}</div>
-              <div class="result-stack">${renderStringList(brief.preferredVenues, state.lang === "zh" ? "暂无 venues。" : "No preferred venues recorded.")}</div>
+              <div class="result-stack">${renderStringList(brief.preferredVenues, state.lang === "zh" ? "暂无期刊偏好。" : "No preferred venues recorded.")}</div>
             </div>
             <div>
               <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Datasets" : "Datasets")}</div>
-              <div class="result-stack">${renderStringList(brief.preferredDatasets, state.lang === "zh" ? "暂无 datasets。" : "No preferred datasets recorded.")}</div>
+              <div class="result-stack">${renderStringList(brief.preferredDatasets, state.lang === "zh" ? "暂无数据集偏好。" : "No preferred datasets recorded.")}</div>
             </div>
             <div>
               <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Benchmarks" : "Benchmarks")}</div>
-              <div class="result-stack">${renderStringList(brief.preferredBenchmarks, state.lang === "zh" ? "暂无 benchmarks。" : "No preferred benchmarks recorded.")}</div>
+              <div class="result-stack">${renderStringList(brief.preferredBenchmarks, state.lang === "zh" ? "暂无基准偏好。" : "No preferred benchmarks recorded.")}</div>
             </div>
             <div>
               <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Paper Styles" : "Paper Styles")}</div>
-              <div class="result-stack">${renderStringList(brief.preferredPaperStyles, state.lang === "zh" ? "暂无 paper styles。" : "No preferred paper styles recorded.")}</div>
+              <div class="result-stack">${renderStringList(brief.preferredPaperStyles, state.lang === "zh" ? "暂无论文风格偏好。" : "No preferred paper styles recorded.")}</div>
             </div>
           </div>
         </article>
       </aside>
     </div>
-  `;
-}
-
-function renderResearchReportLegacy(report) {
-  if (!report) {
-    els.researchReport.className = "empty-state";
-    els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
-    return;
-  }
-
-  const findings = report.findings?.length
-    ? report.findings
-        .map((finding) => `<article class="result-item"><p>${escapeHtml(finding)}</p></article>`)
-        .join("")
-    : `<div class="empty-state compact-empty">${escapeHtml(t("empty.findings", "No findings."))}</div>`;
-
-  const nextActions = report.nextActions?.length
-    ? report.nextActions
-        .map((action) => `<article class="result-item"><p>${escapeHtml(action)}</p></article>`)
-        .join("")
-    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无下一步建议。" : "No next actions yet.")}</div>`;
-
-  const evidence = report.evidence?.length
-    ? report.evidence
-        .map(
-          (item) => `
-            <article class="report-block report-block--dense">
-              <div class="report-item-head">
-                <h3>${escapeHtml(item.claim)}</h3>
-                ${renderPill(item.confidence || item.sourceType, item.confidence === "high" ? "ok" : item.confidence === "medium" ? "warn" : "")}
-              </div>
-              <p>${escapeHtml(item.quote || item.support)}</p>
-              <div class="report-chip-list">
-                ${renderPill(item.sourceType)}
-                ${renderPill(item.paperId)}
-                ${renderPill(item.chunkId || "-")}
-                ${item.pageNumber ? renderPill(`${state.lang === "zh" ? "第" : "p."}${item.pageNumber}${state.lang === "zh" ? "页" : ""}`) : ""}
-              </div>
-            </article>
-          `
-        )
-        .join("")
-    : `<div class="empty-state compact-empty">${escapeHtml(t("empty.evidence", "No evidence."))}</div>`;
-
-  const queries = report.plan?.searchQueries?.length
-    ? report.plan.searchQueries.map((query) => renderPill(query)).join("")
-    : `<span class="card-sub">${escapeHtml(state.lang === "zh" ? "无查询记录" : "No search queries recorded")}</span>`;
-
-  const subquestions = report.plan?.subquestions?.length
-    ? report.plan.subquestions.map((question) => `<article class="result-item"><p>${escapeHtml(question)}</p></article>`).join("")
-    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "无拆分问题。" : "No subquestions.")}</div>`;
-
-  const warnings = report.warnings?.length
-    ? `
-      <article class="report-block">
-        <div class="report-item-head">
-          <h3>${escapeHtml(state.lang === "zh" ? "Warnings" : "Warnings")}</h3>
-          ${renderPill(String(report.warnings.length), "warn")}
-        </div>
-        <div class="result-stack">
-          ${report.warnings.map((warning) => `<article class="result-item"><p>${escapeHtml(warning)}</p></article>`).join("")}
-        </div>
-      </article>
-    `
-    : "";
-
-  els.researchReport.className = "research-report";
-  els.researchReport.innerHTML = `
-    <article class="report-hero">
-      <div class="report-hero__head">
-        <div>
-          <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Workflow Report" : "Workflow Report")}</div>
-          <h3>${escapeHtml(report.topic)}</h3>
-          <p>${escapeHtml(report.summary)}</p>
-        </div>
-        <div class="report-chip-list">
-          ${renderPill(formatTime(report.generatedAt))}
-          ${renderPill(report.critique.verdict, verdictTone(report.critique.verdict))}
-          ${renderPill(`${report.papers.length} ${state.lang === "zh" ? "papers" : "papers"}`)}
-          ${renderPill(`${report.evidence.length} ${state.lang === "zh" ? "evidence" : "evidence"}`)}
-        </div>
-      </div>
-      <div class="research-stat-grid">
-        <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "Task ID" : "Task ID")}</span>
-          <strong>${escapeHtml(report.taskId)}</strong>
-        </article>
-        <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "Objective" : "Objective")}</span>
-          <strong>${escapeHtml(report.plan?.objective || report.topic)}</strong>
-        </article>
-        <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "Supported Evidence" : "Supported Evidence")}</span>
-          <strong>${escapeHtml(String(report.critique.supportedEvidenceCount ?? 0))}</strong>
-        </article>
-        <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "Coverage" : "Coverage")}</span>
-          <strong>${escapeHtml(String(report.critique.citationCoverage ?? 0))}</strong>
-        </article>
-      </div>
-    </article>
-
-    <div class="research-report-grid">
-      <article class="report-block">
-        <div class="report-item-head">
-          <h3>${escapeHtml(state.lang === "zh" ? "Research Plan" : "Research Plan")}</h3>
-          ${renderPill(String(report.plan?.searchQueries?.length || 0))}
-        </div>
-        <div class="report-stack-tight">
-          <div>
-            <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Search queries" : "Search queries")}</div>
-            <div class="report-chip-list">${queries}</div>
-          </div>
-          <div>
-            <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Subquestions" : "Subquestions")}</div>
-            <div class="result-stack">${subquestions}</div>
-          </div>
-        </div>
-      </article>
-
-      <article class="report-block">
-        <div class="report-item-head">
-          <h3>${escapeHtml(state.lang === "zh" ? "Critique" : "Critique")}</h3>
-          ${renderPill(report.critique.verdict, verdictTone(report.critique.verdict))}
-        </div>
-        <p>${escapeHtml(report.critique.summary)}</p>
-        <div class="research-stat-grid research-stat-grid--compact">
-          <article class="research-stat">
-            <span>${escapeHtml(state.lang === "zh" ? "Supported" : "Supported")}</span>
-            <strong>${escapeHtml(String(report.critique.supportedEvidenceCount ?? 0))}</strong>
-          </article>
-          <article class="research-stat">
-            <span>${escapeHtml(state.lang === "zh" ? "Unsupported" : "Unsupported")}</span>
-            <strong>${escapeHtml(String(report.critique.unsupportedEvidenceCount ?? 0))}</strong>
-          </article>
-          <article class="research-stat">
-            <span>${escapeHtml(state.lang === "zh" ? "Coverage" : "Coverage")}</span>
-            <strong>${escapeHtml(String(report.critique.citationCoverage ?? 0))}</strong>
-          </article>
-          <article class="research-stat">
-            <span>${escapeHtml(state.lang === "zh" ? "Diversity" : "Diversity")}</span>
-            <strong>${escapeHtml(String(report.critique.citationDiversity ?? 0))}</strong>
-          </article>
-        </div>
-      </article>
-    </div>
-
-    <article class="report-block">
-      <div class="report-item-head">
-        <h3>${escapeHtml(state.lang === "zh" ? "Findings" : "Findings")}</h3>
-        ${renderPill(String(report.findings?.length || 0))}
-      </div>
-      <div class="result-stack">${findings}</div>
-    </article>
-
-    <article class="report-block">
-      <div class="report-item-head">
-        <h3>${escapeHtml(state.lang === "zh" ? "Next Actions" : "Next Actions")}</h3>
-        ${renderPill(String(report.nextActions?.length || 0), "ok")}
-      </div>
-      <div class="result-stack">${nextActions}</div>
-    </article>
-
-    <article class="report-block">
-      <div class="report-item-head">
-        <h3>${escapeHtml(state.lang === "zh" ? "Evidence" : "Evidence")}</h3>
-        ${renderPill(String(report.evidence?.length || 0))}
-      </div>
-      <div class="result-stack">${evidence}</div>
-    </article>
-    ${warnings}
   `;
 }
 
@@ -2745,6 +3022,21 @@ function renderResearchReport(report) {
   }
 
   const papers = Array.isArray(report.papers) ? report.papers : [];
+  const taskMeta = report.taskMeta || null;
+  const handoff = taskMeta?.handoff || null;
+  const reviewStatus = handoff?.reviewStatus || taskMeta?.reviewStatus || "pending";
+  const dossierFiles = buildResearchDossierFiles(taskMeta, handoff);
+  const dossierLinks = renderResearchDossierLinks(dossierFiles);
+  const artifactLinks = renderResearchArtifactLinks(Array.isArray(handoff?.artifacts) ? handoff.artifacts : []);
+  const retryAction = taskMeta && canRetryResearchTask(taskMeta, reviewStatus)
+    ? `
+      <div class="button-row">
+        <button class="btn btn--ghost" type="button" data-task-retry="${escapeHtml(report.taskId)}">
+          ${escapeHtml(t("common.retry", "Retry"))}
+        </button>
+      </div>
+    `
+    : "";
   const critique = report.critique || {
     verdict: "-",
     summary: "",
@@ -2792,7 +3084,7 @@ function renderResearchReport(report) {
                 ${renderPill(item.sourceType)}
                 ${renderPill(item.paperId)}
                 ${renderPill(item.chunkId || "-")}
-                ${item.pageNumber ? renderPill(`${state.lang === "zh" ? "第" : "p."}${item.pageNumber}${state.lang === "zh" ? "页" : ""}`) : ""}
+                ${item.pageNumber ? renderPill(state.lang === "zh" ? `第${item.pageNumber}页` : `p.${item.pageNumber}`) : ""}
               </div>
             </article>
           `
@@ -2806,7 +3098,7 @@ function renderResearchReport(report) {
 
   const subquestions = report.plan?.subquestions?.length
     ? report.plan.subquestions.map((question) => `<article class="result-item"><p>${escapeHtml(question)}</p></article>`).join("")
-    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "无拆分问题。" : "No subquestions.")}</div>`;
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无拆分问题。" : "No subquestions.")}</div>`;
 
   const paperLibrary = papers.length
     ? papers
@@ -2860,6 +3152,7 @@ function renderResearchReport(report) {
         <div class="report-chip-list">
           ${renderPill(formatTime(report.generatedAt))}
           ${renderPill(critique.verdict, verdictTone(critique.verdict))}
+          ${taskMeta ? renderPill(formatResearchReviewStatus(reviewStatus), researchReviewTone(reviewStatus)) : ""}
           ${renderPill(`${papers.length} ${state.lang === "zh" ? "papers" : "papers"}`)}
           ${renderPill(`${report.evidence.length} ${state.lang === "zh" ? "evidence" : "evidence"}`)}
         </div>
@@ -2881,6 +3174,12 @@ function renderResearchReport(report) {
           <span>${escapeHtml(state.lang === "zh" ? "Coverage" : "Coverage")}</span>
           <strong>${escapeHtml(String(critique.citationCoverage ?? 0))}</strong>
         </article>
+        ${taskMeta ? `
+        <article class="research-stat">
+          <span>${escapeHtml(state.lang === "zh" ? "Review" : "Review")}</span>
+          <strong>${escapeHtml(formatResearchReviewStatus(reviewStatus))}</strong>
+        </article>
+        ` : ""}
       </div>
     </article>
 
@@ -2912,6 +3211,30 @@ function renderResearchReport(report) {
       </div>
 
       <aside class="stack research-report-side">
+        ${taskMeta ? `
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Round Dossier" : "Round Dossier")}</h3>
+            ${renderPill(formatResearchReviewStatus(reviewStatus), researchReviewTone(reviewStatus))}
+          </div>
+          <p>${escapeHtml(handoff?.nextRecommendedAction || (state.lang === "zh" ? "可从 dossier 文件继续复盘或复用这个 round。" : "Use the dossier files to review or continue this round."))}</p>
+          <div class="detail-list">
+            <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Round Path" : "Round Path")}</span><strong>${escapeHtml(taskMeta.roundPath || handoff?.roundPath || "-")}</strong></div>
+            <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Handoff Updated" : "Handoff Updated")}</span><strong>${escapeHtml(handoff?.updatedAt ? formatTime(handoff.updatedAt) : "-")}</strong></div>
+          </div>
+          ${retryAction}
+          <div class="result-stack">${dossierLinks}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Round Artifacts" : "Round Artifacts")}</h3>
+            ${renderPill(String(Array.isArray(handoff?.artifacts) ? handoff.artifacts.length : 0))}
+          </div>
+          <div class="result-stack">${artifactLinks}</div>
+        </article>
+        ` : ""}
+
         <article class="report-block">
           <div class="report-item-head">
             <h3>${escapeHtml(state.lang === "zh" ? "Research Plan" : "Research Plan")}</h3>
@@ -3001,7 +3324,7 @@ function renderDirectionReport(report) {
               <div class="report-item-head">
                 <h3>${escapeHtml(paper.title)}</h3>
                 <div class="report-chip-list">
-                  ${paper.sourceUrl ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(paper.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开来源" : "Open source")}</a>` : ""}
+                  ${paper.sourceUrl ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(paper.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑鏉ユ簮" : "Open source")}</a>` : ""}
                 </div>
               </div>
               <p>${escapeHtml(paper.reason)}</p>
@@ -3009,7 +3332,7 @@ function renderDirectionReport(report) {
           `
         )
         .join("")
-    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无代表论文。" : "No representative papers.")}</div>`;
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No representative papers." : "No representative papers.")}</div>`;
 
   const renderStringList = (items, emptyText) =>
     items?.length
@@ -3041,11 +3364,11 @@ function renderDirectionReport(report) {
           <strong>${escapeHtml(report.directionId || report.topic)}</strong>
         </article>
         <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "代表论文" : "Representative papers")}</span>
+          <span>${escapeHtml(state.lang === "zh" ? "浠ｈ〃璁烘枃" : "Representative papers")}</span>
           <strong>${escapeHtml(String(report.representativePapers?.length || 0))}</strong>
         </article>
         <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "建议路线" : "Suggested routes")}</span>
+          <span>${escapeHtml(state.lang === "zh" ? "寤鸿璺嚎" : "Suggested routes")}</span>
           <strong>${escapeHtml(String(report.suggestedRoutes?.length || 0))}</strong>
         </article>
       </div>
@@ -3066,7 +3389,7 @@ function renderDirectionReport(report) {
             <h3>${escapeHtml(state.lang === "zh" ? "Suggested Routes" : "Suggested Routes")}</h3>
             ${renderPill(String(report.suggestedRoutes?.length || 0), "ok")}
           </div>
-          <div class="result-stack">${renderStringList(report.suggestedRoutes, state.lang === "zh" ? "暂无建议路线。" : "No suggested routes.")}</div>
+          <div class="result-stack">${renderStringList(report.suggestedRoutes, state.lang === "zh" ? "No suggested routes." : "No suggested routes.")}</div>
         </article>
 
         <article class="report-block">
@@ -3074,7 +3397,7 @@ function renderDirectionReport(report) {
             <h3>${escapeHtml(state.lang === "zh" ? "Supporting Signals" : "Supporting Signals")}</h3>
             ${renderPill(String(report.supportingSignals?.length || 0))}
           </div>
-          <div class="result-stack">${renderStringList(report.supportingSignals, state.lang === "zh" ? "暂无 supporting signals。" : "No supporting signals.")}</div>
+          <div class="result-stack">${renderStringList(report.supportingSignals, state.lang === "zh" ? "No supporting signals." : "No supporting signals.")}</div>
         </article>
       </div>
 
@@ -3084,7 +3407,7 @@ function renderDirectionReport(report) {
             <h3>${escapeHtml(state.lang === "zh" ? "Common Baselines" : "Common Baselines")}</h3>
             ${renderPill(String(report.commonBaselines?.length || 0))}
           </div>
-          <div class="result-stack">${renderStringList(report.commonBaselines, state.lang === "zh" ? "暂无 baseline。" : "No baselines recorded.")}</div>
+          <div class="result-stack">${renderStringList(report.commonBaselines, state.lang === "zh" ? "No baselines recorded." : "No baselines recorded.")}</div>
         </article>
 
         <article class="report-block">
@@ -3092,7 +3415,7 @@ function renderDirectionReport(report) {
             <h3>${escapeHtml(state.lang === "zh" ? "Common Modules" : "Common Modules")}</h3>
             ${renderPill(String(report.commonModules?.length || 0))}
           </div>
-          <div class="result-stack">${renderStringList(report.commonModules, state.lang === "zh" ? "暂无模块。" : "No common modules recorded.")}</div>
+          <div class="result-stack">${renderStringList(report.commonModules, state.lang === "zh" ? "No common modules recorded." : "No common modules recorded.")}</div>
         </article>
 
         <article class="report-block">
@@ -3100,7 +3423,7 @@ function renderDirectionReport(report) {
             <h3>${escapeHtml(state.lang === "zh" ? "Open Problems" : "Open Problems")}</h3>
             ${renderPill(String(report.openProblems?.length || 0), "warn")}
           </div>
-          <div class="result-stack">${renderStringList(report.openProblems, state.lang === "zh" ? "暂无开放问题。" : "No open problems recorded.")}</div>
+          <div class="result-stack">${renderStringList(report.openProblems, state.lang === "zh" ? "No open problems recorded." : "No open problems recorded.")}</div>
         </article>
       </aside>
     </div>
@@ -3124,7 +3447,7 @@ function renderPresentationArtifact(presentation) {
         <div>
           <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Presentation Artifact" : "Presentation Artifact")}</div>
           <h3>${escapeHtml(presentation.title)}</h3>
-          <p>${escapeHtml(state.lang === "zh" ? "已生成的会议材料和导出文件。" : "Generated meeting material and export files.")}</p>
+          <p>${escapeHtml(state.lang === "zh" ? "Generated meeting material and export files." : "Generated meeting material and export files.")}</p>
         </div>
         <div class="report-chip-list">
           ${renderPill(formatTime(presentation.generatedAt))}
@@ -3152,13 +3475,13 @@ function renderPresentationArtifact(presentation) {
             <article class="result-item">
               <h3>${escapeHtml("Markdown")}</h3>
               <p>${escapeHtml(presentation.filePath)}</p>
-              <small><a class="graph-inline-link" href="${escapeHtml(markdownHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
+              <small><a class="graph-inline-link" href="${escapeHtml(markdownHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑鏂囦欢" : "Open file")}</a></small>
             </article>
             ${presentation.pptxPath ? `
               <article class="result-item">
                 <h3>${escapeHtml("PPTX")}</h3>
                 <p>${escapeHtml(presentation.pptxPath)}</p>
-                <small><a class="graph-inline-link" href="${escapeHtml(pptxHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
+                <small><a class="graph-inline-link" href="${escapeHtml(pptxHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑鏂囦欢" : "Open file")}</a></small>
               </article>
             ` : ""}
           </div>
@@ -3168,7 +3491,7 @@ function renderPresentationArtifact(presentation) {
             <h3>${escapeHtml(state.lang === "zh" ? "Source Reports" : "Source Reports")}</h3>
             ${renderPill(String(presentation.sourceReportTaskIds?.length || 0))}
           </div>
-          <div class="result-stack">${renderStringList(presentation.sourceReportTaskIds, state.lang === "zh" ? "暂无 source reports。" : "No source reports recorded.")}</div>
+          <div class="result-stack">${renderStringList(presentation.sourceReportTaskIds, state.lang === "zh" ? "No source reports recorded." : "No source reports recorded.")}</div>
         </article>
         <article class="report-block">
           <div class="report-item-head">
@@ -3180,10 +3503,10 @@ function renderPresentationArtifact(presentation) {
               ? presentation.imagePaths.map((filePath) => `
                   <article class="result-item">
                     <p>${escapeHtml(filePath)}</p>
-                    <small><a class="graph-inline-link" href="/api/research/artifact?path=${encodeURIComponent(filePath)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
+                    <small><a class="graph-inline-link" href="/api/research/artifact?path=${encodeURIComponent(filePath)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑鏂囦欢" : "Open file")}</a></small>
                   </article>
                 `).join("")
-              : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无 image assets。" : "No image assets recorded.")}</div>`}
+              : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No image assets recorded." : "No image assets recorded.")}</div>`}
           </div>
         </article>
       </aside>
@@ -3207,7 +3530,7 @@ function renderModuleAsset(asset) {
         <div>
           <div class="section-kicker">${escapeHtml(state.lang === "zh" ? "Module Asset" : "Module Asset")}</div>
           <h3>${escapeHtml(`${asset.owner}/${asset.repo}`)}</h3>
-          <p>${escapeHtml(state.lang === "zh" ? "这里展示已归档的可复用模块和仓库快照。" : "Archived reusable modules and repository snapshots.")}</p>
+          <p>${escapeHtml(state.lang === "zh" ? "Archived reusable modules and repository snapshots." : "Archived reusable modules and repository snapshots.")}</p>
         </div>
         <div class="report-chip-list">
           ${renderPill(asset.id)}
@@ -3223,14 +3546,14 @@ function renderModuleAsset(asset) {
             <h3>${escapeHtml(state.lang === "zh" ? "Selected Paths" : "Selected Paths")}</h3>
             ${renderPill(String(asset.selectedPaths?.length || 0))}
           </div>
-          <div class="result-stack">${renderStringList(asset.selectedPaths, state.lang === "zh" ? "还没有已选路径。" : "No selected paths recorded.")}</div>
+          <div class="result-stack">${renderStringList(asset.selectedPaths, state.lang === "zh" ? "No selected paths recorded." : "No selected paths recorded.")}</div>
         </article>
         <article class="report-block">
           <div class="report-item-head">
             <h3>${escapeHtml(state.lang === "zh" ? "Notes" : "Notes")}</h3>
             ${renderPill(String(asset.notes?.length || 0))}
           </div>
-          <div class="result-stack">${renderStringList(asset.notes, state.lang === "zh" ? "还没有备注。" : "No notes recorded.")}</div>
+          <div class="result-stack">${renderStringList(asset.notes, state.lang === "zh" ? "No notes recorded." : "No notes recorded.")}</div>
         </article>
       </div>
       <aside class="stack research-report-side">
@@ -3242,13 +3565,13 @@ function renderModuleAsset(asset) {
             <article class="result-item">
               <h3>${escapeHtml(state.lang === "zh" ? "Repository URL" : "Repository URL")}</h3>
               <p>${escapeHtml(asset.repoUrl)}</p>
-              <small><a class="graph-inline-link" href="${escapeHtml(asset.repoUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开仓库" : "Open repo")}</a></small>
+              <small><a class="graph-inline-link" href="${escapeHtml(asset.repoUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑浠撳簱" : "Open repo")}</a></small>
             </article>
             ${asset.archivePath ? `
               <article class="result-item">
                 <h3>${escapeHtml(state.lang === "zh" ? "Archive Path" : "Archive Path")}</h3>
                 <p>${escapeHtml(asset.archivePath)}</p>
-                <small><a class="graph-inline-link" href="${escapeHtml(archiveHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开归档" : "Open archive")}</a></small>
+                <small><a class="graph-inline-link" href="${escapeHtml(archiveHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑褰掓。" : "Open archive")}</a></small>
               </article>
             ` : ""}
           </div>
@@ -3262,7 +3585,7 @@ function renderDirectionReportList(reports) {
   if (!els.directionReportList) return;
   if (!reports.length) {
     els.directionReportList.className = "empty-state compact-empty";
-    els.directionReportList.textContent = state.lang === "zh" ? "还没有主题报告。" : "No topic reports yet.";
+    els.directionReportList.textContent = state.lang === "zh" ? "No topic reports yet." : "No topic reports yet.";
     return;
   }
 
@@ -3295,7 +3618,7 @@ function renderResearchBriefList(briefs) {
   if (!els.researchBriefList) return;
   if (!briefs.length) {
     els.researchBriefList.className = "empty-state compact-empty";
-    els.researchBriefList.textContent = state.lang === "zh" ? "还没有研究模板。" : "No research templates yet.";
+    els.researchBriefList.textContent = state.lang === "zh" ? "No research templates yet." : "No research templates yet.";
     return;
   }
 
@@ -3308,8 +3631,8 @@ function renderResearchBriefList(briefs) {
             <span class="message__author">${escapeHtml(brief.label)}</span>
             <span>${escapeHtml(formatRelativeTime(brief.updatedAt))}</span>
           </div>
-          <p>${escapeHtml(trimText(brief.summary || brief.tlDr || brief.targetProblem || "", 140) || (state.lang === "zh" ? "暂无 brief summary。" : "No brief summary yet."))}</p>
-          <small>${escapeHtml(`${brief.priority || "secondary"}${brief.enabled === false ? " · disabled" : ""}`)}</small>
+          <p>${escapeHtml(trimText(brief.summary || brief.tlDr || brief.targetProblem || "", 140) || (state.lang === "zh" ? "No brief summary yet." : "No brief summary yet."))}</p>
+          <small>${escapeHtml(`${brief.priority || "secondary"}${brief.enabled === false ? " 路 disabled" : ""}`)}</small>
         </button>
       `
     )
@@ -3383,19 +3706,19 @@ function renderDiscoveryScheduler(status) {
   const directionMap = new Map((state.researchBriefs || []).map((brief) => [brief.id, brief.label]));
   const selectedDirections = (scheduler.directionIds || []).length
     ? scheduler.directionIds.map((directionId) => directionMap.get(directionId) ? `${directionMap.get(directionId)} (${directionId})` : directionId)
-    : [state.lang === "zh" ? "所有已启用的模板" : "All enabled templates"];
+    : [state.lang === "zh" ? "All enabled templates" : "All enabled templates"];
   const lastRuns = Object.entries(scheduler.lastRunDateByDirection || {});
 
   els.discoverySchedulerStatus.innerHTML = [
-    [state.lang === "zh" ? "后台计划任务" : "Background schedule", scheduler.running ? (state.lang === "zh" ? "运行中" : "Running") : (state.lang === "zh" ? "未启动" : "Not running")],
-    [state.lang === "zh" ? "是否启用" : "Enabled", String(Boolean(scheduler.enabled))],
-    [state.lang === "zh" ? "每日时间" : "Daily time", scheduler.dailyTimeLocal || "09:00"],
-    [state.lang === "zh" ? "推送目标" : "Push target", scheduler.senderId || "-"],
-    [state.lang === "zh" ? "覆盖主题" : "Topics", selectedDirections.join(" | ")],
+    [state.lang === "zh" ? "鍚庡彴璁″垝浠诲姟" : "Background schedule", scheduler.running ? (state.lang === "zh" ? "Running" : "Running") : (state.lang === "zh" ? "Not running" : "Not running")],
+    [state.lang === "zh" ? "鏄惁鍚敤" : "Enabled", String(Boolean(scheduler.enabled))],
+    [state.lang === "zh" ? "姣忔棩鏃堕棿" : "Daily time", scheduler.dailyTimeLocal || "09:00"],
+    [state.lang === "zh" ? "Push target" : "Push target", scheduler.senderId || "-"],
+    [state.lang === "zh" ? "瑕嗙洊涓婚" : "Topics", selectedDirections.join(" | ")],
     ["Top K", String(scheduler.topK || 5)],
-    [state.lang === "zh" ? "每次检索论文数" : "Papers / search", String(scheduler.maxPapersPerQuery || 4)],
-    [state.lang === "zh" ? "最近更新" : "Updated", scheduler.updatedAt ? formatTime(scheduler.updatedAt) : "-"],
-    [state.lang === "zh" ? "最近执行" : "Recent runs", lastRuns.length ? lastRuns.map(([directionId, value]) => `${directionMap.get(directionId) || directionId}: ${value}`).join(" | ") : (state.lang === "zh" ? "暂无" : "None yet")],
+    [state.lang === "zh" ? "姣忔妫€绱㈣鏂囨暟" : "Papers / search", String(scheduler.maxPapersPerQuery || 4)],
+    [state.lang === "zh" ? "Updated" : "Updated", scheduler.updatedAt ? formatTime(scheduler.updatedAt) : "-"],
+    [state.lang === "zh" ? "Recent runs" : "Recent runs", lastRuns.length ? lastRuns.map(([directionId, value]) => `${directionMap.get(directionId) || directionId}: ${value}`).join(" | ") : (state.lang === "zh" ? "None yet" : "None yet")],
   ]
     .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join("");
@@ -3412,7 +3735,7 @@ function renderDiscoveryRuns() {
   const runs = (state.discoveryRuns || []).slice(0, 6);
   if (!runs.length) {
     els.discoverySchedulerRuns.className = "empty-state compact-empty";
-    els.discoverySchedulerRuns.textContent = state.lang === "zh" ? "还没有定时运行记录。" : "No scheduled runs yet.";
+    els.discoverySchedulerRuns.textContent = state.lang === "zh" ? "No scheduled runs yet." : "No scheduled runs yet.";
     return;
   }
 
@@ -3425,8 +3748,8 @@ function renderDiscoveryRuns() {
             <span class="message__author">${escapeHtml((run.directionLabels || []).join(", ") || "-")}</span>
             <span>${escapeHtml(formatRelativeTime(run.generatedAt))}</span>
           </div>
-          <p>${escapeHtml(run.topTitle || (state.lang === "zh" ? "还没有代表论文。" : "No top paper recorded."))}</p>
-          <small>${escapeHtml(`${run.itemCount || 0} items · ${run.pushed ? "pushed" : "local"}`)}</small>
+          <p>${escapeHtml(run.topTitle || (state.lang === "zh" ? "No top paper recorded." : "No top paper recorded."))}</p>
+          <small>${escapeHtml(`${run.itemCount || 0} items 路 ${run.pushed ? "pushed" : "local"}`)}</small>
         </article>
       `
     )
@@ -3445,7 +3768,7 @@ function renderLifecycleAudit(items) {
 
   if (!state.wechatLifecycleAudit.length) {
     els.channelLifecycleAudit.className = "empty-state compact-empty";
-    els.channelLifecycleAudit.textContent = state.lang === "zh" ? "还没有状态变化记录。" : "No recent status changes yet.";
+    els.channelLifecycleAudit.textContent = state.lang === "zh" ? "No recent status changes yet." : "No recent status changes yet.";
     return;
   }
 
@@ -3453,7 +3776,7 @@ function renderLifecycleAudit(items) {
   els.channelLifecycleAudit.innerHTML = state.wechatLifecycleAudit
     .map((entry) => {
       const details = entry.details && typeof entry.details === "object"
-        ? Object.entries(entry.details).map(([key, value]) => `${key}=${value}`).join(" · ")
+        ? Object.entries(entry.details).map(([key, value]) => `${key}=${value}`).join(" 路 ")
         : "";
       return `
         <article class="result-item">
@@ -3461,7 +3784,7 @@ function renderLifecycleAudit(items) {
             <span class="message__author">${escapeHtml(entry.event || "-")}</span>
             <span>${escapeHtml(entry.ts ? formatTime(entry.ts) : "-")}</span>
           </div>
-          <p>${escapeHtml([entry.state, entry.reason].filter(Boolean).join(" · ") || (state.lang === "zh" ? "没有更多状态信息。" : "No additional state."))}</p>
+          <p>${escapeHtml([entry.state, entry.reason].filter(Boolean).join(" 路 ") || (state.lang === "zh" ? "No additional state." : "No additional state."))}</p>
           <small>${escapeHtml(details || entry.providerMode || "-")}</small>
         </article>
       `;
@@ -3485,10 +3808,10 @@ function renderFeedbackSummary(summary) {
   const negative = (summary.counts?.["not-useful"] || 0) + (summary.counts?.["less-like-this"] || 0) + (summary.counts?.["too-theoretical"] || 0) + (summary.counts?.["too-engineering-heavy"] || 0) + (summary.counts?.["not-worth-following"] || 0);
 
   els.feedbackSummary.innerHTML = `
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "总数" : "Total")}</span><strong>${escapeHtml(String(summary.total))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "正向反馈" : "Positive feedback")}</span><strong>${escapeHtml(String(positive))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "负向反馈" : "Negative feedback")}</span><strong>${escapeHtml(String(negative))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "最近更新" : "Updated")}</span><strong>${escapeHtml(formatTime(summary.updatedAt))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鎬绘暟" : "Total")}</span><strong>${escapeHtml(String(summary.total))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "姝ｅ悜鍙嶉" : "Positive feedback")}</span><strong>${escapeHtml(String(positive))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "璐熷悜鍙嶉" : "Negative feedback")}</span><strong>${escapeHtml(String(negative))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Updated" : "Updated")}</span><strong>${escapeHtml(formatTime(summary.updatedAt))}</strong></div>
   `;
 }
 
@@ -3496,7 +3819,7 @@ function renderFeedbackList(items) {
   if (!els.feedbackList) return;
   if (!items.length) {
     els.feedbackList.className = "empty-state compact-empty";
-    els.feedbackList.textContent = state.lang === "zh" ? "还没有反馈记录。" : "No feedback yet.";
+    els.feedbackList.textContent = state.lang === "zh" ? "No feedback yet." : "No feedback yet.";
     return;
   }
 
@@ -3537,7 +3860,7 @@ function renderPresentationList(presentations) {
   if (!els.presentationList) return;
   if (!presentations.length) {
     els.presentationList.className = "empty-state compact-empty";
-    els.presentationList.textContent = state.lang === "zh" ? "暂无 presentations。" : "No presentations yet.";
+    els.presentationList.textContent = state.lang === "zh" ? "No presentations yet." : "No presentations yet.";
     return;
   }
 
@@ -3551,7 +3874,7 @@ function renderPresentationList(presentations) {
             <span>${escapeHtml(formatRelativeTime(presentation.generatedAt))}</span>
           </div>
           <p>${escapeHtml(trimText(presentation.filePath || presentation.id, 140))}</p>
-          <small>${escapeHtml(`${presentation.sourceReportTaskIds?.length || 0} reports${presentation.pptxPath ? " · pptx" : ""}`)}</small>
+          <small>${escapeHtml(`${presentation.sourceReportTaskIds?.length || 0} reports${presentation.pptxPath ? " 路 pptx" : ""}`)}</small>
         </button>
       `
     )
@@ -3595,7 +3918,7 @@ function renderModuleAssetList(assets) {
   if (!els.moduleAssetList) return;
   if (!assets.length) {
     els.moduleAssetList.className = "empty-state compact-empty";
-    els.moduleAssetList.textContent = state.lang === "zh" ? "暂无 module assets。" : "No module assets yet.";
+    els.moduleAssetList.textContent = state.lang === "zh" ? "No module assets yet." : "No module assets yet.";
     return;
   }
 
@@ -3609,7 +3932,7 @@ function renderModuleAssetList(assets) {
             <span>${escapeHtml(formatRelativeTime(asset.updatedAt))}</span>
           </div>
           <p>${escapeHtml(trimText(asset.selectedPaths?.join(", ") || asset.archivePath || asset.id, 140))}</p>
-          <small>${escapeHtml(`${asset.selectedPaths?.length || 0} paths${asset.defaultBranch ? ` · ${asset.defaultBranch}` : ""}`)}</small>
+          <small>${escapeHtml(`${asset.selectedPaths?.length || 0} paths${asset.defaultBranch ? ` 路 ${asset.defaultBranch}` : ""}`)}</small>
         </button>
       `
     )
@@ -3657,11 +3980,54 @@ async function loadFeedback() {
   renderFeedbackList(state.feedbackItems);
 }
 
+function renderLogsControls() {
+  if (!els.logsFollowToggle) return;
+  const label = state.logsAutoFollow
+    ? t("logs.followOn", state.lang === "zh" ? "\u81ea\u52a8\u8ddf\u968f\uff1a\u5f00" : "Auto-follow: On")
+    : t("logs.followOff", state.lang === "zh" ? "\u81ea\u52a8\u8ddf\u968f\uff1a\u5173" : "Auto-follow: Off");
+  els.logsFollowToggle.textContent = label;
+  els.logsFollowToggle.setAttribute("aria-pressed", String(Boolean(state.logsAutoFollow)));
+  els.logsFollowToggle.classList.toggle("btn--active", Boolean(state.logsAutoFollow));
+}
+
 function renderRuntimeLogs(payload) {
+  const baseline = state.runtimeLogsBaseline;
+  const stdoutContent = baseline ? diffLogLines(baseline.stdout, payload.stdout.content) : payload.stdout.content;
+  const stderrContent = baseline ? diffLogLines(baseline.stderr, payload.stderr.content) : payload.stderr.content;
+  renderLogsControls();
   els.runtimeLogStdoutPath.textContent = payload.stdout.path || t("logs.waitingStdout", "Waiting for stdout log...");
   els.runtimeLogStderrPath.textContent = payload.stderr.path || t("logs.waitingStderr", "Waiting for stderr log...");
-  els.runtimeLogOutput.textContent = payload.stdout.content || t("empty.stdout", "No stdout logs yet.");
-  els.runtimeLogError.textContent = payload.stderr.content || t("empty.stderr", "No stderr logs yet.");
+  els.runtimeLogOutput.textContent = stdoutContent || t("empty.stdout", "No stdout logs yet.");
+  els.runtimeLogError.textContent = stderrContent || t("empty.stderr", "No stderr logs yet.");
+  if (state.logsAutoFollow) {
+    if (els.runtimeLogOutput) {
+      els.runtimeLogOutput.scrollTop = els.runtimeLogOutput.scrollHeight;
+    }
+    if (els.runtimeLogError) {
+      els.runtimeLogError.scrollTop = els.runtimeLogError.scrollHeight;
+    }
+  }
+}
+
+function stopLogsPolling() {
+  if (!logsPollTimerId) {
+    return;
+  }
+  window.clearInterval(logsPollTimerId);
+  logsPollTimerId = 0;
+}
+
+function ensureLogsPolling() {
+  stopLogsPolling();
+  if (state.activeTab !== "logs" || !state.logsAutoFollow) {
+    return;
+  }
+  logsPollTimerId = window.setInterval(() => {
+    if (runtimeLogsRequestInFlight) {
+      return;
+    }
+    loadRuntimeLogs().catch(showError);
+  }, 2000);
 }
 
 async function hydrateResearchTask(taskId) {
@@ -3687,21 +4053,21 @@ async function hydrateResearchTask(taskId) {
 }
 
 async function hydrateReport(taskId) {
-  const report = await requestJson(`/api/research/${encodeURIComponent(taskId)}`);
-  state.latestReport = report;
+  const enhancedReport = await requestJson(`/api/research/${encodeURIComponent(taskId)}`);
+  state.latestReport = enhancedReport;
   clearResearchSelections();
-  state.selectedResearchTaskId = report.taskId;
-  els.reportTaskId.value = report.taskId;
+  state.selectedResearchTaskId = enhancedReport.taskId;
+  els.reportTaskId.value = enhancedReport.taskId;
   if (els.chatReportTaskId) {
-    els.chatReportTaskId.value = report.taskId;
+    els.chatReportTaskId.value = enhancedReport.taskId;
   }
-  renderResearchReport(report);
-  renderLatestReport(els.chatLatestReport, report);
-  renderLatestReport(els.overviewLatestReport, report);
+  renderResearchReport(enhancedReport);
+  renderLatestReport(els.chatLatestReport, enhancedReport);
+  renderLatestReport(els.overviewLatestReport, enhancedReport);
   renderOverviewCards(els.chatOverviewCards, true);
   renderOverviewCards(els.overviewCards, false);
   updateGlobalSummary();
-  return report;
+  return enhancedReport;
 }
 
 async function loadResearchTasks() {
@@ -3747,182 +4113,39 @@ function renderGraphSummary(graph) {
   if (!els.graphSummary) return;
   if (!graph) {
     els.graphSummary.className = "empty-state compact-empty";
-    els.graphSummary.textContent = "No graph data yet.";
+    els.graphSummary.textContent = state.lang === "zh" ? "No paper relationship data yet." : "No paper relationship data yet.";
     return;
   }
 
   const filters = [
-    state.graphSearch.trim() ? `Search: ${state.graphSearch.trim()}` : "",
-    state.graphTypeFilters.length ? `Types: ${state.graphTypeFilters.map((type) => formatGraphType(type)).join(", ")}` : "",
-    state.graphDateRange !== "all" ? `Window: last ${state.graphDateRange.replace("d", "")} days` : "",
+    state.graphSearch.trim()
+      ? `${state.lang === "zh" ? "鎼滅储" : "Search"}: ${state.graphSearch.trim()}`
+      : "",
+    state.graphDateRange !== "all"
+      ? `${state.lang === "zh" ? "鏃堕棿鑼冨洿" : "Window"}: ${state.lang === "zh" ? `last ${state.graphDateRange.replace("d", "")} days` : `last ${state.graphDateRange.replace("d", "")} days`}`
+      : "",
   ].filter(Boolean);
-
-  const byType = GRAPH_TYPE_ORDER
-    .map((type) => [type, graph.stats?.byType?.[type] ?? 0])
-    .filter(([, count]) => count > 0);
+  const connectedPaperIds = new Set((graph.edges || []).flatMap((edge) => [edge.source, edge.target]));
+  const isolatedPaperCount = (graph.nodes || []).filter((node) => !connectedPaperIds.has(node.id)).length;
+  const topHub = state.graphReport?.hubs?.[0];
+  const largestCluster = state.graphReport?.components?.[0];
   els.graphSummary.className = "detail-list";
   els.graphSummary.innerHTML = [
-    `<div class="detail-row"><span>Generated</span><strong>${escapeHtml(formatTime(graph.generatedAt))}</strong></div>`,
-    `<div class="detail-row"><span>Nodes</span><strong>${escapeHtml(String(graph.stats?.nodes ?? 0))}</strong></div>`,
-    `<div class="detail-row"><span>Edges</span><strong>${escapeHtml(String(graph.stats?.edges ?? 0))}</strong></div>`,
-    `<div class="detail-row"><span>Active filters</span><strong>${escapeHtml(filters.join(" | ") || "None")}</strong></div>`,
-    ...byType.map(([type, count]) => `<div class="detail-row"><span>${escapeHtml(formatGraphType(type))}</span><strong>${escapeHtml(String(count))}</strong></div>`)
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated")}</span><strong>${escapeHtml(formatTime(graph.generatedAt))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "璁烘枃鏁伴噺" : "Papers")}</span><strong>${escapeHtml(String(graph.stats?.nodes ?? 0))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鑱旂郴鏁伴噺" : "Connections")}</span><strong>${escapeHtml(String(graph.stats?.edges ?? 0))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "瀛ょ珛璁烘枃" : "Isolated papers")}</span><strong>${escapeHtml(String(isolatedPaperCount))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鍏抽敭鑺傜偣" : "Top hub")}</span><strong>${escapeHtml(topHub ? trimText(topHub.node.label, 28) : (state.lang === "zh" ? "鏆傛棤" : "n/a"))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鏈€澶х皣" : "Largest cluster")}</span><strong>${escapeHtml(largestCluster ? String(largestCluster.size) : (state.lang === "zh" ? "鏆傛棤" : "n/a"))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Active filter" : "Active filter")}</span><strong>${escapeHtml(filters.join(" | ") || (state.lang === "zh" ? "None" : "None"))}</strong></div>`
   ].join("");
 }
 
 function renderGraphTypeFilters(graph) {
   if (!els.graphTypeFilters) return;
-
-  const counts = graph?.stats?.byType || {};
-  els.graphTypeFilters.innerHTML = GRAPH_TYPE_ORDER
-    .map((type) => `
-      <button
-        class="agent-panel-tab ${state.graphTypeFilters.includes(type) ? "agent-panel-tab--active" : ""}"
-        type="button"
-        data-graph-type="${escapeHtml(type)}"
-      >
-        ${escapeHtml(formatGraphType(type))} <span class="graph-filter-count">${escapeHtml(String(counts[type] ?? 0))}</span>
-      </button>
-    `)
-    .join("");
-
-  els.graphTypeFilters.querySelectorAll("[data-graph-type]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const type = button.dataset.graphType;
-      if (!type) return;
-      state.graphTypeFilters = state.graphTypeFilters.includes(type)
-        ? state.graphTypeFilters.filter((item) => item !== type)
-        : [...state.graphTypeFilters, type];
-      await loadGraph().catch(showError);
-    });
-  });
-}
-
-function renderGraphStats(graph) {
-  if (!els.graphStats) return;
-  if (!graph) {
-    els.graphStats.className = "graph-stats";
-    els.graphStats.innerHTML = "";
-    return;
-  }
-
-  const activeTypeCount = Object.values(graph.stats?.byType || {}).filter((count) => count > 0).length;
-  const cards = [
-    ["Visible Nodes", String(graph.stats?.nodes ?? 0), "Current filtered node count"],
-    ["Visible Edges", String(graph.stats?.edges ?? 0), "Relationships inside the current filter"],
-    ["Active Types", String(activeTypeCount), "Node categories visible in this view"],
-    ["Selected Node", state.graphDetail?.node?.label || "-", state.graphDetail?.node ? formatGraphType(state.graphDetail.node.type) : "Pick a node from the graph"],
-  ];
-
-  els.graphStats.className = "graph-stats";
-  els.graphStats.innerHTML = cards
-    .map(
-      ([label, value, hint]) => `
-        <article class="card panel-card graph-stat-card">
-          <div class="graph-stat-card__label">${escapeHtml(label)}</div>
-          <div class="graph-stat-card__value">${escapeHtml(value)}</div>
-          <div class="graph-stat-card__hint">${escapeHtml(hint)}</div>
-        </article>
-      `
-    )
-    .join("");
-}
-
-function bindGraphNodeButtons() {
-  els.graphCanvas?.querySelectorAll("[data-graph-node]").forEach((node) => {
-    node.addEventListener("click", () => {
-      const nodeId = node.dataset.graphNode;
-      if (!nodeId) return;
-      selectGraphNode(nodeId).catch(showError);
-    });
-  });
-}
-
-function renderGraphCanvas(graph) {
-  if (!els.graphCanvas) return;
-  if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
-    els.graphCanvas.className = "graph-canvas empty-state compact-empty";
-    els.graphCanvas.textContent = "No graph data yet.";
-    return;
-  }
-
-  const grouped = GRAPH_TYPE_ORDER.map((type) => ({
-    type,
-    nodes: graph.nodes.filter((node) => node.type === type).slice(0, 10)
-  })).filter((group) => group.nodes.length > 0);
-
-  const laneWidth = 180;
-  const width = Math.max(1020, grouped.length * laneWidth + 140);
-  const laneGap = grouped.length > 0 ? (width - 140) / Math.max(grouped.length, 1) : laneWidth;
-  const maxNodesPerLane = grouped.reduce((max, group) => Math.max(max, group.nodes.length), 1);
-  const height = Math.max(420, maxNodesPerLane * 96 + 140);
-  const positions = new Map();
-  const degreeByNodeId = new Map();
-
-  (graph.edges || []).forEach((edge) => {
-    degreeByNodeId.set(edge.source, (degreeByNodeId.get(edge.source) || 0) + 1);
-    degreeByNodeId.set(edge.target, (degreeByNodeId.get(edge.target) || 0) + 1);
-  });
-
-  grouped.forEach((group, columnIndex) => {
-    const x = 90 + columnIndex * laneGap;
-    const laneInnerHeight = Math.max(height - 150, 120);
-    const step = group.nodes.length > 1 ? laneInnerHeight / (group.nodes.length - 1) : 0;
-    group.nodes.forEach((node, rowIndex) => {
-      const y = group.nodes.length === 1 ? height / 2 : 96 + rowIndex * step;
-      positions.set(node.id, { x, y });
-    });
-  });
-
-  const laneMarkup = grouped
-    .map((group, columnIndex) => {
-      const x = 90 + columnIndex * laneGap - 54;
-      return `
-        <g class="graph-lane">
-          <rect x="${x}" y="42" width="108" height="${height - 74}" rx="28" class="graph-lane__rail"></rect>
-          <text x="${x + 54}" y="28" text-anchor="middle" class="graph-column-label">${escapeHtml(formatGraphType(group.type))} (${group.nodes.length})</text>
-        </g>
-      `;
-    })
-    .join("");
-
-  const edgeMarkup = (graph.edges || [])
-    .filter((edge) => positions.has(edge.source) && positions.has(edge.target))
-    .slice(0, 80)
-    .map((edge) => {
-      const source = positions.get(edge.source);
-      const target = positions.get(edge.target);
-      const delta = Math.abs(target.x - source.x) / 2;
-      const active = state.selectedGraphNodeId && (edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId);
-      return `<path d="M ${source.x} ${source.y} C ${source.x + delta} ${source.y}, ${target.x - delta} ${target.y}, ${target.x} ${target.y}" class="graph-link ${active ? "graph-link--active" : ""}" />`;
-    })
-    .join("");
-
-  const nodeMarkup = grouped
-    .flatMap((group) => group.nodes)
-    .map((node) => {
-      const pos = positions.get(node.id);
-      const degree = degreeByNodeId.get(node.id) || 0;
-      const radius = 18 + Math.min(10, degree * 1.5);
-      const active = state.selectedGraphNodeId === node.id;
-      return `
-        <g class="graph-node-group ${active ? "graph-node-group--active" : ""}" data-graph-node="${escapeHtml(node.id)}" role="button" tabindex="0">
-          <circle cx="${pos.x}" cy="${pos.y}" r="${radius}" class="graph-node graph-node--${escapeHtml(node.type)}"></circle>
-          <text x="${pos.x}" y="${pos.y + radius + 18}" text-anchor="middle" class="graph-node-label">${escapeHtml(trimText(node.label, 18))}</text>
-        </g>
-      `;
-    })
-    .join("");
-
-  els.graphCanvas.className = "graph-canvas";
-  els.graphCanvas.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" class="graph-svg" role="img" aria-label="Research memory graph">
-      ${laneMarkup}
-      ${edgeMarkup}
-      ${nodeMarkup}
-    </svg>
-  `;
-  bindGraphNodeButtons();
+  state.graphTypeFilters = [];
+  els.graphTypeFilters.hidden = true;
+  els.graphTypeFilters.innerHTML = "";
 }
 
 function bindGraphEdgeButtons() {
@@ -3951,50 +4174,66 @@ function bindGraphDetailButtons() {
       window.open(href, href.startsWith("http") ? "_blank" : "_blank", "noopener");
     });
   });
+
+  els.graphDetail?.querySelectorAll("[data-graph-compare-select]").forEach((select) => {
+    select.addEventListener("change", () => {
+      state.graphCompareNodeId = select.value || null;
+      state.graphConnectionResult = null;
+      state.graphConnectionPending = false;
+      renderGraphDetail(state.graphDetail);
+    });
+  });
+
+  els.graphDetail?.querySelectorAll("[data-graph-run-connection]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.graphRunConnection;
+      if (!mode) return;
+      loadGraphConnection(mode).catch(showError);
+    });
+  });
 }
 
-function renderGraphEdges(graph) {
-  if (!els.graphEdges) return;
-  if (!graph || !Array.isArray(graph.edges) || graph.edges.length === 0) {
-    els.graphEdges.className = "result-stack empty-state compact-empty";
-    els.graphEdges.textContent = "No graph edges yet.";
+async function loadGraphConnection(mode) {
+  if (!state.selectedGraphNodeId || !state.graphCompareNodeId) {
     return;
   }
 
-  const nodeById = new Map((graph.nodes || []).map((node) => [node.id, node]));
-  const activeEdges = state.selectedGraphNodeId
-    ? graph.edges.filter((edge) => edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId)
-    : graph.edges;
+  const fromNodeId = state.selectedGraphNodeId;
+  const toNodeId = state.graphCompareNodeId;
+  state.graphConnectionMode = mode === "path" ? "path" : "explain";
+  state.graphConnectionPending = true;
+  state.graphConnectionResult = null;
+  renderGraphDetail(state.graphDetail);
 
-  if (!activeEdges.length) {
-    els.graphEdges.className = "result-stack empty-state compact-empty";
-    els.graphEdges.textContent = "No visible relationships match the current selection.";
-    return;
+  const token = ++graphConnectionToken;
+  try {
+    const result = await requestJson(buildGraphConnectionUrl(state.graphConnectionMode, fromNodeId, toNodeId));
+    if (
+      token !== graphConnectionToken ||
+      state.selectedGraphNodeId !== fromNodeId ||
+      state.graphCompareNodeId !== toNodeId
+    ) {
+      return;
+    }
+
+    state.graphConnectionPending = false;
+    state.graphConnectionResult = result;
+    renderGraphDetail(state.graphDetail);
+  } catch (error) {
+    if (
+      token === graphConnectionToken &&
+      state.selectedGraphNodeId === fromNodeId &&
+      state.graphCompareNodeId === toNodeId
+    ) {
+      state.graphConnectionPending = false;
+      renderGraphDetail(state.graphDetail);
+    }
+    throw error;
   }
-
-  els.graphEdges.className = "result-stack";
-  els.graphEdges.innerHTML = activeEdges.slice(0, 24).map((edge) => {
-    const source = nodeById.get(edge.source);
-    const target = nodeById.get(edge.target);
-    return `
-      <article class="result-item graph-edge-item">
-        <div class="message__meta">
-          <span class="message__author">${escapeHtml(edge.label)}</span>
-          <span>${escapeHtml(formatGraphType(source?.type || "source_item"))} -> ${escapeHtml(formatGraphType(target?.type || "source_item"))}</span>
-        </div>
-        <div class="graph-edge-item__nodes">
-          <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(source?.id || edge.source)}">${escapeHtml(source?.label || edge.source)}</button>
-          <span class="graph-edge-arrow">&rarr;</span>
-          <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(target?.id || edge.target)}">${escapeHtml(target?.label || edge.target)}</button>
-        </div>
-      </article>
-    `;
-  }).join("");
-  bindGraphEdgeButtons();
 }
 
 function renderGraphDetailStats(items) {
-  if (!items.length) {
+  if (!Array.isArray(items) || items.length === 0) {
     return "";
   }
 
@@ -4007,61 +4246,625 @@ function renderGraphDetailStats(items) {
               <span>${escapeHtml(label)}</span>
               <strong>${escapeHtml(String(value))}</strong>
             </article>
-          `
+          `,
         )
         .join("")}
     </div>
   `;
 }
 
-function renderGraphConclusionCards(conclusions) {
-  if (!Array.isArray(conclusions) || conclusions.length === 0) {
-    return "";
+
+function bindGraphNodeButtons() {
+  els.graphCanvas?.querySelectorAll("[data-graph-node]").forEach((node) => {
+    node.addEventListener("click", () => {
+      if (node.dataset.graphDragged === "1") {
+        node.dataset.graphDragged = "";
+        return;
+      }
+      const nodeId = node.dataset.graphNode;
+      if (!nodeId) return;
+      selectGraphNode(nodeId).catch(showError);
+    });
+  });
+}
+
+function bindGraphCanvasInteractions() {
+  const svg = els.graphCanvas?.querySelector(".graph-svg");
+  const scene = els.graphCanvas?.querySelector(".graph-scene");
+  if (!(svg instanceof SVGElement) || !(scene instanceof SVGGElement) || !els.graphCanvas) {
+    return;
   }
+
+  const queryNodeElements = (nodeId) => {
+    const safeValue = nodeId.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
+    return {
+      node: svg.querySelector(`[data-graph-node="${safeValue}"]`),
+      edges: [
+        ...svg.querySelectorAll(`[data-graph-edge-source="${safeValue}"]`),
+        ...svg.querySelectorAll(`[data-graph-edge-target="${safeValue}"]`),
+      ],
+    };
+  };
+
+  const svgPointFromClient = (clientX, clientY) => {
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    const transformed = point.matrixTransform(ctm.inverse());
+    return { x: transformed.x, y: transformed.y };
+  };
+
+  const scenePointFromClient = (clientX, clientY) => {
+    const point = svgPointFromClient(clientX, clientY);
+    return {
+      x: (point.x - state.graphViewport.x) / state.graphViewport.scale,
+      y: (point.y - state.graphViewport.y) / state.graphViewport.scale,
+    };
+  };
+
+  const applySceneTransform = () => {
+    scene.setAttribute("transform", graphSceneTransform());
+  };
+
+  const updateNodePosition = (nodeId, x, y) => {
+    state.graphNodePositions[nodeId] = { x, y };
+    const { node, edges } = queryNodeElements(nodeId);
+    if (node instanceof SVGGElement) {
+      node.dataset.graphX = String(x);
+      node.dataset.graphY = String(y);
+      node.setAttribute("transform", `translate(${x} ${y})`);
+    }
+    edges.forEach((edge) => {
+      if (!(edge instanceof SVGLineElement)) return;
+      if (edge.dataset.graphEdgeSource === nodeId) {
+        edge.setAttribute("x1", String(x));
+        edge.setAttribute("y1", String(y));
+      }
+      if (edge.dataset.graphEdgeTarget === nodeId) {
+        edge.setAttribute("x2", String(x));
+        edge.setAttribute("y2", String(y));
+      }
+    });
+  };
+
+  let dragState = null;
+  applySceneTransform();
+
+  svg.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const before = svgPointFromClient(event.clientX, event.clientY);
+    const previousScale = state.graphViewport.scale;
+    const nextScale = clampGraphScale(previousScale * (event.deltaY < 0 ? 1.12 : 0.9));
+    if (nextScale === previousScale) return;
+    const sceneX = (before.x - state.graphViewport.x) / previousScale;
+    const sceneY = (before.y - state.graphViewport.y) / previousScale;
+    state.graphViewport.scale = nextScale;
+    state.graphViewport.x = before.x - sceneX * nextScale;
+    state.graphViewport.y = before.y - sceneY * nextScale;
+    applySceneTransform();
+  }, { passive: false });
+
+  svg.addEventListener("dblclick", (event) => {
+    const target = event.target instanceof Element ? event.target.closest("[data-graph-node]") : null;
+    if (!target) resetGraphViewport();
+  });
+
+  svg.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const targetNode = event.target instanceof Element ? event.target.closest("[data-graph-node]") : null;
+    if (targetNode instanceof SVGGElement) {
+      const nodeId = targetNode.dataset.graphNode;
+      if (!nodeId) return;
+      const originX = Number(targetNode.dataset.graphX || 0);
+      const originY = Number(targetNode.dataset.graphY || 0);
+      const scenePoint = scenePointFromClient(event.clientX, event.clientY);
+      dragState = {
+        kind: "node",
+        pointerId: event.pointerId,
+        nodeId,
+        originX,
+        originY,
+        offsetX: originX - scenePoint.x,
+        offsetY: originY - scenePoint.y,
+        maxX: svg.viewBox.baseVal.width - 40,
+        maxY: svg.viewBox.baseVal.height - 40,
+        moved: false,
+      };
+      svg.setPointerCapture(event.pointerId);
+      targetNode.classList.add("graph-node-group--dragging");
+      return;
+    }
+
+    const start = svgPointFromClient(event.clientX, event.clientY);
+    dragState = {
+      kind: "canvas",
+      pointerId: event.pointerId,
+      startX: start.x,
+      startY: start.y,
+      originX: state.graphViewport.x,
+      originY: state.graphViewport.y,
+    };
+    svg.setPointerCapture(event.pointerId);
+    els.graphCanvas.classList.add("graph-canvas--panning");
+  });
+
+  svg.addEventListener("pointermove", (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+    if (dragState.kind === "node") {
+      const scenePoint = scenePointFromClient(event.clientX, event.clientY);
+      const nextX = Math.min(dragState.maxX, Math.max(40, scenePoint.x + dragState.offsetX));
+      const nextY = Math.min(dragState.maxY, Math.max(40, scenePoint.y + dragState.offsetY));
+      if (Math.abs(nextX - dragState.originX) > 1 || Math.abs(nextY - dragState.originY) > 1) {
+        dragState.moved = true;
+      }
+      updateNodePosition(dragState.nodeId, nextX, nextY);
+      return;
+    }
+
+    const next = svgPointFromClient(event.clientX, event.clientY);
+    state.graphViewport.x = dragState.originX + (next.x - dragState.startX);
+    state.graphViewport.y = dragState.originY + (next.y - dragState.startY);
+    applySceneTransform();
+  });
+
+  const finishDrag = (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    if (dragState.kind === "node") {
+      const { node } = queryNodeElements(dragState.nodeId);
+      if (node instanceof SVGGElement) {
+        node.classList.remove("graph-node-group--dragging");
+        if (dragState.moved) {
+          node.dataset.graphDragged = "1";
+        }
+      }
+    } else {
+      els.graphCanvas.classList.remove("graph-canvas--panning");
+    }
+    if (svg.hasPointerCapture(event.pointerId)) {
+      svg.releasePointerCapture(event.pointerId);
+    }
+    dragState = null;
+  };
+
+  svg.addEventListener("pointerup", finishDrag);
+  svg.addEventListener("pointercancel", finishDrag);
+}
+
+
+function renderGraphReportInsights() {
+  const report = state.graphReport;
+  if (!report) {
+    return `
+      <div class="graph-detail__section">
+        <div class="empty-state compact-empty">${escapeHtml(t("graph.reportLoading", "Loading graph insights..."))}</div>
+      </div>
+    `;
+  }
+
+  const topHub = report.hubs?.[0];
+  const largestCluster = report.components?.[0];
 
   return `
     <div class="graph-detail__section">
-      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Structured conclusions" : "Structured conclusions")}</div>
-      <div class="graph-conclusion-list">
-        ${conclusions
-          .slice(0, 12)
-          .map(
-            (conclusion) => `
-              <article class="graph-conclusion">
-                <div class="report-item-head">
-                  <strong>${escapeHtml(conclusionKindLabel(conclusion.kind))}</strong>
-                  <div class="report-chip-list">
-                    ${renderPill(supportKindLabel(conclusion.supportKind), conclusion.supportKind === "paper" ? "info" : conclusion.supportKind === "code" ? "ok" : conclusion.supportKind === "inference" ? "warn" : "danger")}
-                    ${renderPill(conclusion.confidence || "-", confidenceTone(conclusion.confidence))}
-                  </div>
-                </div>
-                <p>${escapeHtml(conclusion.statement)}</p>
-                ${
-                  conclusion.evidenceRefs?.length
-                    ? `<div class="report-chip-list">${conclusion.evidenceRefs
-                        .slice(0, 3)
-                        .map((ref) =>
-                          renderPill(
-                            [ref.sourceType, ref.pageNumber ? `${state.lang === "zh" ? "p" : "p"}${ref.pageNumber}` : "", trimText(ref.note || ref.text || "", 42)]
-                              .filter(Boolean)
-                              .join(" · ")
-                          )
-                        )
-                        .join("")}</div>`
-                    : ""
-                }
-                ${
-                  conclusion.missingEvidence
-                    ? `<small>${escapeHtml(conclusion.missingEvidence)}</small>`
-                    : ""
-                }
-              </article>
-            `
-          )
-          .join("")}
+      <div class="card-sub">${escapeHtml(t("graph.reportTitle", "Graph brief"))}</div>
+      ${renderGraphDetailStats([
+        [state.lang === "zh" ? "鍙鑺傜偣" : "Visible nodes", report.stats?.nodes ?? 0],
+        [state.lang === "zh" ? "鍙杩炵嚎" : "Visible links", report.stats?.edges ?? 0, "info"],
+        [state.lang === "zh" ? "瀛ょ珛鑺傜偣" : "Isolated nodes", report.isolatedNodeCount ?? 0, (report.isolatedNodeCount ?? 0) > 0 ? "warn" : "ok"],
+        [state.lang === "zh" ? "鏈€澶х皣" : "Largest cluster", largestCluster?.size ?? 0],
+      ])}
+      <div class="graph-insight-list">
+        ${(report.summary || []).map((item) => `<article class="graph-connection-card"><p>${escapeHtml(item)}</p></article>`).join("")}
       </div>
+      ${
+        topHub
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(t("graph.reportHubs", "Key hubs"))}</div>
+              <div class="graph-related-list">
+                ${(report.hubs || []).slice(0, 4).map((entry) => `
+                  <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(entry.node.id)}">
+                    ${escapeHtml(entry.node.label)}
+                    <span>${escapeHtml(`${graphTypeLabel(entry.node.type)} | ${state.lang === "zh" ? `${entry.degree} links` : `${entry.degree} links`}`)}</span>
+                  </button>
+                `).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+      ${
+        largestCluster
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(t("graph.reportClusters", "Main cluster"))}</div>
+              <article class="graph-connection-card">
+                <p>${escapeHtml(state.lang === "zh" ? `The largest cluster contains ${largestCluster.size} nodes and ${largestCluster.edgeCount} links.` : `The largest cluster contains ${largestCluster.size} nodes and ${largestCluster.edgeCount} links.`)}</p>
+                <div class="graph-related-list">
+                  ${(largestCluster.leadNodes || []).map((node) => `
+                    <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(node.id)}">
+                      ${escapeHtml(node.label)}
+                      <span>${escapeHtml(`${graphTypeLabel(node.type)} | ${state.lang === "zh" ? `${node.degree} links` : `${node.degree} links`}`)}</span>
+                    </button>
+                  `).join("")}
+                </div>
+              </article>
+            </div>
+          `
+          : ""
+      }
     </div>
   `;
+}
+
+function renderGraphConnectionResult() {
+  if (!state.selectedGraphNodeId || !state.graphCompareNodeId) {
+    return `
+      <div class="graph-connection-card empty-state compact-empty">
+        ${escapeHtml(t("graph.comparePrompt", "Choose another paper, then explain the link or show the shortest path."))}
+      </div>
+    `;
+  }
+
+  if (state.graphConnectionPending) {
+    return `
+      <div class="graph-connection-card empty-state compact-empty">
+        ${escapeHtml(t("graph.compareLoading", "Loading graph connection..."))}
+      </div>
+    `;
+  }
+
+  const result = state.graphConnectionResult;
+  if (!result) {
+    return `
+      <div class="graph-connection-card empty-state compact-empty">
+        ${escapeHtml(t("graph.compareIdle", "Run one action above to show the connection summary here."))}
+      </div>
+    `;
+  }
+
+  const pathNodes = result.path?.pathNodes || [];
+  const pathEdges = result.directEdges?.length ? result.directEdges : (result.path?.pathEdges || []);
+  const supportLabels = pathEdges.flatMap((edge) => edge.supportingLabels || []).filter(Boolean).slice(0, 6);
+  const sharedNeighbors = result.sharedNeighbors || [];
+
+  return `
+    <article class="graph-connection-card">
+      <div class="message__meta">
+        <span class="message__author">${escapeHtml(state.graphConnectionMode === "path" ? t("graph.pathTitle", "Shortest path") : t("graph.explainTitle", "Connection explain"))}</span>
+        <span>${escapeHtml(result.relationType || "-")}</span>
+      </div>
+      <p>${escapeHtml(result.summary || (state.lang === "zh" ? "No connection summary available." : "No connection summary available."))}</p>
+      ${
+        pathNodes.length
+          ? `
+            <div class="graph-path">
+              ${pathNodes.map((node, index) => `
+                ${index > 0 ? `<span class="graph-path__arrow">${escapeHtml("->")}</span>` : ""}
+                <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(node.id)}">${escapeHtml(trimText(node.label, 28))}</button>
+              `).join("")}
+            </div>
+          `
+          : ""
+      }
+      ${
+        supportLabels.length
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(t("graph.compareEvidence", "Connection evidence"))}</div>
+              <div class="graph-related-list">
+                ${supportLabels.map((label) => `<div class="graph-summary-chip"><strong>${escapeHtml(label)}</strong></div>`).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+      ${
+        sharedNeighbors.length
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(t("graph.compareShared", "Shared neighbors"))}</div>
+              <div class="graph-related-list">
+                ${sharedNeighbors.map((node) => `
+                  <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(node.id)}">
+                    ${escapeHtml(node.label)}
+                    <span>${escapeHtml(graphTypeLabel(node.type))}</span>
+                  </button>
+                `).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+    </article>
+  `;
+}
+
+function renderGraphConnectionComposer(detail) {
+  if (!detail?.node || !state.graphData?.nodes?.length) {
+    return "";
+  }
+
+  const compareOptions = state.graphData.nodes
+    .filter((node) => node.id !== detail.node.id)
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .map((node) => `
+      <option value="${escapeHtml(node.id)}" ${state.graphCompareNodeId === node.id ? "selected" : ""}>
+        ${escapeHtml(trimText(node.label, 72))}
+      </option>
+    `)
+    .join("");
+
+  return `
+    <div class="graph-detail__section">
+      <div class="card-sub">${escapeHtml(t("graph.compareTitle", "Connection lab"))}</div>
+      <div class="graph-compare-form">
+        <label class="field">
+          <span>${escapeHtml(t("graph.compareLabel", "Compare against"))}</span>
+          <select data-graph-compare-select>
+            <option value="">${escapeHtml(t("graph.comparePlaceholder", "Choose another paper"))}</option>
+            ${compareOptions}
+          </select>
+        </label>
+        <div class="graph-compare-actions">
+          <button class="btn btn--ghost" type="button" data-graph-run-connection="explain" ${state.graphCompareNodeId ? "" : "disabled"}>
+            ${escapeHtml(t("graph.compareExplainAction", "Explain link"))}
+          </button>
+          <button class="btn btn--ghost" type="button" data-graph-run-connection="path" ${state.graphCompareNodeId ? "" : "disabled"}>
+            ${escapeHtml(t("graph.comparePathAction", "Show path"))}
+          </button>
+        </div>
+      </div>
+      ${renderGraphConnectionResult()}
+    </div>
+  `;
+}
+
+function graphTypeLabel(type) {
+  if (state.lang === "zh") {
+    const labels = {
+      direction: "涓婚",
+      discovery_run: "鍙戠幇鎵规",
+      source_item: "鏉ユ簮",
+      paper: "璁烘枃",
+      paper_report: "璁烘枃鍒嗘瀽",
+      repo: "浠撳簱",
+      repo_report: "浠撳簱鍒嗘瀽",
+      module_asset: "妯″潡褰掓。",
+      workflow_report: "鐮旂┒鎶ュ憡",
+      presentation: "婕旂ず鏂囩",
+    };
+    return labels[type] || type;
+  }
+  return GRAPH_TYPE_LABELS[type] || type;
+}
+
+function paperRelationLabel(kind) {
+  const labels = {
+    shared_discovery_run: state.lang === "zh" ? "Discovered together" : "Discovered together",
+    shared_source_item: state.lang === "zh" ? "鍚屼竴鏉ユ簮" : "Mentioned in the same source",
+    shared_repo: state.lang === "zh" ? "鍚屼竴浠撳簱" : "Share the same code repository",
+    shared_workflow_report: state.lang === "zh" ? "鍚屼竴鎶ュ憡" : "Used in the same report",
+    shared_context: state.lang === "zh" ? "Connected in multiple research contexts" : "Connected in multiple research contexts",
+  };
+  return labels[kind] || (state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers");
+}
+
+function graphMetaLabel(key) {
+  const labels = {
+    sourceItems: state.lang === "zh" ? "Sources" : "Sources",
+    discoveryRuns: state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs",
+    workflowReports: state.lang === "zh" ? "Reports" : "Reports",
+    paperReports: state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses",
+    linkedRepos: state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos",
+    connectedPapers: state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers",
+    repoReports: state.lang === "zh" ? "浠撳簱鍒嗘瀽" : "Repo analyses",
+    linkedPapers: state.lang === "zh" ? "鍏宠仈璁烘枃" : "Linked papers",
+    moduleAssets: state.lang === "zh" ? "妯″潡褰掓。" : "Module archives",
+    generatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
+    updatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
+    paperCount: state.lang === "zh" ? "Paper count" : "Paper count",
+    evidenceCount: state.lang === "zh" ? "Evidence items" : "Evidence items",
+    archivePath: state.lang === "zh" ? "褰掓。璺緞" : "Archive path",
+    pathCount: state.lang === "zh" ? "Path count" : "Path count",
+  };
+  return labels[key] || key;
+}
+
+function renderGraphStats(graph) {
+  if (!els.graphStats) return;
+  if (!graph) {
+    els.graphStats.className = "graph-stats";
+    els.graphStats.innerHTML = "";
+    return;
+  }
+
+  const connectedPaperIds = new Set((graph.edges || []).flatMap((edge) => [edge.source, edge.target]));
+  const isolatedPaperCount = (graph.nodes || []).filter((node) => !connectedPaperIds.has(node.id)).length;
+  const cards = [
+    [
+      state.lang === "zh" ? "鍙璁烘枃" : "Visible papers",
+      String(graph.stats?.nodes ?? 0),
+      state.lang === "zh" ? "Paper count in the current filter" : "Paper count in the current filter",
+    ],
+    [
+      state.lang === "zh" ? "鍙鍏宠仈" : "Visible links",
+      String(graph.stats?.edges ?? 0),
+      state.lang === "zh" ? "褰撳墠鑼冨洿鍐呮垚绔嬬殑璁烘枃鍏宠仈" : "Visible paper-to-paper relationships",
+    ],
+    [
+      state.lang === "zh" ? "瀛ょ珛璁烘枃" : "Isolated papers",
+      String(isolatedPaperCount),
+      state.lang === "zh" ? "Papers with no visible connection yet" : "Papers with no visible connection yet",
+    ],
+    [
+      state.lang === "zh" ? "褰撳墠閫変腑" : "Selected paper",
+      state.graphDetail?.node?.label || "-",
+      state.graphDetail?.node
+        ? (state.lang === "zh" ? "See why this paper is connected on the right" : "See why this paper is connected on the right")
+        : (state.lang === "zh" ? "Pick a paper to inspect it" : "Pick a paper to inspect it"),
+    ],
+  ];
+
+  els.graphStats.className = "graph-stats";
+  els.graphStats.innerHTML = cards.map(([label, value, hint]) => `
+    <article class="card panel-card graph-stat-card">
+      <div class="graph-stat-card__label">${escapeHtml(label)}</div>
+      <div class="graph-stat-card__value">${escapeHtml(value)}</div>
+      <div class="graph-stat-card__hint">${escapeHtml(hint)}</div>
+    </article>
+  `).join("");
+}
+
+function renderGraphCanvas(graph) {
+  if (!els.graphCanvas) return;
+  if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+    els.graphCanvas.className = "graph-canvas empty-state compact-empty";
+    els.graphCanvas.textContent = state.lang === "zh" ? "No paper relationships yet." : "No paper relationships yet.";
+    return;
+  }
+
+  const { width, height, positions, degreeByNodeId } = buildPaperGraphLayout(graph);
+  const connectedNodeIds = new Set();
+  (graph.edges || []).forEach((edge) => {
+    if (state.selectedGraphNodeId && (edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId)) {
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    }
+  });
+
+  const edgeMarkup = (graph.edges || [])
+    .filter((edge) => positions.has(edge.source) && positions.has(edge.target))
+    .map((edge) => {
+      const source = positions.get(edge.source);
+      const target = positions.get(edge.target);
+      const active = state.selectedGraphNodeId && (edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId);
+      const strokeWidth = 1.2 + Math.min(2.8, (edge.weight || 1) * 0.45);
+      return `
+        <line
+          x1="${source.x}"
+          y1="${source.y}"
+          x2="${target.x}"
+          y2="${target.y}"
+          class="graph-link ${active ? "graph-link--active" : ""}"
+          style="stroke-width:${strokeWidth}"
+          data-graph-edge-source="${escapeHtml(edge.source)}"
+          data-graph-edge-target="${escapeHtml(edge.target)}"
+        >
+          <title>${escapeHtml(`${paperRelationLabel(edge.kind)}: ${(edge.supportingLabels || []).join(", ") || edge.label}`)}</title>
+        </line>
+      `;
+    })
+    .join("");
+
+  const nodeMarkup = graph.nodes.map((node) => {
+    const pos = positions.get(node.id);
+    const degree = degreeByNodeId.get(node.id) || 0;
+    const radius = 12 + Math.min(10, degree * 1.35);
+    const active = state.selectedGraphNodeId === node.id;
+    const related = connectedNodeIds.has(node.id) && !active;
+    const anchor = pos.x >= width / 2 ? "start" : "end";
+    const labelOffset = anchor === "start" ? radius + 9 : -(radius + 9);
+    const labelVisible = graph.nodes.length <= 36 || active || related || degree >= 2;
+    return `
+      <g
+        class="graph-node-group ${active ? "graph-node-group--active" : related ? "graph-node-group--related" : ""}"
+        data-graph-node="${escapeHtml(node.id)}"
+        data-graph-x="${pos.x}"
+        data-graph-y="${pos.y}"
+        transform="translate(${pos.x} ${pos.y})"
+        role="button"
+        tabindex="0"
+      >
+        <circle cx="0" cy="0" r="${radius}" class="graph-node graph-node--${escapeHtml(node.type)}"></circle>
+        <title>${escapeHtml(node.label)}</title>
+        ${labelVisible ? `<text x="${labelOffset}" y="4" text-anchor="${anchor}" class="graph-node-label">${escapeHtml(trimText(node.label, 28))}</text>` : ""}
+      </g>
+    `;
+  }).join("");
+
+  els.graphCanvas.className = "graph-canvas";
+  els.graphCanvas.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" class="graph-svg" role="img" aria-label="${escapeHtml(state.lang === "zh" ? "Paper relationship map" : "Paper relationship map")}">
+      <g class="graph-scene" transform="${escapeHtml(graphSceneTransform())}">
+        ${edgeMarkup}
+        ${nodeMarkup}
+      </g>
+    </svg>
+  `;
+  bindGraphNodeButtons();
+  bindGraphCanvasInteractions();
+}
+
+function renderGraphEdges(graph) {
+  if (!els.graphEdges) return;
+  if (!graph || !Array.isArray(graph.edges) || graph.edges.length === 0) {
+    els.graphEdges.className = "result-stack empty-state compact-empty";
+    els.graphEdges.textContent = state.lang === "zh" ? "No paper relationships yet." : "No paper relationships yet.";
+    return;
+  }
+
+  const nodeById = new Map((graph.nodes || []).map((node) => [node.id, node]));
+  const activeEdges = state.selectedGraphNodeId
+    ? graph.edges.filter((edge) => edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId)
+    : graph.edges;
+
+  if (!activeEdges.length) {
+    els.graphEdges.className = "result-stack empty-state compact-empty";
+    els.graphEdges.textContent = state.lang === "zh" ? "No visible relationships match the current paper." : "No visible relationships match the current paper.";
+    return;
+  }
+
+  const relationOrder = ["shared_context", "shared_workflow_report", "shared_discovery_run", "shared_source_item", "shared_repo"];
+  const groupedEdges = activeEdges.reduce((acc, edge) => {
+    const kind = edge.kind || "shared_context";
+    const items = acc.get(kind) || [];
+    items.push(edge);
+    acc.set(kind, items);
+    return acc;
+  }, new Map());
+
+  const sortedGroups = [...groupedEdges.entries()].sort((left, right) => {
+    const leftIndex = relationOrder.indexOf(left[0]);
+    const rightIndex = relationOrder.indexOf(right[0]);
+    return (leftIndex === -1 ? 999 : leftIndex) - (rightIndex === -1 ? 999 : rightIndex);
+  });
+
+  els.graphEdges.className = "stack";
+  els.graphEdges.innerHTML = sortedGroups.map(([kind, edges]) => `
+    <section class="graph-edge-group">
+      <div class="card-sub graph-edge-group__title">
+        ${escapeHtml(paperRelationLabel(kind))}
+        <span class="graph-filter-count">${escapeHtml(String(edges.length))}</span>
+      </div>
+      <div class="result-stack">
+        ${[...edges]
+          .sort((left, right) => (right.weight || 0) - (left.weight || 0))
+          .map((edge) => {
+            const source = nodeById.get(edge.source);
+            const target = nodeById.get(edge.target);
+            const supportText = (edge.supportingLabels || []).join(" | ");
+            return `
+              <article class="result-item graph-edge-item">
+                <div class="message__meta">
+                  <span class="message__author">${escapeHtml(state.lang === "zh" ? `鍏宠仈寮哄害 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
+                </div>
+                <div class="graph-edge-item__nodes">
+                  <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(source?.id || edge.source)}">${escapeHtml(source?.label || edge.source)}</button>
+                  <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "鍏宠仈" : "related")}</span>
+                  <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(target?.id || edge.target)}">${escapeHtml(target?.label || edge.target)}</button>
+                </div>
+                ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `鍏宠仈渚濇嵁: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
+              </article>
+            `;
+          }).join("")}
+      </div>
+    </section>
+  `).join("");
+  bindGraphEdgeButtons();
 }
 
 function renderGraphDetailHighlights(detail) {
@@ -4070,94 +4873,67 @@ function renderGraphDetailHighlights(detail) {
     return "";
   }
 
+  if (raw.kind === "paper_relation_node") {
+    const relationKinds = Object.entries(raw.relationKinds || {});
+    const sharedContexts = [...new Set((raw.relations || []).flatMap((relation) => relation.supportingLabels || []).filter(Boolean))];
+
+    return `
+      ${renderGraphDetailStats([
+        [state.lang === "zh" ? "鐩稿叧璁烘枃" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
+        [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
+        [state.lang === "zh" ? "Discovery runs" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "Shared repos" : "Shared repos", detail.node.meta.linkedRepos ?? 0, "ok"],
+      ])}
+      <div class="graph-detail__section">
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鍏宠仈渚濇嵁" : "Why it connects")}</div>
+        <div class="graph-related-list">
+          ${
+            relationKinds.length
+              ? relationKinds.map(([kind, count]) => `
+                  <div class="graph-summary-chip">
+                    <strong>${escapeHtml(paperRelationLabel(kind))}</strong>
+                    <span>${escapeHtml(String(count))}</span>
+                  </div>
+                `).join("")
+              : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No shared context yet." : "No shared context yet.")}</div>`
+          }
+        </div>
+      </div>
+      ${
+        sharedContexts.length
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Shared contexts" : "Shared contexts")}</div>
+              <div class="graph-related-list">
+                ${sharedContexts.map((label) => `<div class="graph-summary-chip"><strong>${escapeHtml(label)}</strong></div>`).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+    `;
+  }
+
   if (raw.kind === "canonical_paper") {
     return `
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "Linked reports" : "Linked reports", detail.node.meta.paperReports ?? 0],
-        [state.lang === "zh" ? "Discovery runs" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
-        [state.lang === "zh" ? "Source items" : "Source items", detail.node.meta.sourceItems ?? 0],
-        [state.lang === "zh" ? "Linked repos" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
+        [state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses", detail.node.meta.paperReports ?? 0],
+        [state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "Sources" : "Sources", detail.node.meta.sourceItems ?? 0],
+        [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
+        [state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
       ])}
       <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Provenance summary" : "Provenance summary")}</div>
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮姒傝" : "Provenance summary")}</div>
         <div class="graph-related-list">
-          ${Object.entries(raw.relatedByType || {})
-            .map(([type, entries]) => `
-              <div class="graph-summary-chip">
-                <strong>${escapeHtml(formatGraphType(type))}</strong>
-                <span>${escapeHtml(String(entries.length))}</span>
-              </div>
-            `)
-            .join("")}
+          ${Object.entries(raw.relatedByType || {}).map(([type, entries]) => `
+            <div class="graph-summary-chip">
+              <strong>${escapeHtml(graphTypeLabel(type))}</strong>
+              <span>${escapeHtml(String(entries.length))}</span>
+            </div>
+          `).join("")}
         </div>
       </div>
-    `;
-  }
-
-  if (raw.kind === "canonical_repo") {
-    return `
-      ${renderGraphDetailStats([
-        [state.lang === "zh" ? "Repo reports" : "Repo reports", detail.node.meta.repoReports ?? 0],
-        [state.lang === "zh" ? "Paper links" : "Paper links", detail.node.meta.linkedPapers ?? 0],
-        [state.lang === "zh" ? "Module assets" : "Module assets", detail.node.meta.moduleAssets ?? 0],
-        [state.lang === "zh" ? "Source items" : "Source items", detail.node.meta.sourceItems ?? 0],
-      ], "ok")}
-      <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Provenance summary" : "Provenance summary")}</div>
-        <div class="graph-related-list">
-          ${Object.entries(raw.relatedByType || {})
-            .map(([type, entries]) => `
-              <div class="graph-summary-chip">
-                <strong>${escapeHtml(formatGraphType(type))}</strong>
-                <span>${escapeHtml(String(entries.length))}</span>
-              </div>
-            `)
-            .join("")}
-        </div>
-      </div>
-    `;
-  }
-
-  if (detail.node.type === "paper_report") {
-    return `
-      ${renderGraphDetailStats([
-        [state.lang === "zh" ? "Paper-supported" : "Paper-supported", raw.evidenceProfile?.paperSupportedCount ?? 0, "info"],
-        [state.lang === "zh" ? "Code-supported" : "Code-supported", raw.evidenceProfile?.codeSupportedCount ?? 0, "ok"],
-        [state.lang === "zh" ? "Inference" : "Inference", raw.evidenceProfile?.inferenceCount ?? 0, "warn"],
-        [state.lang === "zh" ? "Missing evidence" : "Missing evidence", raw.evidenceProfile?.missingEvidenceCount ?? 0, "danger"],
-      ])}
-      ${renderGraphConclusionCards(raw.conclusions)}
-    `;
-  }
-
-  if (detail.node.type === "repo_report") {
-    return renderGraphDetailStats([
-      [state.lang === "zh" ? "Stars" : "Stars", raw.stars ?? 0, "ok"],
-      [state.lang === "zh" ? "Official guess" : "Official guess", raw.likelyOfficial ? "yes" : "no", raw.likelyOfficial ? "ok" : "warn"],
-      [state.lang === "zh" ? "Key paths" : "Key paths", raw.keyPaths?.length ?? 0],
-      [state.lang === "zh" ? "Branch" : "Branch", raw.defaultBranch || "-"],
-    ]);
-  }
-
-  if (detail.node.type === "module_asset") {
-    return `
-      ${renderGraphDetailStats([
-        [state.lang === "zh" ? "Selected paths" : "Selected paths", raw.selectedPaths?.length ?? 0, "ok"],
-        [state.lang === "zh" ? "Archive" : "Archive", raw.archivePath ? "ready" : "-", raw.archivePath ? "ok" : ""],
-      ])}
-      <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Selected module paths" : "Selected module paths")}</div>
-        <div class="report-chip-list">${(raw.selectedPaths || []).map((item) => renderPill(item)).join("")}</div>
-      </div>
-    `;
-  }
-
-  if (detail.node.type === "presentation") {
-    return `
-      ${renderGraphDetailStats([
-        [state.lang === "zh" ? "Source reports" : "Source reports", raw.sourceReportTaskIds?.length ?? 0],
-        [state.lang === "zh" ? "Images" : "Images", raw.imagePaths?.length ?? 0, "ok"],
-      ])}
     `;
   }
 
@@ -4167,14 +4943,1044 @@ function renderGraphDetailHighlights(detail) {
 function renderGraphDetail(detail) {
   if (!els.graphDetail) return;
   if (!detail) {
-    els.graphDetail.className = "empty-state compact-empty";
-    els.graphDetail.textContent = state.selectedGraphNodeId ? "Loading node detail..." : "Select a node to inspect it.";
+    if (state.selectedGraphNodeId) {
+      els.graphDetail.className = "empty-state compact-empty";
+      els.graphDetail.textContent = t("graph.detailLoading", "Loading paper detail...");
+      return;
+    }
+
+    els.graphDetail.className = "graph-detail";
+    els.graphDetail.innerHTML = `
+      <div class="graph-detail__header">
+        <div>
+          <div class="graph-detail__eyebrow">${escapeHtml(t("graph.overviewEyebrow", "Map"))}</div>
+          <h3>${escapeHtml(t("graph.overviewTitle", "Relationship overview"))}</h3>
+          <p>${escapeHtml(t("graph.overviewSub", "Pick a paper and the right panel will explain why it connects to other papers."))}</p>
+        </div>
+      </div>
+      ${renderGraphReportInsights()}
+    `;
+    bindGraphDetailButtons();
     return;
   }
 
   const metaRows = Object.entries(detail.node?.meta || {})
     .filter(([, value]) => value !== null && value !== undefined && value !== "")
-    .map(([key, value]) => `<div class="detail-row"><span>${escapeHtml(key)}</span><strong>${escapeHtml(String(value))}</strong></div>`)
+    .map(([key, value]) => `<div class="detail-row"><span>${escapeHtml(graphMetaLabel(key))}</span><strong>${escapeHtml(String(value))}</strong></div>`)
+    .join("");
+
+  const relatedNodes = detail.relatedNodes?.length
+    ? detail.relatedNodes.map((node) => `
+        <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(node.id)}">
+          ${escapeHtml(node.label)}
+          <span>${escapeHtml(graphTypeLabel(node.type))}</span>
+        </button>
+      `).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(t("graph.noRelatedPapers", "This paper has no directly connected papers."))}</div>`;
+
+  const links = detail.links?.length
+    ? detail.links.map((link) => `
+        <button class="route-chip" type="button" data-graph-href="${escapeHtml(link.href)}">
+          <span class="route-chip__copy">
+            <strong>${escapeHtml(link.label)}</strong>
+            <span>${escapeHtml(link.kind)}</span>
+          </span>
+        </button>
+      `).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(t("graph.noSourceLinks", "No source link is available for this paper."))}</div>`;
+
+  const rawPayload = detail.raw ? clipBlock(JSON.stringify(detail.raw, null, 2)) : t("graph.rawPayload", "Raw payload");
+  const highlightMarkup = renderGraphDetailHighlights(detail);
+
+  els.graphDetail.className = "graph-detail";
+  els.graphDetail.innerHTML = `
+    <div class="graph-detail__header">
+      <div>
+        <div class="graph-detail__eyebrow">${escapeHtml(graphTypeLabel(detail.node.type))}</div>
+        <h3>${escapeHtml(detail.node.label)}</h3>
+        <p>${escapeHtml(detail.node.subtitle || t("graph.detailSub", "Read the paper context, its related papers, and the supporting source links."))}</p>
+      </div>
+      <span class="pill"><strong>${escapeHtml(detail.relatedEdges?.length ? (state.lang === "zh" ? `${detail.relatedEdges.length} links` : `${detail.relatedEdges.length} links`) : (state.lang === "zh" ? "0 links" : "0 links"))}</strong></span>
+    </div>
+    <div class="detail-list">
+      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鑺傜偣 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
+      ${detail.node.occurredAt ? `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "棣栨鍑虹幇" : "First seen")}</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
+      ${metaRows}
+    </div>
+    ${highlightMarkup}
+    ${renderGraphReportInsights()}
+    ${renderGraphConnectionComposer(detail)}
+    <div class="graph-detail__section">
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers")}</div>
+      <div class="graph-related-list">${relatedNodes}</div>
+    </div>
+    <div class="graph-detail__section">
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮閾炬帴" : "Source links")}</div>
+      <div class="fallback-route-list">${links}</div>
+    </div>
+    <details class="graph-detail__toggle">
+      <summary>${escapeHtml(t("graph.rawPayload", "Raw payload"))}</summary>
+      <pre class="graph-detail__raw">${escapeHtml(rawPayload)}</pre>
+    </details>
+  `;
+  bindGraphDetailButtons();
+}
+
+renderGraphReportInsights = function () {
+  const report = state.graphReport;
+  if (!report) {
+    return `
+      <div class="graph-detail__section">
+        <div class="empty-state compact-empty">${escapeHtml(t("graph.reportLoading", "Loading graph insights..."))}</div>
+      </div>
+    `;
+  }
+
+  const topHub = report.hubs?.[0];
+  const largestCluster = report.components?.[0];
+
+  return `
+    <div class="graph-detail__section">
+      <div class="card-sub">${escapeHtml(t("graph.reportTitle", "Graph brief"))}</div>
+      ${renderGraphDetailStats([
+        [state.lang === "zh" ? "鍙鑺傜偣" : "Visible nodes", report.stats?.nodes ?? 0],
+        [state.lang === "zh" ? "鍙杩炵嚎" : "Visible links", report.stats?.edges ?? 0, "info"],
+        [state.lang === "zh" ? "瀛ょ珛鑺傜偣" : "Isolated nodes", report.isolatedNodeCount ?? 0, (report.isolatedNodeCount ?? 0) > 0 ? "warn" : "ok"],
+        [state.lang === "zh" ? "鏈€澶х皣" : "Largest cluster", largestCluster?.size ?? 0],
+      ])}
+      <div class="graph-insight-list">
+        ${(report.summary || []).map((item) => `<article class="graph-connection-card"><p>${escapeHtml(item)}</p></article>`).join("")}
+      </div>
+      ${
+        topHub
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(t("graph.reportHubs", "Key hubs"))}</div>
+              <div class="graph-related-list">
+                ${(report.hubs || []).slice(0, 4).map((entry) => `
+                  <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(entry.node.id)}">
+                    ${escapeHtml(entry.node.label)}
+                    <span>${escapeHtml(`${graphTypeLabel(entry.node.type)} | ${state.lang === "zh" ? `${entry.degree} links` : `${entry.degree} links`}`)}</span>
+                  </button>
+                `).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+      ${
+        largestCluster
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(t("graph.reportClusters", "Main cluster"))}</div>
+              <article class="graph-connection-card">
+                <p>${escapeHtml(state.lang === "zh" ? `The largest cluster contains ${largestCluster.size} nodes and ${largestCluster.edgeCount} links.` : `The largest cluster contains ${largestCluster.size} nodes and ${largestCluster.edgeCount} links.`)}</p>
+                <div class="graph-related-list">
+                  ${(largestCluster.leadNodes || []).map((node) => `
+                    <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(node.id)}">
+                      ${escapeHtml(node.label)}
+                      <span>${escapeHtml(`${graphTypeLabel(node.type)} | ${state.lang === "zh" ? `${node.degree} links` : `${node.degree} links`}`)}</span>
+                    </button>
+                  `).join("")}
+                </div>
+              </article>
+            </div>
+          `
+          : ""
+      }
+    </div>
+  `;
+};
+
+renderGraphConnectionResult = function () {
+  if (!state.selectedGraphNodeId || !state.graphCompareNodeId) {
+    return `
+      <div class="graph-connection-card empty-state compact-empty">
+        ${escapeHtml(t("graph.comparePrompt", "Choose another paper, then explain the link or show the shortest path."))}
+      </div>
+    `;
+  }
+
+  if (state.graphConnectionPending) {
+    return `
+      <div class="graph-connection-card empty-state compact-empty">
+        ${escapeHtml(t("graph.compareLoading", "Loading graph connection..."))}
+      </div>
+    `;
+  }
+
+  const result = state.graphConnectionResult;
+  if (!result) {
+    return `
+      <div class="graph-connection-card empty-state compact-empty">
+        ${escapeHtml(t("graph.compareIdle", "Run one action above to show the connection summary here."))}
+      </div>
+    `;
+  }
+
+  const pathNodes = result.path?.pathNodes || [];
+  const pathEdges = result.directEdges?.length ? result.directEdges : (result.path?.pathEdges || []);
+  const supportLabels = pathEdges.flatMap((edge) => edge.supportingLabels || []).filter(Boolean).slice(0, 6);
+  const sharedNeighbors = result.sharedNeighbors || [];
+
+  return `
+    <article class="graph-connection-card">
+      <div class="message__meta">
+        <span class="message__author">${escapeHtml(state.graphConnectionMode === "path" ? t("graph.pathTitle", "Shortest path") : t("graph.explainTitle", "Connection explain"))}</span>
+        <span>${escapeHtml(result.relationType || "-")}</span>
+      </div>
+      <p>${escapeHtml(result.summary || (state.lang === "zh" ? "No connection summary available." : "No connection summary available."))}</p>
+      ${
+        pathNodes.length
+          ? `
+            <div class="graph-path">
+              ${pathNodes.map((node, index) => `
+                ${index > 0 ? `<span class="graph-path__arrow">${escapeHtml("->")}</span>` : ""}
+                <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(node.id)}">${escapeHtml(trimText(node.label, 28))}</button>
+              `).join("")}
+            </div>
+          `
+          : ""
+      }
+      ${
+        supportLabels.length
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(t("graph.compareEvidence", "Connection evidence"))}</div>
+              <div class="graph-related-list">
+                ${supportLabels.map((label) => `<div class="graph-summary-chip"><strong>${escapeHtml(label)}</strong></div>`).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+      ${
+        sharedNeighbors.length
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(t("graph.compareShared", "Shared neighbors"))}</div>
+              <div class="graph-related-list">
+                ${sharedNeighbors.map((node) => `
+                  <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(node.id)}">
+                    ${escapeHtml(node.label)}
+                    <span>${escapeHtml(graphTypeLabel(node.type))}</span>
+                  </button>
+                `).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+    </article>
+  `;
+};
+
+renderGraphConnectionComposer = function (detail) {
+  if (!detail?.node || !state.graphData?.nodes?.length) {
+    return "";
+  }
+
+  const compareOptions = state.graphData.nodes
+    .filter((node) => node.id !== detail.node.id)
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .map((node) => `
+      <option value="${escapeHtml(node.id)}" ${state.graphCompareNodeId === node.id ? "selected" : ""}>
+        ${escapeHtml(trimText(node.label, 72))}
+      </option>
+    `)
+    .join("");
+
+  return `
+    <div class="graph-detail__section">
+      <div class="card-sub">${escapeHtml(t("graph.compareTitle", "Connection lab"))}</div>
+      <div class="graph-compare-form">
+        <label class="field">
+          <span>${escapeHtml(t("graph.compareLabel", "Compare against"))}</span>
+          <select data-graph-compare-select>
+            <option value="">${escapeHtml(t("graph.comparePlaceholder", "Choose another paper"))}</option>
+            ${compareOptions}
+          </select>
+        </label>
+        <div class="graph-compare-actions">
+          <button class="btn btn--ghost" type="button" data-graph-run-connection="explain" ${state.graphCompareNodeId ? "" : "disabled"}>
+            ${escapeHtml(t("graph.compareExplainAction", "Explain link"))}
+          </button>
+          <button class="btn btn--ghost" type="button" data-graph-run-connection="path" ${state.graphCompareNodeId ? "" : "disabled"}>
+            ${escapeHtml(t("graph.comparePathAction", "Show path"))}
+          </button>
+        </div>
+      </div>
+      ${renderGraphConnectionResult()}
+    </div>
+  `;
+};
+
+graphTypeLabel = function (type) {
+  if (state.lang === "zh") {
+    const labels = {
+      direction: "涓婚",
+      discovery_run: "鍙戠幇鎵规",
+      source_item: "鏉ユ簮",
+      paper: "璁烘枃",
+      paper_report: "璁烘枃鍒嗘瀽",
+      repo: "浠撳簱",
+      repo_report: "浠撳簱鍒嗘瀽",
+      module_asset: "妯″潡褰掓。",
+      workflow_report: "鐮旂┒鎶ュ憡",
+      presentation: "婕旂ず鏂囩",
+    };
+    return labels[type] || type;
+  }
+  return GRAPH_TYPE_LABELS[type] || type;
+};
+
+paperRelationLabel = function (kind) {
+  const labels = {
+    shared_discovery_run: state.lang === "zh" ? "Discovered together" : "Discovered together",
+    shared_source_item: state.lang === "zh" ? "鍚屼竴鏉ユ簮" : "Mentioned in the same source",
+    shared_repo: state.lang === "zh" ? "鍚屼竴浠撳簱" : "Share the same code repository",
+    shared_workflow_report: state.lang === "zh" ? "鍚屼竴鎶ュ憡" : "Used in the same report",
+    shared_context: state.lang === "zh" ? "Connected in multiple research contexts" : "Connected in multiple research contexts",
+  };
+  return labels[kind] || (state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers");
+};
+
+graphMetaLabel = function (key) {
+  const labels = {
+    sourceItems: state.lang === "zh" ? "Sources" : "Sources",
+    discoveryRuns: state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs",
+    workflowReports: state.lang === "zh" ? "Reports" : "Reports",
+    paperReports: state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses",
+    linkedRepos: state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos",
+    connectedPapers: state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers",
+    repoReports: state.lang === "zh" ? "浠撳簱鍒嗘瀽" : "Repo analyses",
+    linkedPapers: state.lang === "zh" ? "鍏宠仈璁烘枃" : "Linked papers",
+    moduleAssets: state.lang === "zh" ? "妯″潡褰掓。" : "Module archives",
+    generatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
+    updatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
+    paperCount: state.lang === "zh" ? "Paper count" : "Paper count",
+    evidenceCount: state.lang === "zh" ? "Evidence items" : "Evidence items",
+    archivePath: state.lang === "zh" ? "褰掓。璺緞" : "Archive path",
+    pathCount: state.lang === "zh" ? "Path count" : "Path count",
+  };
+  return labels[key] || key;
+};
+
+renderGraphStats = function (graph) {
+  if (!els.graphStats) return;
+  if (!graph) {
+    els.graphStats.className = "graph-stats";
+    els.graphStats.innerHTML = "";
+    return;
+  }
+
+  const connectedPaperIds = new Set((graph.edges || []).flatMap((edge) => [edge.source, edge.target]));
+  const isolatedPaperCount = (graph.nodes || []).filter((node) => !connectedPaperIds.has(node.id)).length;
+  const cards = [
+    [
+      state.lang === "zh" ? "鍙璁烘枃" : "Visible papers",
+      String(graph.stats?.nodes ?? 0),
+      state.lang === "zh" ? "Paper count in the current filter" : "Paper count in the current filter",
+    ],
+    [
+      state.lang === "zh" ? "鍙鍏宠仈" : "Visible links",
+      String(graph.stats?.edges ?? 0),
+      state.lang === "zh" ? "褰撳墠鑼冨洿鍐呮垚绔嬬殑璁烘枃鍏宠仈" : "Visible paper-to-paper relationships",
+    ],
+    [
+      state.lang === "zh" ? "瀛ょ珛璁烘枃" : "Isolated papers",
+      String(isolatedPaperCount),
+      state.lang === "zh" ? "Papers with no visible connection yet" : "Papers with no visible connection yet",
+    ],
+    [
+      state.lang === "zh" ? "褰撳墠閫変腑" : "Selected paper",
+      state.graphDetail?.node?.label || "-",
+      state.graphDetail?.node
+        ? (state.lang === "zh" ? "See why this paper is connected on the right" : "See why this paper is connected on the right")
+        : (state.lang === "zh" ? "Pick a paper to inspect it" : "Pick a paper to inspect it"),
+    ],
+  ];
+
+  els.graphStats.className = "graph-stats";
+  els.graphStats.innerHTML = cards.map(([label, value, hint]) => `
+    <article class="card panel-card graph-stat-card">
+      <div class="graph-stat-card__label">${escapeHtml(label)}</div>
+      <div class="graph-stat-card__value">${escapeHtml(value)}</div>
+      <div class="graph-stat-card__hint">${escapeHtml(hint)}</div>
+    </article>
+  `).join("");
+};
+
+renderGraphCanvas = function (graph) {
+  if (!els.graphCanvas) return;
+  if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+    els.graphCanvas.className = "graph-canvas empty-state compact-empty";
+    els.graphCanvas.textContent = state.lang === "zh" ? "No paper relationships yet." : "No paper relationships yet.";
+    return;
+  }
+
+  const { width, height, positions, degreeByNodeId } = buildPaperGraphLayout(graph);
+  const connectedNodeIds = new Set();
+  (graph.edges || []).forEach((edge) => {
+    if (state.selectedGraphNodeId && (edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId)) {
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    }
+  });
+
+  const edgeMarkup = (graph.edges || [])
+    .filter((edge) => positions.has(edge.source) && positions.has(edge.target))
+    .map((edge) => {
+      const source = positions.get(edge.source);
+      const target = positions.get(edge.target);
+      const active = state.selectedGraphNodeId && (edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId);
+      const strokeWidth = 1.2 + Math.min(2.8, (edge.weight || 1) * 0.45);
+      return `
+        <line
+          x1="${source.x}"
+          y1="${source.y}"
+          x2="${target.x}"
+          y2="${target.y}"
+          class="graph-link ${active ? "graph-link--active" : ""}"
+          style="stroke-width:${strokeWidth}"
+          data-graph-edge-source="${escapeHtml(edge.source)}"
+          data-graph-edge-target="${escapeHtml(edge.target)}"
+        >
+          <title>${escapeHtml(`${paperRelationLabel(edge.kind)}: ${(edge.supportingLabels || []).join(", ") || edge.label}`)}</title>
+        </line>
+      `;
+    })
+    .join("");
+
+  const nodeMarkup = graph.nodes.map((node) => {
+    const pos = positions.get(node.id);
+    const degree = degreeByNodeId.get(node.id) || 0;
+    const radius = 12 + Math.min(10, degree * 1.35);
+    const active = state.selectedGraphNodeId === node.id;
+    const related = connectedNodeIds.has(node.id) && !active;
+    const anchor = pos.x >= width / 2 ? "start" : "end";
+    const labelOffset = anchor === "start" ? radius + 9 : -(radius + 9);
+    const labelVisible = graph.nodes.length <= 36 || active || related || degree >= 2;
+    return `
+      <g
+        class="graph-node-group ${active ? "graph-node-group--active" : related ? "graph-node-group--related" : ""}"
+        data-graph-node="${escapeHtml(node.id)}"
+        data-graph-x="${pos.x}"
+        data-graph-y="${pos.y}"
+        transform="translate(${pos.x} ${pos.y})"
+        role="button"
+        tabindex="0"
+      >
+        <circle cx="0" cy="0" r="${radius}" class="graph-node graph-node--${escapeHtml(node.type)}"></circle>
+        <title>${escapeHtml(node.label)}</title>
+        ${labelVisible ? `<text x="${labelOffset}" y="4" text-anchor="${anchor}" class="graph-node-label">${escapeHtml(trimText(node.label, 28))}</text>` : ""}
+      </g>
+    `;
+  }).join("");
+
+  els.graphCanvas.className = "graph-canvas";
+  els.graphCanvas.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" class="graph-svg" role="img" aria-label="${escapeHtml(state.lang === "zh" ? "Paper relationship map" : "Paper relationship map")}">
+      <g class="graph-scene" transform="${escapeHtml(graphSceneTransform())}">
+        ${edgeMarkup}
+        ${nodeMarkup}
+      </g>
+    </svg>
+  `;
+  bindGraphNodeButtons();
+  bindGraphCanvasInteractions();
+};
+
+renderGraphEdges = function (graph) {
+  if (!els.graphEdges) return;
+  if (!graph || !Array.isArray(graph.edges) || graph.edges.length === 0) {
+    els.graphEdges.className = "result-stack empty-state compact-empty";
+    els.graphEdges.textContent = state.lang === "zh" ? "No paper relationships yet." : "No paper relationships yet.";
+    return;
+  }
+
+  const nodeById = new Map((graph.nodes || []).map((node) => [node.id, node]));
+  const activeEdges = state.selectedGraphNodeId
+    ? graph.edges.filter((edge) => edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId)
+    : graph.edges;
+
+  if (!activeEdges.length) {
+    els.graphEdges.className = "result-stack empty-state compact-empty";
+    els.graphEdges.textContent = state.lang === "zh" ? "No visible relationships match the current paper." : "No visible relationships match the current paper.";
+    return;
+  }
+
+  const relationOrder = ["shared_context", "shared_workflow_report", "shared_discovery_run", "shared_source_item", "shared_repo"];
+  const groupedEdges = activeEdges.reduce((acc, edge) => {
+    const kind = edge.kind || "shared_context";
+    const items = acc.get(kind) || [];
+    items.push(edge);
+    acc.set(kind, items);
+    return acc;
+  }, new Map());
+
+  const sortedGroups = [...groupedEdges.entries()].sort((left, right) => {
+    const leftIndex = relationOrder.indexOf(left[0]);
+    const rightIndex = relationOrder.indexOf(right[0]);
+    return (leftIndex === -1 ? 999 : leftIndex) - (rightIndex === -1 ? 999 : rightIndex);
+  });
+
+  els.graphEdges.className = "stack";
+  els.graphEdges.innerHTML = sortedGroups.map(([kind, edges]) => `
+    <section class="graph-edge-group">
+      <div class="card-sub graph-edge-group__title">
+        ${escapeHtml(paperRelationLabel(kind))}
+        <span class="graph-filter-count">${escapeHtml(String(edges.length))}</span>
+      </div>
+      <div class="result-stack">
+        ${[...edges]
+          .sort((left, right) => (right.weight || 0) - (left.weight || 0))
+          .map((edge) => {
+            const source = nodeById.get(edge.source);
+            const target = nodeById.get(edge.target);
+            const supportText = (edge.supportingLabels || []).join(" | ");
+            return `
+              <article class="result-item graph-edge-item">
+                <div class="message__meta">
+                  <span class="message__author">${escapeHtml(state.lang === "zh" ? `鍏宠仈寮哄害 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
+                </div>
+                <div class="graph-edge-item__nodes">
+                  <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(source?.id || edge.source)}">${escapeHtml(source?.label || edge.source)}</button>
+                  <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "鍏宠仈" : "related")}</span>
+                  <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(target?.id || edge.target)}">${escapeHtml(target?.label || edge.target)}</button>
+                </div>
+                ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `鍏宠仈渚濇嵁: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
+              </article>
+            `;
+          }).join("")}
+      </div>
+    </section>
+  `).join("");
+  bindGraphEdgeButtons();
+};
+
+renderGraphDetailHighlights = function (detail) {
+  const raw = detail?.raw;
+  if (!raw || typeof raw !== "object") {
+    return "";
+  }
+
+  if (raw.kind === "paper_relation_node") {
+    const relationKinds = Object.entries(raw.relationKinds || {});
+    const sharedContexts = [...new Set((raw.relations || []).flatMap((relation) => relation.supportingLabels || []).filter(Boolean))];
+
+    return `
+      ${renderGraphDetailStats([
+        [state.lang === "zh" ? "鐩稿叧璁烘枃" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
+        [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
+        [state.lang === "zh" ? "Discovery runs" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "Shared repos" : "Shared repos", detail.node.meta.linkedRepos ?? 0, "ok"],
+      ])}
+      <div class="graph-detail__section">
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鍏宠仈渚濇嵁" : "Why it connects")}</div>
+        <div class="graph-related-list">
+          ${
+            relationKinds.length
+              ? relationKinds.map(([kind, count]) => `
+                  <div class="graph-summary-chip">
+                    <strong>${escapeHtml(paperRelationLabel(kind))}</strong>
+                    <span>${escapeHtml(String(count))}</span>
+                  </div>
+                `).join("")
+              : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No shared context yet." : "No shared context yet.")}</div>`
+          }
+        </div>
+      </div>
+      ${
+        sharedContexts.length
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Shared contexts" : "Shared contexts")}</div>
+              <div class="graph-related-list">
+                ${sharedContexts.map((label) => `<div class="graph-summary-chip"><strong>${escapeHtml(label)}</strong></div>`).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+    `;
+  }
+
+  if (raw.kind === "canonical_paper") {
+    return `
+      ${renderGraphDetailStats([
+        [state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses", detail.node.meta.paperReports ?? 0],
+        [state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "Sources" : "Sources", detail.node.meta.sourceItems ?? 0],
+        [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
+        [state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
+      ])}
+      <div class="graph-detail__section">
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮姒傝" : "Provenance summary")}</div>
+        <div class="graph-related-list">
+          ${Object.entries(raw.relatedByType || {}).map(([type, entries]) => `
+            <div class="graph-summary-chip">
+              <strong>${escapeHtml(graphTypeLabel(type))}</strong>
+              <span>${escapeHtml(String(entries.length))}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  return "";
+};
+
+renderGraphDetail = function (detail) {
+  if (!els.graphDetail) return;
+  if (!detail) {
+    if (state.selectedGraphNodeId) {
+      els.graphDetail.className = "empty-state compact-empty";
+      els.graphDetail.textContent = t("graph.detailLoading", "Loading paper detail...");
+      return;
+    }
+
+    els.graphDetail.className = "graph-detail";
+    els.graphDetail.innerHTML = `
+      <div class="graph-detail__header">
+        <div>
+          <div class="graph-detail__eyebrow">${escapeHtml(t("graph.overviewEyebrow", "Map"))}</div>
+          <h3>${escapeHtml(t("graph.overviewTitle", "Relationship overview"))}</h3>
+          <p>${escapeHtml(t("graph.overviewSub", "Pick a paper and the right panel will explain why it connects to other papers."))}</p>
+        </div>
+      </div>
+      ${renderGraphReportInsights()}
+    `;
+    bindGraphDetailButtons();
+    return;
+  }
+
+  const metaRows = Object.entries(detail.node?.meta || {})
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([key, value]) => `<div class="detail-row"><span>${escapeHtml(graphMetaLabel(key))}</span><strong>${escapeHtml(String(value))}</strong></div>`)
+    .join("");
+
+  const relatedNodes = detail.relatedNodes?.length
+    ? detail.relatedNodes.map((node) => `
+        <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(node.id)}">
+          ${escapeHtml(node.label)}
+          <span>${escapeHtml(graphTypeLabel(node.type))}</span>
+        </button>
+      `).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(t("graph.noRelatedPapers", "This paper has no directly connected papers."))}</div>`;
+
+  const links = detail.links?.length
+    ? detail.links.map((link) => `
+        <button class="route-chip" type="button" data-graph-href="${escapeHtml(link.href)}">
+          <span class="route-chip__copy">
+            <strong>${escapeHtml(link.label)}</strong>
+            <span>${escapeHtml(link.kind)}</span>
+          </span>
+        </button>
+      `).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml(t("graph.noSourceLinks", "No source link is available for this paper."))}</div>`;
+
+  const rawPayload = detail.raw ? clipBlock(JSON.stringify(detail.raw, null, 2)) : t("graph.rawPayload", "Raw payload");
+  const highlightMarkup = renderGraphDetailHighlights(detail);
+
+  els.graphDetail.className = "graph-detail";
+  els.graphDetail.innerHTML = `
+    <div class="graph-detail__header">
+      <div>
+        <div class="graph-detail__eyebrow">${escapeHtml(graphTypeLabel(detail.node.type))}</div>
+        <h3>${escapeHtml(detail.node.label)}</h3>
+        <p>${escapeHtml(detail.node.subtitle || t("graph.detailSub", "Read the paper context, its related papers, and the supporting source links."))}</p>
+      </div>
+      <span class="pill"><strong>${escapeHtml(detail.relatedEdges?.length ? (state.lang === "zh" ? `${detail.relatedEdges.length} links` : `${detail.relatedEdges.length} links`) : (state.lang === "zh" ? "0 links" : "0 links"))}</strong></span>
+    </div>
+    <div class="detail-list">
+      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鑺傜偣 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
+      ${detail.node.occurredAt ? `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "棣栨鍑虹幇" : "First seen")}</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
+      ${metaRows}
+    </div>
+    ${highlightMarkup}
+    ${renderGraphReportInsights()}
+    ${renderGraphConnectionComposer(detail)}
+    <div class="graph-detail__section">
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers")}</div>
+      <div class="graph-related-list">${relatedNodes}</div>
+    </div>
+    <div class="graph-detail__section">
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮閾炬帴" : "Source links")}</div>
+      <div class="fallback-route-list">${links}</div>
+    </div>
+    <details class="graph-detail__toggle">
+      <summary>${escapeHtml(t("graph.rawPayload", "Raw payload"))}</summary>
+      <pre class="graph-detail__raw">${escapeHtml(rawPayload)}</pre>
+    </details>
+  `;
+  bindGraphDetailButtons();
+};
+
+graphTypeLabel = function (type) {
+  if (state.lang === "zh") {
+    const labels = {
+      direction: "涓婚",
+      discovery_run: "鍙戠幇鎵规",
+      source_item: "鏉ユ簮",
+      paper: "璁烘枃",
+      paper_report: "璁烘枃鍒嗘瀽",
+      repo: "浠撳簱",
+      repo_report: "浠撳簱鍒嗘瀽",
+      module_asset: "妯″潡褰掓。",
+      workflow_report: "鐮旂┒鎶ュ憡",
+      presentation: "婕旂ず鏂囩",
+    };
+    return labels[type] || type;
+  }
+  return GRAPH_TYPE_LABELS[type] || type;
+};
+
+paperRelationLabel = function (kind) {
+  const labels = {
+    shared_discovery_run: state.lang === "zh" ? "Discovered together" : "Discovered together",
+    shared_source_item: state.lang === "zh" ? "鍚屼竴鏉ユ簮" : "Mentioned in the same source",
+    shared_repo: state.lang === "zh" ? "鍚屼竴浠撳簱" : "Share the same code repository",
+    shared_workflow_report: state.lang === "zh" ? "鍚屼竴鎶ュ憡" : "Used in the same report",
+    shared_context: state.lang === "zh" ? "Connected in multiple research contexts" : "Connected in multiple research contexts",
+  };
+  return labels[kind] || (state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers");
+};
+
+graphMetaLabel = function (key) {
+  const labels = {
+    sourceItems: state.lang === "zh" ? "Sources" : "Sources",
+    discoveryRuns: state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs",
+    workflowReports: state.lang === "zh" ? "Reports" : "Reports",
+    paperReports: state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses",
+    linkedRepos: state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos",
+    connectedPapers: state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers",
+    repoReports: state.lang === "zh" ? "浠撳簱鍒嗘瀽" : "Repo analyses",
+    linkedPapers: state.lang === "zh" ? "鍏宠仈璁烘枃" : "Linked papers",
+    moduleAssets: state.lang === "zh" ? "妯″潡褰掓。" : "Module archives",
+    generatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
+    updatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
+    paperCount: state.lang === "zh" ? "Paper count" : "Paper count",
+    evidenceCount: state.lang === "zh" ? "Evidence items" : "Evidence items",
+    archivePath: state.lang === "zh" ? "褰掓。璺緞" : "Archive path",
+    pathCount: state.lang === "zh" ? "Path count" : "Path count",
+  };
+  return labels[key] || key;
+};
+
+renderGraphStats = function (graph) {
+  if (!els.graphStats) return;
+  if (!graph) {
+    els.graphStats.className = "graph-stats";
+    els.graphStats.innerHTML = "";
+    return;
+  }
+
+  const connectedPaperIds = new Set((graph.edges || []).flatMap((edge) => [edge.source, edge.target]));
+  const isolatedPaperCount = (graph.nodes || []).filter((node) => !connectedPaperIds.has(node.id)).length;
+  const cards = [
+    [
+      state.lang === "zh" ? "鍙璁烘枃" : "Visible papers",
+      String(graph.stats?.nodes ?? 0),
+      state.lang === "zh" ? "Paper count in the current filter" : "Paper count in the current filter",
+    ],
+    [
+      state.lang === "zh" ? "鍙鍏宠仈" : "Visible links",
+      String(graph.stats?.edges ?? 0),
+      state.lang === "zh" ? "褰撳墠鑼冨洿鍐呮垚绔嬬殑璁烘枃鍏宠仈" : "Visible paper-to-paper relationships",
+    ],
+    [
+      state.lang === "zh" ? "瀛ょ珛璁烘枃" : "Isolated papers",
+      String(isolatedPaperCount),
+      state.lang === "zh" ? "Papers with no visible connection yet" : "Papers with no visible connection yet",
+    ],
+    [
+      state.lang === "zh" ? "褰撳墠閫変腑" : "Selected paper",
+      state.graphDetail?.node?.label || "-",
+      state.graphDetail?.node
+        ? (state.lang === "zh" ? "See why this paper is connected on the right" : "See why this paper is connected on the right")
+        : (state.lang === "zh" ? "Pick a paper to inspect it" : "Pick a paper to inspect it"),
+    ],
+  ];
+
+  els.graphStats.className = "graph-stats";
+  els.graphStats.innerHTML = cards
+    .map(
+      ([label, value, hint]) => `
+        <article class="card panel-card graph-stat-card">
+          <div class="graph-stat-card__label">${escapeHtml(label)}</div>
+          <div class="graph-stat-card__value">${escapeHtml(value)}</div>
+          <div class="graph-stat-card__hint">${escapeHtml(hint)}</div>
+        </article>
+      `,
+    )
+    .join("");
+};
+
+renderGraphCanvas = function (graph) {
+  if (!els.graphCanvas) return;
+  if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+    els.graphCanvas.className = "graph-canvas empty-state compact-empty";
+    els.graphCanvas.textContent = state.lang === "zh" ? "No paper relationships yet." : "No paper relationships yet.";
+    return;
+  }
+
+  const { width, height, positions, degreeByNodeId } = buildPaperGraphLayout(graph);
+  const connectedNodeIds = new Set();
+  (graph.edges || []).forEach((edge) => {
+    if (state.selectedGraphNodeId && (edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId)) {
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    }
+  });
+
+  const edgeMarkup = (graph.edges || [])
+    .filter((edge) => positions.has(edge.source) && positions.has(edge.target))
+    .map((edge) => {
+      const source = positions.get(edge.source);
+      const target = positions.get(edge.target);
+      const active = state.selectedGraphNodeId && (edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId);
+      const strokeWidth = 1.2 + Math.min(2.8, (edge.weight || 1) * 0.45);
+      return `
+        <line
+          x1="${source.x}"
+          y1="${source.y}"
+          x2="${target.x}"
+          y2="${target.y}"
+          class="graph-link ${active ? "graph-link--active" : ""}"
+          style="stroke-width:${strokeWidth}"
+          data-graph-edge-source="${escapeHtml(edge.source)}"
+          data-graph-edge-target="${escapeHtml(edge.target)}"
+        >
+          <title>${escapeHtml(`${paperRelationLabel(edge.kind)}: ${(edge.supportingLabels || []).join(", ") || edge.label}`)}</title>
+        </line>
+      `;
+    })
+    .join("");
+
+  const nodeMarkup = graph.nodes
+    .map((node) => {
+      const pos = positions.get(node.id);
+      const degree = degreeByNodeId.get(node.id) || 0;
+      const radius = 12 + Math.min(10, degree * 1.35);
+      const active = state.selectedGraphNodeId === node.id;
+      const related = connectedNodeIds.has(node.id) && !active;
+      const anchor = pos.x >= width / 2 ? "start" : "end";
+      const labelOffset = anchor === "start" ? radius + 9 : -(radius + 9);
+      const labelVisible = graph.nodes.length <= 36 || active || related || degree >= 2;
+      return `
+        <g
+          class="graph-node-group ${active ? "graph-node-group--active" : related ? "graph-node-group--related" : ""}"
+          data-graph-node="${escapeHtml(node.id)}"
+          data-graph-x="${pos.x}"
+          data-graph-y="${pos.y}"
+          transform="translate(${pos.x} ${pos.y})"
+          role="button"
+          tabindex="0"
+        >
+          <circle cx="0" cy="0" r="${radius}" class="graph-node graph-node--${escapeHtml(node.type)}"></circle>
+          <title>${escapeHtml(node.label)}</title>
+          ${labelVisible ? `<text x="${labelOffset}" y="4" text-anchor="${anchor}" class="graph-node-label">${escapeHtml(trimText(node.label, 28))}</text>` : ""}
+        </g>
+      `;
+    })
+    .join("");
+
+  els.graphCanvas.className = "graph-canvas";
+  els.graphCanvas.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" class="graph-svg" role="img" aria-label="${escapeHtml(state.lang === "zh" ? "Paper relationship map" : "Paper relationship map")}">
+      <g class="graph-scene" transform="${escapeHtml(graphSceneTransform())}">
+        ${edgeMarkup}
+        ${nodeMarkup}
+      </g>
+    </svg>
+  `;
+  bindGraphNodeButtons();
+  bindGraphCanvasInteractions();
+};
+
+renderGraphEdges = function (graph) {
+  if (!els.graphEdges) return;
+  if (!graph || !Array.isArray(graph.edges) || graph.edges.length === 0) {
+    els.graphEdges.className = "result-stack empty-state compact-empty";
+    els.graphEdges.textContent = state.lang === "zh" ? "No paper relationships yet." : "No paper relationships yet.";
+    return;
+  }
+
+  const nodeById = new Map((graph.nodes || []).map((node) => [node.id, node]));
+  const activeEdges = state.selectedGraphNodeId
+    ? graph.edges.filter((edge) => edge.source === state.selectedGraphNodeId || edge.target === state.selectedGraphNodeId)
+    : graph.edges;
+
+  if (!activeEdges.length) {
+    els.graphEdges.className = "result-stack empty-state compact-empty";
+    els.graphEdges.textContent = state.lang === "zh" ? "No visible relationships match the current paper." : "No visible relationships match the current paper.";
+    return;
+  }
+
+  const relationOrder = ["shared_context", "shared_workflow_report", "shared_discovery_run", "shared_source_item", "shared_repo"];
+  const groupedEdges = activeEdges.reduce((acc, edge) => {
+    const kind = edge.kind || "shared_context";
+    const items = acc.get(kind) || [];
+    items.push(edge);
+    acc.set(kind, items);
+    return acc;
+  }, new Map());
+
+  const sortedGroups = [...groupedEdges.entries()].sort((left, right) => {
+    const leftIndex = relationOrder.indexOf(left[0]);
+    const rightIndex = relationOrder.indexOf(right[0]);
+    return (leftIndex === -1 ? 999 : leftIndex) - (rightIndex === -1 ? 999 : rightIndex);
+  });
+
+  els.graphEdges.className = "stack";
+  els.graphEdges.innerHTML = sortedGroups
+    .map(
+      ([kind, edges]) => `
+        <section class="graph-edge-group">
+          <div class="card-sub graph-edge-group__title">
+            ${escapeHtml(paperRelationLabel(kind))}
+            <span class="graph-filter-count">${escapeHtml(String(edges.length))}</span>
+          </div>
+          <div class="result-stack">
+            ${[...edges]
+              .sort((left, right) => (right.weight || 0) - (left.weight || 0))
+              .map((edge) => {
+                const source = nodeById.get(edge.source);
+                const target = nodeById.get(edge.target);
+                const supportText = (edge.supportingLabels || []).join(" | ");
+                return `
+                  <article class="result-item graph-edge-item">
+                    <div class="message__meta">
+                      <span class="message__author">${escapeHtml(state.lang === "zh" ? `鍏宠仈寮哄害 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
+                    </div>
+                    <div class="graph-edge-item__nodes">
+                      <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(source?.id || edge.source)}">${escapeHtml(source?.label || edge.source)}</button>
+                      <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "鍏宠仈" : "related")}</span>
+                      <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(target?.id || edge.target)}">${escapeHtml(target?.label || edge.target)}</button>
+                    </div>
+                    ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `鍏宠仈渚濇嵁: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
+                  </article>
+                `;
+              })
+              .join("")}
+          </div>
+        </section>
+      `,
+    )
+    .join("");
+  bindGraphEdgeButtons();
+};
+
+renderGraphDetailHighlights = function (detail) {
+  const raw = detail?.raw;
+  if (!raw || typeof raw !== "object") {
+    return "";
+  }
+
+  if (raw.kind === "paper_relation_node") {
+    const relationKinds = Object.entries(raw.relationKinds || {});
+    const sharedContexts = [...new Set((raw.relations || []).flatMap((relation) => relation.supportingLabels || []).filter(Boolean))];
+
+    return `
+      ${renderGraphDetailStats([
+        [state.lang === "zh" ? "鐩稿叧璁烘枃" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
+        [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
+        [state.lang === "zh" ? "Discovery runs" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "Shared repos" : "Shared repos", detail.node.meta.linkedRepos ?? 0, "ok"],
+      ])}
+      <div class="graph-detail__section">
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鍏宠仈渚濇嵁" : "Why it connects")}</div>
+        <div class="graph-related-list">
+          ${
+            relationKinds.length
+              ? relationKinds
+                  .map(
+                    ([kind, count]) => `
+                      <div class="graph-summary-chip">
+                        <strong>${escapeHtml(paperRelationLabel(kind))}</strong>
+                        <span>${escapeHtml(String(count))}</span>
+                      </div>
+                    `,
+                  )
+                  .join("")
+              : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No shared context yet." : "No shared context yet.")}</div>`
+          }
+        </div>
+      </div>
+      ${
+        sharedContexts.length
+          ? `
+            <div class="graph-detail__section">
+              <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Shared contexts" : "Shared contexts")}</div>
+              <div class="graph-related-list">
+                ${sharedContexts.map((label) => `<div class="graph-summary-chip"><strong>${escapeHtml(label)}</strong></div>`).join("")}
+              </div>
+            </div>
+          `
+          : ""
+      }
+    `;
+  }
+
+  if (raw.kind === "canonical_paper") {
+    return `
+      ${renderGraphDetailStats([
+        [state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses", detail.node.meta.paperReports ?? 0],
+        [state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "Sources" : "Sources", detail.node.meta.sourceItems ?? 0],
+        [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
+        [state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
+      ])}
+      <div class="graph-detail__section">
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮姒傝" : "Provenance summary")}</div>
+        <div class="graph-related-list">
+          ${Object.entries(raw.relatedByType || {})
+            .map(
+              ([type, entries]) => `
+                <div class="graph-summary-chip">
+                  <strong>${escapeHtml(graphTypeLabel(type))}</strong>
+                  <span>${escapeHtml(String(entries.length))}</span>
+                </div>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  return "";
+};
+
+renderGraphDetail = function (detail) {
+  if (!els.graphDetail) return;
+  if (!detail) {
+    if (state.selectedGraphNodeId) {
+      els.graphDetail.className = "empty-state compact-empty";
+      els.graphDetail.textContent = t("graph.detailLoading", "Loading paper detail...");
+      return;
+    }
+
+    els.graphDetail.className = "graph-detail";
+    els.graphDetail.innerHTML = `
+      <div class="graph-detail__header">
+        <div>
+          <div class="graph-detail__eyebrow">${escapeHtml(t("graph.overviewEyebrow", "Map"))}</div>
+          <h3>${escapeHtml(t("graph.overviewTitle", "Relationship overview"))}</h3>
+          <p>${escapeHtml(t("graph.overviewSub", "Pick a paper and the right panel will explain why it connects to other papers."))}</p>
+        </div>
+      </div>
+      ${renderGraphReportInsights()}
+    `;
+    bindGraphDetailButtons();
+    return;
+  }
+
+  const metaRows = Object.entries(detail.node?.meta || {})
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([key, value]) => `<div class="detail-row"><span>${escapeHtml(graphMetaLabel(key))}</span><strong>${escapeHtml(String(value))}</strong></div>`)
     .join("");
 
   const relatedNodes = detail.relatedNodes?.length
@@ -4183,12 +5989,12 @@ function renderGraphDetail(detail) {
           (node) => `
             <button class="graph-related-chip" type="button" data-graph-open-node="${escapeHtml(node.id)}">
               ${escapeHtml(node.label)}
-              <span>${escapeHtml(formatGraphType(node.type))}</span>
+              <span>${escapeHtml(graphTypeLabel(node.type))}</span>
             </button>
-          `
+          `,
         )
         .join("")
-    : `<div class="empty-state compact-empty">No directly connected nodes.</div>`;
+    : `<div class="empty-state compact-empty">${escapeHtml(t("graph.noRelatedPapers", "This paper has no directly connected papers."))}</div>`;
 
   const links = detail.links?.length
     ? detail.links
@@ -4200,105 +6006,48 @@ function renderGraphDetail(detail) {
                 <span>${escapeHtml(link.kind)}</span>
               </span>
             </button>
-          `
+          `,
         )
         .join("")
-    : `<div class="empty-state compact-empty">No raw artifact or source link is available for this node.</div>`;
+    : `<div class="empty-state compact-empty">${escapeHtml(t("graph.noSourceLinks", "No source link is available for this paper."))}</div>`;
 
-  const rawPayload = detail.raw ? clipBlock(JSON.stringify(detail.raw, null, 2)) : "No raw payload available.";
+  const rawPayload = detail.raw ? clipBlock(JSON.stringify(detail.raw, null, 2)) : t("graph.rawPayload", "Raw payload");
   const highlightMarkup = renderGraphDetailHighlights(detail);
 
   els.graphDetail.className = "graph-detail";
   els.graphDetail.innerHTML = `
     <div class="graph-detail__header">
       <div>
-        <div class="graph-detail__eyebrow">${escapeHtml(formatGraphType(detail.node.type))}</div>
+        <div class="graph-detail__eyebrow">${escapeHtml(graphTypeLabel(detail.node.type))}</div>
         <h3>${escapeHtml(detail.node.label)}</h3>
-        <p>${escapeHtml(detail.node.subtitle || "No subtitle available.")}</p>
+        <p>${escapeHtml(detail.node.subtitle || t("graph.detailSub", "Read the paper context, its related papers, and the supporting source links."))}</p>
       </div>
-      <span class="pill"><strong>${escapeHtml(detail.relatedEdges?.length ? `${detail.relatedEdges.length} edges` : "0 edges")}</strong></span>
+      <span class="pill"><strong>${escapeHtml(detail.relatedEdges?.length ? (state.lang === "zh" ? `${detail.relatedEdges.length} links` : `${detail.relatedEdges.length} links`) : (state.lang === "zh" ? "0 links" : "0 links"))}</strong></span>
     </div>
     <div class="detail-list">
-      <div class="detail-row"><span>Node ID</span><strong>${escapeHtml(detail.node.id)}</strong></div>
-      ${detail.node.occurredAt ? `<div class="detail-row"><span>Occurred</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
+      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鑺傜偣 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
+      ${detail.node.occurredAt ? `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "棣栨鍑虹幇" : "First seen")}</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
       ${metaRows}
     </div>
     ${highlightMarkup}
+    ${renderGraphReportInsights()}
+    ${renderGraphConnectionComposer(detail)}
     <div class="graph-detail__section">
-      <div class="card-sub">Related nodes</div>
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers")}</div>
       <div class="graph-related-list">${relatedNodes}</div>
     </div>
     <div class="graph-detail__section">
-      <div class="card-sub">Artifacts and sources</div>
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮閾炬帴" : "Source links")}</div>
       <div class="fallback-route-list">${links}</div>
     </div>
     <details class="graph-detail__toggle">
-      <summary>${escapeHtml(state.lang === "zh" ? "Raw payload" : "Raw payload")}</summary>
+      <summary>${escapeHtml(t("graph.rawPayload", "Raw payload"))}</summary>
       <pre class="graph-detail__raw">${escapeHtml(rawPayload)}</pre>
     </details>
   `;
   bindGraphDetailButtons();
-}
+};
 
-async function selectGraphNode(nodeId) {
-  if (!nodeId) return;
-  state.selectedGraphNodeId = nodeId;
-  state.graphDetail = null;
-  renderGraphCanvas(state.graphData);
-  renderGraphEdges(state.graphData);
-  renderGraphStats(state.graphData);
-  renderGraphDetail(null);
-
-  const token = ++graphDetailToken;
-  const detail = await requestJson(`/api/research/memory-graph/${encodeURIComponent(nodeId)}`);
-  if (token !== graphDetailToken || state.selectedGraphNodeId !== nodeId) {
-    return;
-  }
-
-  state.graphDetail = detail;
-  renderGraphStats(state.graphData);
-  renderGraphDetail(detail);
-}
-
-async function renderGraph(graph) {
-  state.graphData = graph;
-  renderGraphTypeFilters(graph);
-  renderGraphStats(graph);
-  renderGraphSummary(graph);
-  renderGraphCanvas(graph);
-  renderGraphEdges(graph);
-  if (!graph?.nodes?.length) {
-    state.selectedGraphNodeId = null;
-    state.graphDetail = null;
-    renderGraphDetail(null);
-    return;
-  }
-
-  const selectionStillVisible = state.selectedGraphNodeId && graph.nodes.some((node) => node.id === state.selectedGraphNodeId);
-  if (!selectionStillVisible) {
-    state.selectedGraphNodeId = graph.nodes[0].id;
-    state.graphDetail = null;
-  }
-
-  renderGraphDetail(
-    state.graphDetail && state.graphDetail.node?.id === state.selectedGraphNodeId
-      ? state.graphDetail
-      : null
-  );
-
-  if (!state.graphDetail || state.graphDetail.node?.id !== state.selectedGraphNodeId) {
-    await selectGraphNode(state.selectedGraphNodeId);
-  }
-}
-
-async function loadGraph() {
-  const token = ++graphLoadToken;
-  const graph = await requestJson(buildGraphUrl());
-  if (token !== graphLoadToken) {
-    return;
-  }
-  await renderGraph(graph);
-}
 async function loadAgentSession() {
   const session = await requestJson(`/api/channels/wechat/agent?senderId=${encodeURIComponent(UI_AGENT_SENDER_ID)}`);
   renderAgentSession(session);
@@ -4359,8 +6108,17 @@ async function loadRecentResearch(options = {}) {
 }
 
 async function loadRuntimeLogs() {
-  const payload = await requestJson("/api/ui/runtime-log?lines=140");
-  renderRuntimeLogs(payload);
+  if (runtimeLogsRequestInFlight) {
+    return;
+  }
+  runtimeLogsRequestInFlight = true;
+  try {
+    const payload = await requestJson("/api/ui/runtime-log?lines=140");
+    state.runtimeLogsPayload = payload;
+    renderRuntimeLogs(payload);
+  } finally {
+    runtimeLogsRequestInFlight = false;
+  }
 }
 
 function updateGlobalSummary() {
@@ -4436,9 +6194,27 @@ function bindReportButtons(root) {
   });
 }
 
+function bindCopyCommandButtons() {
+  els.settingsOverview?.querySelectorAll("[data-copy-command]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const command = button.dataset.copyCommand || "";
+      if (!command) return;
+      try {
+        await copyTextToClipboard(command);
+        setButtonFeedback(button, t("common.copied", state.lang === "zh" ? "\u5df2\u590d\u5236" : "Copied"));
+      } catch (error) {
+        showError(error);
+      }
+    });
+  });
+}
+
 function setActiveTab(tab) {
   const meta = i18n?.getTabMeta?.(state, tab) || i18n?.getTabMeta?.(state, "landing");
   const next = meta ? tab : "landing";
+  if (next !== "logs") {
+    state.runtimeLogsBaseline = null;
+  }
   state.activeTab = next;
   els.navTabs.forEach((item) => item.classList.toggle("nav-item--active", item.dataset.tab === next));
   els.panels.forEach((panel) => panel.classList.toggle("workspace-panel--active", panel.dataset.panel === next));
@@ -4450,6 +6226,8 @@ function setActiveTab(tab) {
   els.pageSubtitle.textContent = i18n?.getTabMeta?.(state, next)?.subtitle || "";
   state.navDrawerOpen = false;
   updateShellClasses();
+  renderLogsControls();
+  ensureLogsPolling();
 
   if (next === "logs") loadRuntimeLogs().catch(showError);
   if (next === "graph") loadGraph().catch(showError);
@@ -4576,7 +6354,7 @@ async function refreshAll(options = {}) {
     loadModuleAssets(),
     loadFeedback()
   ]);
-  if (state.activeTab === "logs") await loadRuntimeLogs();
+  if (state.activeTab === "logs" && !state.logsAutoFollow) await loadRuntimeLogs();
   if (state.activeTab === "graph") await loadGraph();
 }
 
@@ -4625,8 +6403,48 @@ function bindAgentSkillInputs() {
 document.querySelector("#refresh-overview").addEventListener("click", () => refreshAll().catch(showError));
 document.querySelector("#refresh-wechat").addEventListener("click", () => refreshAll().catch(showError));
 document.querySelector("#refresh-sessions").addEventListener("click", () => loadAgentSessions().catch(showError));
-document.querySelector("#refresh-logs").addEventListener("click", () => loadRuntimeLogs().catch(showError));
+document.querySelector("#refresh-logs").addEventListener("click", () => {
+  state.runtimeLogsBaseline = null;
+  loadRuntimeLogs().catch(showError);
+});
+els.logsFollowToggle?.addEventListener("click", () => {
+  state.logsAutoFollow = !state.logsAutoFollow;
+  renderLogsControls();
+  ensureLogsPolling();
+  if (state.activeTab === "logs") {
+    loadRuntimeLogs().catch(showError);
+  }
+});
+els.logsClearButton?.addEventListener("click", () => {
+  state.runtimeLogsBaseline = state.runtimeLogsPayload
+    ? {
+        stdout: state.runtimeLogsPayload.stdout?.content || "",
+        stderr: state.runtimeLogsPayload.stderr?.content || "",
+      }
+    : { stdout: "", stderr: "" };
+  renderRuntimeLogs(
+    state.runtimeLogsPayload || {
+      stdout: { path: null, content: "" },
+      stderr: { path: null, content: "" },
+    },
+  );
+  setButtonFeedback(els.logsClearButton, t("common.cleared", state.lang === "zh" ? "\u5df2\u6e05\u7a7a" : "Cleared"));
+});
+els.logsCopyButton?.addEventListener("click", async () => {
+  const stdout = els.runtimeLogOutput?.textContent || "";
+  const stderr = els.runtimeLogError?.textContent || "";
+  const payload = [`STDOUT`, stdout, "", `STDERR`, stderr].join("\n");
+  try {
+    await copyTextToClipboard(payload);
+    setButtonFeedback(els.logsCopyButton, t("common.copied", state.lang === "zh" ? "\u5df2\u590d\u5236" : "Copied"));
+  } catch (error) {
+    showError(error);
+  }
+});
 document.querySelector("#refresh-graph")?.addEventListener("click", () => loadGraph().catch(showError));
+els.graphResetView?.addEventListener("click", () => {
+  resetGraphViewport();
+});
 
 els.graphSearch?.addEventListener("input", () => {
   state.graphSearch = els.graphSearch.value;
@@ -4645,6 +6463,8 @@ els.graphClearFilters?.addEventListener("click", () => {
   state.graphSearch = "";
   state.graphDateRange = "all";
   state.graphTypeFilters = [];
+  state.graphViewport = { x: 0, y: 0, scale: 1 };
+  state.graphNodePositions = {};
   if (els.graphSearch) {
     els.graphSearch.value = "";
   }
@@ -4755,7 +6575,7 @@ els.discoverySchedulerForm?.addEventListener("submit", async (event) => {
   const senderId = els.discoverySchedulerSenderId?.value.trim() || "";
   const enabled = Boolean(els.discoverySchedulerEnabled?.checked);
   if (enabled && !senderId) {
-    throw new Error(state.lang === "zh" ? "启用 scheduler 前需要填写 WeChat sender id。" : "A WeChat sender id is required before enabling the scheduler.");
+    throw new Error(state.lang === "zh" ? "A WeChat sender id is required before enabling the scheduler." : "A WeChat sender id is required before enabling the scheduler.");
   }
 
   await requestJson("/api/research/discovery/scheduler", {
@@ -4821,7 +6641,7 @@ els.researchBriefForm?.addEventListener("submit", async (event) => {
 
   const payload = buildResearchBriefPayload();
   if (!payload.label) {
-    setResearchBriefStatus(state.lang === "zh" ? "Brief label 不能为空。" : "Brief label is required.", "danger");
+    setResearchBriefStatus(state.lang === "zh" ? "Brief label is required." : "Brief label is required.", "danger");
     return;
   }
 
@@ -4834,7 +6654,7 @@ els.researchBriefForm?.addEventListener("submit", async (event) => {
   populateResearchBriefForm(brief);
   renderResearchBrief(brief);
   await loadResearchBriefs();
-  setResearchBriefStatus(state.lang === "zh" ? "Research brief 已保存。" : "Research brief saved.", "ok");
+  setResearchBriefStatus(state.lang === "zh" ? "Research brief saved." : "Research brief saved.", "ok");
   window.location.hash = "research";
   setActiveTab("research");
 });
@@ -4845,7 +6665,7 @@ els.researchBriefMarkdownForm?.addEventListener("submit", async (event) => {
 
   const markdown = els.researchBriefMarkdown?.value.trim() || "";
   if (!markdown) {
-    setResearchBriefStatus(state.lang === "zh" ? "请先粘贴 brief markdown。" : "Paste research brief markdown first.", "danger");
+    setResearchBriefStatus(state.lang === "zh" ? "Paste research brief markdown first." : "Paste research brief markdown first.", "danger");
     return;
   }
 
@@ -4861,7 +6681,7 @@ els.researchBriefMarkdownForm?.addEventListener("submit", async (event) => {
   populateResearchBriefForm(brief);
   renderResearchBrief(brief);
   await loadResearchBriefs();
-  setResearchBriefStatus(state.lang === "zh" ? "Brief markdown 已导入。" : "Research brief markdown imported.", "ok");
+  setResearchBriefStatus(state.lang === "zh" ? "Research brief markdown imported." : "Research brief markdown imported.", "ok");
   window.location.hash = "research";
   setActiveTab("research");
 });
@@ -4879,20 +6699,20 @@ els.researchBriefExport?.addEventListener("click", async () => {
   clearResearchBriefStatus();
   const briefId = state.selectedResearchBriefId || els.researchBriefId?.value.trim();
   if (!briefId) {
-    setResearchBriefStatus(state.lang === "zh" ? "请先选择一个 brief 再导出。" : "Select a brief before exporting.", "danger");
+    setResearchBriefStatus(state.lang === "zh" ? "Select a brief before exporting." : "Select a brief before exporting.", "danger");
     return;
   }
 
   const markdown = await requestText(`/api/research/directions/${encodeURIComponent(briefId)}/brief-markdown`);
   if (els.researchBriefMarkdown) els.researchBriefMarkdown.value = markdown;
-  setResearchBriefStatus(state.lang === "zh" ? "已将 markdown 导出到编辑框。" : "Markdown exported into the editor.", "ok");
+  setResearchBriefStatus(state.lang === "zh" ? "Markdown exported into the editor." : "Markdown exported into the editor.", "ok");
 });
 
 els.researchBriefDelete?.addEventListener("click", async () => {
   clearResearchBriefStatus();
   const briefId = state.selectedResearchBriefId || els.researchBriefId?.value.trim();
   if (!briefId) {
-    setResearchBriefStatus(state.lang === "zh" ? "请先选择一个 brief 再删除。" : "Select a brief before deleting.", "danger");
+    setResearchBriefStatus(state.lang === "zh" ? "Select a brief before deleting." : "Select a brief before deleting.", "danger");
     return;
   }
 
@@ -4908,7 +6728,7 @@ els.researchBriefDelete?.addEventListener("click", async () => {
   if (els.researchBriefMarkdown) els.researchBriefMarkdown.value = "";
   await loadResearchBriefs();
   renderResearchReport(state.latestReport);
-  setResearchBriefStatus(state.lang === "zh" ? "Research brief 已删除。" : "Research brief deleted.", "ok");
+  setResearchBriefStatus(state.lang === "zh" ? "Research brief deleted." : "Research brief deleted.", "ok");
 });
 
 els.feedbackForm?.addEventListener("submit", async (event) => {

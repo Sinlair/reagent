@@ -1,8 +1,37 @@
 {
-  "name": "reagent",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@sinlair/reagent",
+  "version": "0.1.6",
+  "description": "Local-first research workspace and runtime CLI",
+  "license": "MIT",
   "type": "module",
+  "bin": {
+    "reagent": "dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "docs/reagent-console.png",
+    "docs/reagent-mark.svg",
+    "prisma/schema.prisma",
+    "web/",
+    ".env.example",
+    "LICENSE",
+    "README.md",
+    "README.zh-CN.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sinlair/reagent.git"
+  },
+  "homepage": "https://github.com/Sinlair/reagent#readme",
+  "bugs": {
+    "url": "https://github.com/Sinlair/reagent/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "prestart": "npm run build",
@@ -21,7 +50,9 @@
     "check:packages": "npm run check:core-package && npm run check:openclaw-package && npm run check:reference-package",
     "check:all": "npm run check && npm run check:packages",
     "pretest": "npm run build",
-    "test:root": "node tests/researchWorkflow.test.mjs && node tests/platform.test.mjs && node tests/provider.test.mjs && node tests/nativeWeChatProvider.test.mjs && node tests/researchDirectionService.test.mjs && node tests/researchDiscoveryService.test.mjs && node tests/arxivPaperSearchProvider.test.mjs && node tests/researchFeedbackService.test.mjs && node tests/researchDirectionReportService.test.mjs && node tests/researchDiscoverySchedulerService.test.mjs && node tests/researchLinkIngestionService.test.mjs && node tests/researchRepoAnalysisService.test.mjs && node tests/researchPresentationService.test.mjs && node tests/researchPaperAnalysisService.test.mjs && node tests/researchBaselineService.test.mjs && node tests/researchModuleAssetService.test.mjs && node tests/researchMemoryRegistryService.test.mjs && node tests/researchTaskService.test.mjs && node tests/chatResearchAgentTools.test.mjs && node tests/chatResearchPaperAnalysisTool.test.mjs && node tests/chatResearchModuleTool.test.mjs",
+    "pretest:cli": "npm run build",
+    "test:cli": "node --import tsx/esm tests/cli.test.mjs",
+    "test:root": "node tests/researchWorkflow.test.mjs && node tests/platform.test.mjs && node tests/gatewayService.test.mjs && node tests/memoryRecallService.test.mjs && node tests/memoryCompactionService.test.mjs && node tests/memoryRoutes.test.mjs && node tests/provider.test.mjs && node tests/nativeWeChatProvider.test.mjs && node tests/researchDirectionService.test.mjs && node tests/researchDiscoveryService.test.mjs && node tests/arxivPaperSearchProvider.test.mjs && node tests/researchFeedbackService.test.mjs && node tests/researchDirectionReportService.test.mjs && node tests/researchDiscoverySchedulerService.test.mjs && node tests/researchLinkIngestionService.test.mjs && node tests/researchRepoAnalysisService.test.mjs && node tests/researchPresentationService.test.mjs && node tests/researchPaperAnalysisService.test.mjs && node tests/researchBaselineService.test.mjs && node tests/researchModuleAssetService.test.mjs && node tests/researchMemoryRegistryService.test.mjs && node tests/researchTaskService.test.mjs && node tests/chatResearchAgentTools.test.mjs && node tests/chatResearchPaperAnalysisTool.test.mjs && node tests/chatResearchModuleTool.test.mjs",
     "test:reference-package": "npm --prefix package test",
     "test:package": "npm run test:reference-package",
     "test": "npm run test:root && npm run test:package",
@@ -39,7 +70,8 @@
     "service:runner": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\\reagent-service-runner.ps1",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "prepublishOnly": "npm run check && npm run build"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -50,13 +82,13 @@
     "jsdom": "^29.0.1",
     "openai": "^6.33.0",
     "pdfjs-dist": "^5.6.205",
+    "prisma": "^7.0.0",
     "qrcode": "^1.5.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.0",
-    "prisma": "^7.0.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   }

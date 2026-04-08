@@ -37,5 +37,3 @@ export const ResearchSynthesisSchema = z.object({
   evidence: z.array(EvidenceItemSchema),
   warnings: z.array(NonEmptyStringSchema)
 });
-
-export type ResearchRequestInput = z.infer<typeof ResearchRequestSchema>;

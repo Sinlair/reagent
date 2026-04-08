@@ -133,6 +133,9 @@ export class MemoryIndexService {
       entityIds: uniqueTrimmed(input.remember.entityIds),
       createdAt: input.createdAt,
       updatedAt: input.createdAt,
+      ...(input.remember.compactionSourceIds?.length
+        ? { compactionSourceIds: uniqueTrimmed(input.remember.compactionSourceIds) }
+        : {}),
     };
 
     const dedupeKey = createHash("sha1")
@@ -155,6 +158,31 @@ export class MemoryIndexService {
     return entry;
   }
 
+  async listEntries(): Promise<MemoryIndexEntry[]> {
+    return (await this.readStore()).entries;
+  }
+
+  async markCompacted(entryIds: string[], summaryEntryId: string, compactedAt: string): Promise<void> {
+    const targets = new Set(entryIds);
+    if (targets.size === 0) {
+      return;
+    }
+
+    const store = await this.readStore();
+    await this.writeStore({
+      ...store,
+      entries: store.entries.map((entry) =>
+        targets.has(entry.id)
+          ? {
+              ...entry,
+              compactedAt,
+              compactedIntoId: summaryEntryId,
+            }
+          : entry,
+      ),
+    });
+  }
+
   async search(query: string, limit = 6): Promise<MemoryIndexSearchHit[]> {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -165,6 +193,7 @@ export class MemoryIndexService {
     const queryTerms = tokenize(trimmed);
     const queryLower = trimmed.toLowerCase();
     const results = store.entries
+      .filter((entry) => !entry.compactedAt)
       .map((entry) => {
         const haystack = [
           entry.title,

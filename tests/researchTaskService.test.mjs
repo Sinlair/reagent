@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -97,9 +97,12 @@ async function main() {
       });
 
       assert.equal(completed.reportReady, true);
-      assert.equal(completed.report?.taskId, task.taskId);
+      assert.equal(completed.report, undefined);
       assert.equal(completed.transitions.some((entry) => entry.state === "planning"), true);
       assert.equal(completed.transitions.some((entry) => entry.state === "persisting"), true);
+      assert.equal(completed.reviewStatus, "passed");
+      assert.equal(completed.roundPath, `research/rounds/${task.taskId}`);
+      assert.equal(completed.handoffPath, `research/rounds/${task.taskId}/handoff.json`);
 
       const memoryFiles = await memory.listFiles();
       const dailyFile = memoryFiles.find((file) => file.path.startsWith("memory/"));
@@ -107,6 +110,24 @@ async function main() {
       const dailyContent = await memory.getFile(dailyFile.path);
       assert.equal(dailyContent.content.includes("Research task completed."), true);
       assert.equal(dailyContent.content.includes("Summary for agentic rag"), true);
+
+      const roundDir = path.join(dir, "research", "rounds", task.taskId);
+      const briefContent = await readFile(path.join(roundDir, "brief.md"), "utf8");
+      const handoff = JSON.parse(await readFile(path.join(roundDir, "handoff.json"), "utf8"));
+      const artifactStore = JSON.parse(await readFile(path.join(roundDir, "artifacts.json"), "utf8"));
+      const reportContent = JSON.parse(await readFile(path.join(roundDir, "report.json"), "utf8"));
+      const reviewContent = await readFile(path.join(roundDir, "review.md"), "utf8");
+      const taskStore = JSON.parse(await readFile(path.join(dir, "research", "task-runs.json"), "utf8"));
+
+      assert.equal(briefContent.includes("Topic: agentic rag"), true);
+      assert.equal(handoff.state, "completed");
+      assert.equal(handoff.reviewStatus, "passed");
+      assert.equal(Array.isArray(artifactStore.items), true);
+      assert.equal(artifactStore.items.some((item) => item.kind === "report"), true);
+      assert.equal(artifactStore.items.some((item) => item.kind === "review"), true);
+      assert.equal(reportContent.taskId, task.taskId);
+      assert.equal(reviewContent.includes("Verdict: moderate"), true);
+      assert.equal("report" in taskStore.tasks[0], false);
     });
   });
 

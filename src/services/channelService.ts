@@ -4,6 +4,7 @@ import path from "node:path";
 
 import type { ResearchService } from "./researchService.js";
 import type { MemoryService } from "./memoryService.js";
+import { MemoryCompactionService } from "./memoryCompactionService.js";
 import { MemoryRecallService } from "./memoryRecallService.js";
 import { ChatService, type ChatServiceLike } from "./chatService.js";
 import { ResearchFeedbackService } from "./researchFeedbackService.js";
@@ -109,6 +110,7 @@ function buildCommandHelpReply(): string {
     "Supported commands:",
     "/research <topic>",
     "/memory <query>",
+    "/memory-compact [days]",
     "/remember <fact>",
     "/feedback <signal> [notes]",
     "/role <assistant|operator|researcher>",
@@ -242,6 +244,7 @@ export class ChannelService {
   private readonly chatService: ChatServiceLike;
   private readonly feedbackService: ResearchFeedbackService;
   private readonly memoryRecallService: MemoryRecallService;
+  private readonly memoryCompactionService: MemoryCompactionService;
   private readonly healthMonitorIntervalMs: number;
   private readonly restartCooldownMs: number;
   private readonly unhealthyThreshold: number;
@@ -264,6 +267,7 @@ export class ChannelService {
       });
     this.feedbackService = new ResearchFeedbackService(workspaceDir);
     this.memoryRecallService = new MemoryRecallService(workspaceDir, researchService);
+    this.memoryCompactionService = new MemoryCompactionService(workspaceDir);
     this.mockProvider =
       this.wechatProviderMode === "mock" ? new MockWeChatChannelProvider(workspaceDir) : null;
     this.nativeProvider =
@@ -959,6 +963,21 @@ export class ChannelService {
           .then((result) => result.hits);
         reply = buildMemoryReply(query, hits);
       }
+    } else if (message === "/memory-compact" || message.startsWith("/memory-compact ")) {
+      const rawDays = message.slice("/memory-compact".length).trim();
+      const parsedDays = rawDays ? Number.parseInt(rawDays, 10) : undefined;
+      const result = await this.memoryCompactionService.compact({
+        source: "manual",
+        ...(Number.isFinite(parsedDays) && (parsedDays ?? 0) > 0 ? { olderThanDays: parsedDays } : {}),
+      });
+      reply =
+        result.compactedEntryCount > 0
+          ? [
+              `Compacted ${result.compactedEntryCount} memory entries.`,
+              `Summary: ${result.summaryTitle}`,
+              `Path: ${result.summaryPath}`,
+            ].join("\n")
+          : "No eligible workspace memory entries were old enough to compact.";
     } else if (message === "/remember" || message.startsWith("/remember ")) {
       const content = message.slice("/remember".length).trim();
       if (!content) {
