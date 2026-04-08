@@ -2,6 +2,7 @@ import type { MemoryRecallHit } from "@sinlair/reagent-core";
 import type { OpenClawPluginApi, PluginCommandContext } from "openclaw/plugin-sdk/core";
 
 import {
+  createPluginMemoryCompactionService,
   createPluginMemoryService,
   createPluginMemoryRecallService,
   createPluginServices,
@@ -56,6 +57,16 @@ function resolveConversationScopeKey(ctx: PluginCommandContext): string | null {
   return resolveConversationMemoryScopeKey(accountId ? `${accountId}:${senderId}` : senderId);
 }
 
+function parseCompactDays(args?: string): number | undefined {
+  const trimmed = args?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 export function registerReAgentCommands(api: OpenClawPluginApi): void {
   api.registerCommand({
     name: "reagent-status",
@@ -97,10 +108,6 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
         return textReply("Conversation-scoped memory requires a sender context.");
       }
 
-      const memoryService = createPluginMemoryService(api, {
-        scope: "conversation",
-        scopeKey,
-      });
       const recall = createPluginMemoryRecallService(api, {
         scope: "conversation",
         scopeKey,
@@ -133,6 +140,62 @@ export function registerReAgentCommands(api: OpenClawPluginApi): void {
         includeArtifacts: true,
       })).hits;
       return textReply(buildMemorySearchReply(buildMemoryScopeLabel("workspace"), query, hits));
+    },
+  });
+
+  api.registerCommand({
+    name: "reagent-memory-compact",
+    description: "Compact older conversation-scoped memory into one summary note.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const scopeKey = resolveConversationScopeKey(ctx);
+      if (!scopeKey) {
+        return textReply("Conversation-scoped memory compaction requires a sender context.");
+      }
+
+      const days = parseCompactDays(ctx.args);
+      const compaction = createPluginMemoryCompactionService(api, {
+        scope: "conversation",
+        scopeKey,
+      });
+      const result = await compaction.compact({
+        source: "manual",
+        ...(days ? { olderThanDays: days } : {}),
+      });
+
+      return textReply(
+        result.compactedEntryCount > 0
+          ? [
+              `Compacted ${result.compactedEntryCount} memory entries.`,
+              `Summary: ${result.summaryTitle}`,
+              `Path: ${result.summaryPath}`,
+            ].join("\n")
+          : "No eligible conversation memory entries were old enough to compact.",
+      );
+    },
+  });
+
+  api.registerCommand({
+    name: "reagent-memory-workspace-compact",
+    description: "Compact older shared workspace memory into one summary note.",
+    acceptsArgs: true,
+    handler: async (ctx: PluginCommandContext) => {
+      const days = parseCompactDays(ctx.args);
+      const compaction = createPluginMemoryCompactionService(api);
+      const result = await compaction.compact({
+        source: "manual",
+        ...(days ? { olderThanDays: days } : {}),
+      });
+
+      return textReply(
+        result.compactedEntryCount > 0
+          ? [
+              `Compacted ${result.compactedEntryCount} workspace memory entries.`,
+              `Summary: ${result.summaryTitle}`,
+              `Path: ${result.summaryPath}`,
+            ].join("\n")
+          : "No eligible workspace memory entries were old enough to compact.",
+      );
     },
   });
 

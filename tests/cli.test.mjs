@@ -1526,6 +1526,11 @@ if (args[0] === "plugins" && args[1] === "doctor") {
   process.exit(0);
 }
 
+if (args[0] === "plugins" && args[1] === "update") {
+  process.stdout.write(JSON.stringify({ ok: true, action: "update", args }));
+  process.exit(0);
+}
+
 process.stdout.write(JSON.stringify({ ok: true, args }));
 `,
     "utf8",
@@ -1739,6 +1744,14 @@ async function main() {
     assert.equal(result.code, 0, result.stderr);
     assert.equal(result.stdout.includes("ReAgent CLI"), true);
     assert.equal(result.stdout.includes("reagent runtime"), true);
+    assert.equal(result.stdout.includes("reagent daemon"), true);
+  });
+
+  await runTest("Built CLI gateway help exposes OpenClaw-style compatibility commands", async () => {
+    const result = await runBuiltCli(["gateway", "--help"], cwd);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stdout.includes("reagent gateway probe"), true);
+    assert.equal(result.stdout.includes("reagent daemon"), true);
   });
 
   await runTest("Built CLI version matches package manifest", async () => {
@@ -1767,6 +1780,20 @@ async function main() {
         assert.equal(payload.health.agent, "ReAgent");
       });
 
+      await runTest("CLI gateway health and probe aliases match OpenClaw-style entrypoints", async () => {
+        let result = await runCli(["gateway", "health", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        let payload = JSON.parse(result.stdout);
+        assert.equal(payload.health.status, "ok");
+
+        result = await runCli(["gateway", "probe", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.healthReachable, true);
+        assert.equal(payload.rpcReachable, true);
+        assert.equal(payload.agent, "ReAgent");
+      });
+
       await runTest("CLI status aggregates runtime, channels, and memory", async () => {
         const result = await runCli(["status", "--url", fixture.baseUrl, "--json"], cwd);
         assert.equal(result.code, 0, result.stderr);
@@ -1775,6 +1802,26 @@ async function main() {
         assert.equal(payload.channels.channels.wechat.connected, true);
         assert.equal(payload.memory.files, 2);
         assert.equal(payload.gateway.healthReachable, true);
+      });
+
+      await runTest("CLI status --all prints detailed status sections", async () => {
+        const result = await runCli(["status", "--all", "--url", fixture.baseUrl], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(result.stdout.includes("WeChat:"), true);
+        assert.equal(result.stdout.includes("Account ID:"), true);
+        assert.equal(result.stdout.includes("Memory:"), true);
+        assert.equal(result.stdout.includes("Search mode:"), true);
+      });
+
+      await runTest("CLI status falls back to local diagnostics when the gateway is unreachable", async () => {
+        const result = await runCli(["status", "--url", "http://127.0.0.1:1", "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.degraded, true);
+        assert.equal(payload.runtime.source, "local-fallback");
+        assert.equal(payload.channels.source, "local-fallback");
+        assert.equal(payload.memory.source, "local-fallback");
+        assert.equal(payload.gateway.healthReachable, false);
       });
 
       await runTest("CLI runtime status alias aggregates runtime, channels, and memory", async () => {
@@ -1791,6 +1838,16 @@ async function main() {
         assert.equal(result.code, 0, result.stderr);
         assert.ok(result.stdout.includes("Provider: mock"));
         assert.ok(result.stdout.includes("Connected: yes"));
+      });
+
+      await runTest("CLI channels status falls back to local summary when the gateway is unreachable", async () => {
+        const result = await runCli(["channels", "status", "--probe", "--url", "http://127.0.0.1:1", "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.degraded, true);
+        assert.equal(payload.source, "local-fallback");
+        assert.equal(payload.channels.wechat.connected, false);
+        assert.equal(Array.isArray(payload.warnings), true);
       });
 
       await runTest("CLI channels agent session exposes current runtime settings", async () => {
@@ -2354,6 +2411,27 @@ async function main() {
       assert.equal(payload.bundled.some((entry) => entry.plugin.id === "reagent-openclaw"), true);
     });
 
+    await runTest("CLI plugins marketplace list surfaces bundled repo plugins", async () => {
+      const result = await runCli(["plugins", "marketplace", "list", "reagent", "--json"], cwd);
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.marketplace.resolvedSource, "reagent");
+      assert.equal(Array.isArray(payload.plugins), true);
+      assert.equal(payload.plugins.some((entry) => entry.id === "reagent-openclaw"), true);
+    });
+
+    await runTest("CLI plugins inspect --all aliases to the bundled plugin list", async () => {
+      const result = await runCli(
+        ["plugins", "inspect", "--all", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(Array.isArray(payload.bundled), true);
+      assert.equal(payload.bundled.some((entry) => entry.plugin.id === "reagent-openclaw"), true);
+    });
+
     await runTest("CLI plugins install delegates to OpenClaw CLI with bundled install spec", async () => {
       const result = await runCli(
         ["plugins", "install", "reagent-openclaw", "--openclaw-cli", fakeOpenClaw.commandPath, "--yes", "--json"],
@@ -2370,6 +2448,27 @@ async function main() {
       const logRaw = await readFile(fakeOpenClaw.logPath, "utf8");
       assert.equal(logRaw.includes("@sinlair/reagent-openclaw"), true);
     });
+
+    await runTest("CLI plugins update delegates to OpenClaw CLI", async () => {
+      const result = await runCli(
+        ["plugins", "update", "reagent-openclaw", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.action, "update");
+      assert.equal(payload.args.includes("reagent-openclaw"), true);
+    });
+  });
+
+  await runTest("CLI daemon alias forwards to the service surface", async () => {
+    const result = await runCli(["daemon", "status", "--json"], cwd);
+    assert.equal(result.code, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(typeof payload.statusCommand, "string");
+    assert.equal(payload.statusCommand, "reagent service status");
   });
 }
 

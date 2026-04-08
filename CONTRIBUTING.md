@@ -60,6 +60,6 @@ npm.cmd run check:packages
 If your change affects user-visible behavior, update at least one of:
 
 - [README.md](./README.md)
-- [README.en.md](./README.en.md)
+- [README.zh-CN.md](./README.zh-CN.md)
 - [OPERATIONS.md](./OPERATIONS.md)
 - [agent.md](./agent.md)

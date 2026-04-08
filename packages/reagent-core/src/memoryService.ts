@@ -11,6 +11,7 @@ import type {
   MemoryStatus,
   RememberRequest,
 } from "./memory.js";
+import { MemoryCompactionService } from "./memoryCompactionService.js";
 import { MemoryIndexService } from "./memoryIndexService.js";
 
 const LONG_TERM_FILE = "MEMORY.md";
@@ -329,6 +330,7 @@ function scoreChunk(
 }
 
 export class MemoryService {
+  private readonly memoryCompactionService: MemoryCompactionService;
   private readonly memoryIndexService: MemoryIndexService;
 
   constructor(
@@ -336,6 +338,7 @@ export class MemoryService {
     private readonly options: MemoryServiceOptions = {},
   ) {
     this.memoryIndexService = new MemoryIndexService(workspaceDir, options);
+    this.memoryCompactionService = new MemoryCompactionService(workspaceDir, options);
   }
 
   private get scopeKey(): string | undefined {
@@ -493,6 +496,9 @@ export class MemoryService {
       createdAt,
       remember: input,
     });
+    if (!(input.source ?? "").startsWith("memory-compaction:")) {
+      await this.memoryCompactionService.maybeAutoCompact().catch(() => null);
+    }
 
     return this.readAllowedFile(relativePath);
   }

@@ -31,6 +31,8 @@ openclaw plugins install @sinlair/reagent-openclaw --yes
 - `/reagent-status`
 - `/reagent-memory <query>`
 - `/reagent-memory-workspace <query>`
+- `/reagent-memory-compact [days]`
+- `/reagent-memory-workspace-compact [days]`
 - `/reagent-remember <note>`
 - `/reagent-remember-workspace <note>`
 - `/reagent-directions`
@@ -64,6 +66,7 @@ The plugin also registers these host-side tools:
 - `reagent_memory_get`
 - `reagent_memory_search`
 - `reagent_memory_remember`
+- `reagent_memory_compact`
 - `reagent_discovery_run`
 - `reagent_baseline_suggest`
 - `reagent_feedback_record`
@@ -98,3 +101,7 @@ conversation-scoped tools, pass a stable `scopeKey` such as a sender id.
 - conversation scope first when available
 - shared workspace memory next
 - durable artifacts such as briefs, direction reports, and presentations last
+
+Older daily memory can also be compacted into a long-term summary note. The
+compaction flow marks old indexed entries as folded so recall prefers the
+summary entry instead of replaying stale fragments.

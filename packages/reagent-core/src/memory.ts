@@ -66,6 +66,9 @@ export interface MemoryIndexEntry {
   createdAt: string;
   updatedAt: string;
   lastUsedAt?: string | undefined;
+  compactedAt?: string | undefined;
+  compactedIntoId?: string | undefined;
+  compactionSourceIds?: string[] | undefined;
   scopeKey?: string | undefined;
 }
 
@@ -107,6 +110,60 @@ export interface MemoryRecallResult {
   hits: MemoryRecallHit[];
 }
 
+export interface MemoryCompactionOptions {
+  olderThanDays?: number | undefined;
+  minEntries?: number | undefined;
+  maxEntries?: number | undefined;
+  dryRun?: boolean | undefined;
+  source?: "auto" | "manual" | undefined;
+}
+
+export interface MemoryCompactionResult {
+  generatedAt: string;
+  candidateCount: number;
+  compactedEntryCount: number;
+  sourceEntryIds: string[];
+  summaryTitle?: string | undefined;
+  summaryPath?: string | undefined;
+  summaryEntryId?: string | undefined;
+  scopeKey?: string | undefined;
+  mode: "auto" | "manual";
+}
+
+export interface MemoryPolicy {
+  updatedAt: string;
+  autoCompactionEnabled: boolean;
+  autoCompactionIntervalMinutes: number;
+  autoCompactionOlderThanDays: number;
+  autoCompactionMinEntries: number;
+  autoCompactionMaxEntries: number;
+  maxDailyEntriesBeforeAutoCompact: number;
+  neverCompactTags: string[];
+  highConfidenceLongTermOnly: boolean;
+}
+
+export interface MemoryPolicyPatch {
+  autoCompactionEnabled?: boolean | undefined;
+  autoCompactionIntervalMinutes?: number | undefined;
+  autoCompactionOlderThanDays?: number | undefined;
+  autoCompactionMinEntries?: number | undefined;
+  autoCompactionMaxEntries?: number | undefined;
+  maxDailyEntriesBeforeAutoCompact?: number | undefined;
+  neverCompactTags?: string[] | undefined;
+  highConfidenceLongTermOnly?: boolean | undefined;
+}
+
+export interface MemoryCompactionRecord extends MemoryCompactionResult {
+  id: string;
+  status: "compacted" | "skipped";
+  reason?: string | undefined;
+}
+
+export interface MemoryCompactionRecordStore {
+  updatedAt: string;
+  items: MemoryCompactionRecord[];
+}
+
 export interface RememberRequest {
   scope: RememberScope;
   title?: string | undefined;
@@ -117,4 +174,5 @@ export interface RememberRequest {
   confidence?: MemoryConfidence | undefined;
   tags?: string[] | undefined;
   entityIds?: string[] | undefined;
+  compactionSourceIds?: string[] | undefined;
 }

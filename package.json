@@ -1,6 +1,6 @@
 {
   "name": "@sinlair/reagent",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Local-first research workspace and runtime CLI",
   "license": "MIT",
   "type": "module",

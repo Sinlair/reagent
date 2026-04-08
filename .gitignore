@@ -10,6 +10,9 @@ prisma/dev.db-journal
 src/generated/prisma
 /channels/
 workspace/MEMORY.md
+workspace/memory-index.json
+workspace/memory-compactions.json
+workspace/memory-policy.json
 workspace/channels/
 workspace/memory/
 workspace/research/

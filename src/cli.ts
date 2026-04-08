@@ -81,9 +81,16 @@ type ParsedOptions = {
 type RuntimeEnv = {
   DATABASE_URL: string;
   HOST: string;
+  LLM_PROVIDER: "fallback" | "openai";
   OPENCLAW_CLI_PATH: string;
+  OPENCLAW_GATEWAY_URL: string;
+  OPENCLAW_WECHAT_CHANNEL_ID: string;
+  OPENAI_MODEL: string;
+  OPENAI_WIRE_API: string;
   PLATFORM_WORKSPACE_DIR: string;
   PORT: number;
+  RESEARCH_AGENT_NAME: string;
+  WECHAT_PROVIDER: "mock" | "native" | "openclaw";
 };
 
 type GatewayHealthPayload = {
@@ -580,6 +587,7 @@ Commands:
 
 Flags:
   --channel <id>            Accepted aliases: wechat, weixin, openclaw-weixin
+  --probe                   Prefer a live gateway probe before falling back to local status
   --sender <id>             Sender/user id for chat, inbound, push, or send
   --name <value>            Optional sender display name
   --text <value>            Message text instead of positional arguments
@@ -814,8 +822,10 @@ function renderPluginsHelp(): void {
 
 Commands:
   reagent plugins list
+  reagent plugins marketplace list [source]
   reagent plugins inspect <id>
   reagent plugins info <id>
+  reagent plugins inspect --all
   reagent plugins install <id>
   reagent plugins uninstall <id>
   reagent plugins enable <id>
@@ -829,6 +839,7 @@ Notes:
   - pass --openclaw-cli to target a non-default OpenClaw executable.
 
 Flags:
+  --source <id>             Marketplace source alias: reagent, bundled, reference
   --json                    Print JSON output
   --yes                     Pass --yes through to OpenClaw install/uninstall commands when supported
 `);
@@ -1227,6 +1238,18 @@ function printJson(value: unknown): void {
   console.log(JSON.stringify(sanitizeCliPayload(value), null, 2));
 }
 
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function settleCliRequest<T>(promise: Promise<T>): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+  try {
+    return { ok: true, value: await promise };
+  } catch (error) {
+    return { ok: false, error: formatErrorMessage(error) };
+  }
+}
+
 function ensureSupportedChannel(options: ParsedOptions): void {
   const requested = getStringFlag(options, "channel");
   if (!requested) {
@@ -1330,6 +1353,129 @@ function printMemoryStatus(status: MemoryStatus): void {
   console.log(`Files: ${status.files}`);
   console.log(`Search mode: ${status.searchMode}`);
   console.log(`Last updated: ${formatWhen(status.lastUpdatedAt)}`);
+}
+
+function buildFallbackMemoryStatus(runtimeEnv: RuntimeEnv): MemoryStatus & {
+  available: false;
+  source: "local-fallback";
+  error: string;
+} {
+  return {
+    workspaceDir: path.resolve(process.cwd(), runtimeEnv.PLATFORM_WORKSPACE_DIR),
+    files: 0,
+    searchMode: "hybrid",
+    lastUpdatedAt: null,
+    available: false,
+    source: "local-fallback",
+    error: "Gateway memory endpoint is unavailable.",
+  };
+}
+
+async function buildFallbackChannelsSnapshot(
+  runtimeEnv: RuntimeEnv,
+  gateway: GatewayStatusSnapshot,
+  error: string,
+  probeRequested: boolean,
+): Promise<ChannelsStatusSnapshot & { degraded: true; source: "local-fallback"; warnings: string[] }> {
+  const warnings = [`Gateway channel status is unavailable: ${error}`];
+  if (probeRequested) {
+    warnings.push("Live probe was requested, but the gateway is unreachable. Showing local fallback status.");
+  }
+
+  let cliVersion: string | undefined;
+  if (runtimeEnv.WECHAT_PROVIDER === "openclaw") {
+    const cliStatus = await probeCommand(runtimeEnv.OPENCLAW_CLI_PATH, ["--version"]);
+    if (cliStatus.ok && cliStatus.output.trim()) {
+      cliVersion = cliStatus.output.trim();
+    } else if (!cliStatus.ok && cliStatus.output.trim()) {
+      warnings.push(`OpenClaw CLI probe failed: ${cliStatus.output.trim()}`);
+    }
+  }
+
+  return {
+    ts: Date.now(),
+    channelOrder: ["wechat"],
+    channelLabels: { wechat: "WeChat" },
+    channels: {
+      wechat: {
+        providerMode: runtimeEnv.WECHAT_PROVIDER,
+        configured: true,
+        linked: false,
+        running: gateway.healthReachable,
+        connected: false,
+        requiresHumanAction: runtimeEnv.WECHAT_PROVIDER !== "mock",
+        gatewayUrl: runtimeEnv.WECHAT_PROVIDER === "openclaw" ? runtimeEnv.OPENCLAW_GATEWAY_URL : undefined,
+        gatewayReachable: runtimeEnv.WECHAT_PROVIDER === "openclaw" ? gateway.healthReachable : undefined,
+        cliVersion,
+        lastError: error,
+        lastMessage: "Gateway unreachable. Showing local fallback status.",
+        updatedAt: new Date().toISOString(),
+        notes: warnings,
+      },
+    },
+    degraded: true,
+    source: "local-fallback",
+    warnings,
+  };
+}
+
+function buildFallbackRuntimeMeta(
+  context: GatewayContext,
+  gateway: GatewayStatusSnapshot,
+  error: string,
+): RuntimeMetaPayload & { available: false; source: "local-fallback"; error: string } {
+  const healthUrl = new URL("/health", `${context.baseUrl}/`).toString();
+  return {
+    agent: context.runtimeEnv.RESEARCH_AGENT_NAME,
+    llmProvider: context.runtimeEnv.LLM_PROVIDER,
+    llmWireApi: context.runtimeEnv.LLM_PROVIDER === "openai" ? context.runtimeEnv.OPENAI_WIRE_API : null,
+    llmModel: context.runtimeEnv.LLM_PROVIDER === "openai" ? context.runtimeEnv.OPENAI_MODEL : "fallback",
+    wechatProvider: context.runtimeEnv.WECHAT_PROVIDER,
+    workspaceDir: path.resolve(process.cwd(), context.runtimeEnv.PLATFORM_WORKSPACE_DIR),
+    openclaw: {
+      gatewayUrl: context.runtimeEnv.OPENCLAW_GATEWAY_URL,
+      cliPath: context.runtimeEnv.OPENCLAW_CLI_PATH,
+      channelId: context.runtimeEnv.OPENCLAW_WECHAT_CHANNEL_ID,
+    },
+    mcp: {
+      supported: false,
+      connectors: 0,
+      status: "unknown",
+      notes: [`Gateway runtime metadata is unavailable: ${error}`],
+    },
+    deployment: {
+      gateway: {
+        defaultPort: DEFAULT_GATEWAY_PORT,
+        runtimePort: context.runtimeEnv.PORT,
+        serviceManager: gateway.serviceManager,
+        commands: {
+          install: gateway.installCommand,
+          start: gateway.startCommand,
+          restart: gateway.restartCommand,
+          status: gateway.statusCommand,
+          deepStatus: gateway.deepStatusCommand,
+          stop: gateway.stopCommand,
+          uninstall: gateway.uninstallCommand,
+          logs: gateway.logsCommand,
+          doctor: gateway.doctorCommand,
+          deepDoctor: gateway.deepDoctorCommand,
+        },
+        runtime: {
+          currentProcessPid: gateway.serviceRuntimePid ?? gateway.listenerPid ?? 0,
+          currentProcessOwnsPort: gateway.healthReachable,
+          healthUrl,
+        },
+        supervisor: gateway,
+      },
+    },
+    available: false,
+    source: "local-fallback",
+    error,
+  };
+}
+
+function summarizeCliWarnings(results: Array<{ ok: true; value: unknown } | { ok: false; error: string }>): string[] {
+  return results.filter((entry): entry is { ok: false; error: string } => !entry.ok).map((entry) => entry.error);
 }
 
 function printMemoryFiles(files: MemoryFileSummary[]): void {
@@ -2705,21 +2851,40 @@ async function healthCommand(options: ParsedOptions): Promise<void> {
 async function statusCommand(options: ParsedOptions): Promise<void> {
   const context = await resolveGatewayContext(options);
   const detailed = getBooleanFlag(options, "all", "verbose");
-  const [runtime, channels, memory, localGateway] = await Promise.all([
-    requestGatewayJson<RuntimeMetaPayload>(context.baseUrl, "/api/runtime/meta", {
-      timeoutMs: context.timeoutMs,
-    }),
-    requestGatewayJson<ChannelsStatusSnapshot>(context.baseUrl, "/api/channels/status", {
-      timeoutMs: context.timeoutMs,
-    }),
-    requestGatewayJson<MemoryStatus>(context.baseUrl, "/api/memory/status", {
-      timeoutMs: context.timeoutMs,
-    }),
+  const [runtimeResult, channelsResult, memoryResult, localGateway] = await Promise.all([
+    settleCliRequest(
+      requestGatewayJson<RuntimeMetaPayload>(context.baseUrl, "/api/runtime/meta", {
+        timeoutMs: context.timeoutMs,
+      }),
+    ),
+    settleCliRequest(
+      requestGatewayJson<ChannelsStatusSnapshot>(context.baseUrl, "/api/channels/status", {
+        timeoutMs: context.timeoutMs,
+      }),
+    ),
+    settleCliRequest(
+      requestGatewayJson<MemoryStatus>(context.baseUrl, "/api/memory/status", {
+        timeoutMs: context.timeoutMs,
+      }),
+    ),
     maybeReadLocalGatewayStatus(context.baseUrl, context.runtimeEnv.PORT, getBooleanFlag(options, "deep", "all")),
   ]);
-  const gateway = localGateway ?? runtime.deployment.gateway.supervisor;
+  const gateway = localGateway ?? (runtimeResult.ok ? runtimeResult.value.deployment.gateway.supervisor : null);
+  if (!gateway) {
+    const [firstError] = summarizeCliWarnings([runtimeResult, channelsResult, memoryResult]);
+    throw new Error(firstError ?? "Runtime status is unavailable.");
+  }
+
+  const runtime = runtimeResult.ok ? runtimeResult.value : buildFallbackRuntimeMeta(context, gateway, runtimeResult.error);
+  const channels = channelsResult.ok
+    ? channelsResult.value
+    : await buildFallbackChannelsSnapshot(context.runtimeEnv, gateway, channelsResult.error, detailed);
+  const memory = memoryResult.ok ? memoryResult.value : buildFallbackMemoryStatus(context.runtimeEnv);
+  const warnings = summarizeCliWarnings([runtimeResult, channelsResult, memoryResult]);
   const payload = {
     url: context.baseUrl,
+    degraded: warnings.length > 0,
+    ...(warnings.length > 0 ? { warnings } : {}),
     runtime,
     channels,
     memory,
@@ -2729,6 +2894,14 @@ async function statusCommand(options: ParsedOptions): Promise<void> {
   if (getBooleanFlag(options, "json")) {
     printJson(payload);
     return;
+  }
+
+  if (warnings.length > 0) {
+    console.log("Warnings:");
+    for (const warning of warnings) {
+      console.log(`  - ${warning}`);
+    }
+    console.log("");
   }
 
   console.log(`Gateway URL: ${context.baseUrl}`);
@@ -2833,18 +3006,40 @@ async function logsCommand(options: ParsedOptions): Promise<void> {
 async function channelsStatusCommand(options: ParsedOptions): Promise<void> {
   ensureSupportedChannel(options);
   const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayJson<ChannelsStatusSnapshot>(context.baseUrl, "/api/channels/status", {
-    timeoutMs: context.timeoutMs,
-  });
+  const probeRequested = getBooleanFlag(options, "probe", "deep");
+  const payload = await settleCliRequest(
+    requestGatewayJson<ChannelsStatusSnapshot>(context.baseUrl, "/api/channels/status", {
+      timeoutMs: context.timeoutMs,
+    }),
+  );
 
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
+  if (payload.ok) {
+    if (getBooleanFlag(options, "json")) {
+      printJson(payload.value);
+      return;
+    }
+
+    console.log(`Channels: ${payload.value.channelOrder.map((id) => payload.value.channelLabels[id] ?? id).join(", ")}`);
+    console.log("");
+    printWeChatStatus(payload.value.channels.wechat);
     return;
   }
 
-  console.log(`Channels: ${payload.channelOrder.map((id) => payload.channelLabels[id] ?? id).join(", ")}`);
+  const gateway = await maybeReadLocalGatewayStatus(context.baseUrl, context.runtimeEnv.PORT, probeRequested);
+  if (!gateway) {
+    throw new Error(payload.error);
+  }
+  const fallback = await buildFallbackChannelsSnapshot(context.runtimeEnv, gateway, payload.error, probeRequested);
+
+  if (getBooleanFlag(options, "json")) {
+    printJson(fallback);
+    return;
+  }
+
+  console.log("Channels: WeChat");
+  console.log("Mode: local fallback");
   console.log("");
-  printWeChatStatus(payload.channels.wechat);
+  printWeChatStatus(fallback.channels.wechat);
 }
 
 async function channelsLogsCommand(options: ParsedOptions): Promise<void> {
@@ -5258,7 +5453,68 @@ async function pluginsListCommand(options: ParsedOptions): Promise<void> {
   printBundledPluginList(items);
 }
 
+function resolveMarketplaceSource(options: ParsedOptions): "reagent" | "bundled" | "reference" {
+  const raw = (getStringFlag(options, "source") ?? options.positionals[0] ?? "reagent").trim().toLowerCase();
+  if (raw === "reagent" || raw === "all" || raw === "repo") {
+    return "reagent";
+  }
+  if (raw === "bundled" || raw === "bundle") {
+    return "bundled";
+  }
+  if (raw === "reference" || raw === "compat" || raw === "package") {
+    return "reference";
+  }
+  throw new Error(`Unknown marketplace source: ${raw}`);
+}
+
+async function pluginsMarketplaceListCommand(options: ParsedOptions): Promise<void> {
+  const catalog = new BundledPluginCatalogService(packageRootDir);
+  const source = resolveMarketplaceSource(options);
+  const plugins = (await catalog.listPlugins()).filter((plugin) => source === "reagent" || plugin.source === source);
+  const payload = {
+    marketplace: {
+      requestedSource: getStringFlag(options, "source") ?? options.positionals[0] ?? "reagent",
+      resolvedSource: source,
+      available: true,
+      pluginCount: plugins.length,
+    },
+    plugins,
+  };
+
+  if (getBooleanFlag(options, "json")) {
+    printJson(payload);
+    return;
+  }
+
+  console.log(`Marketplace: ${payload.marketplace.resolvedSource}`);
+  console.log(`Plugins: ${payload.marketplace.pluginCount}`);
+  console.log("");
+  printBundledPluginList(plugins.map((plugin) => ({ plugin, host: null })));
+}
+
+function renderPluginsMarketplaceHelp(): void {
+  console.log(`ReAgent Plugins Marketplace
+
+Commands:
+  reagent plugins marketplace list [source]
+
+Sources:
+  reagent                List all plugin packages shipped in this repo
+  bundled                List bundled packages from packages/*
+  reference              List compatibility/reference packages from package/
+
+Flags:
+  --source <id>          Marketplace source alias
+  --json                 Print JSON output
+`);
+}
+
 async function pluginsInspectCommand(options: ParsedOptions): Promise<void> {
+  if (getBooleanFlag(options, "all")) {
+    await pluginsListCommand(options);
+    return;
+  }
+
   const target = options.positionals.join(" ").trim();
   if (!target) {
     throw new Error("plugins inspect requires a plugin id or package name.");
@@ -5311,9 +5567,10 @@ async function delegatePluginCommand(
     if (!target && !(subcommand === "update" && getBooleanFlag(options, "all"))) {
       throw new Error(`plugins ${subcommand} requires a plugin id.`);
     }
+    const resolvedTarget = target ?? "";
     if (subcommand === "install") {
-      const plugin = await catalog.getPlugin(target);
-      delegatedArgs.push(plugin?.installSpec ?? target);
+      const plugin = await catalog.getPlugin(resolvedTarget);
+      delegatedArgs.push(plugin?.installSpec ?? resolvedTarget);
       delegatedArgs.push(...collectPluginDelegateFlags(options, ["yes", "force", "pin", "link", "json"]));
     } else if (subcommand === "update") {
       if (target) {
@@ -5321,10 +5578,10 @@ async function delegatePluginCommand(
       }
       delegatedArgs.push(...collectPluginDelegateFlags(options, ["all", "yes", "json"]));
     } else if (subcommand === "uninstall") {
-      delegatedArgs.push(target);
+      delegatedArgs.push(resolvedTarget);
       delegatedArgs.push(...collectPluginDelegateFlags(options, ["dry-run", "keep-files", "json", "yes"]));
     } else {
-      delegatedArgs.push(target);
+      delegatedArgs.push(resolvedTarget);
       delegatedArgs.push(...collectPluginDelegateFlags(options, ["json", "yes"]));
     }
   } else {
@@ -5370,6 +5627,20 @@ async function pluginsCommand(options: ParsedOptions): Promise<void> {
   if (subcommand === "inspect" || subcommand === "info") {
     await pluginsInspectCommand(subOptions);
     return;
+  }
+  if (subcommand === "marketplace") {
+    const marketplaceCommand = subOptions.positionals[0];
+    if (marketplaceCommand === undefined || marketplaceCommand === "list") {
+      await pluginsMarketplaceListCommand(
+        marketplaceCommand === undefined ? subOptions : consumePositionals(subOptions, 1),
+      );
+      return;
+    }
+    if (marketplaceCommand === "help" || marketplaceCommand === "--help" || marketplaceCommand === "-h") {
+      renderPluginsMarketplaceHelp();
+      return;
+    }
+    throw new Error(`Unknown plugins marketplace command: ${marketplaceCommand}`);
   }
   if (subcommand === "install") {
     await delegatePluginCommand(subOptions, "install");

@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
 
 import {
+  createPluginMemoryCompactionService,
   createPluginMemoryRecallService,
   createPluginMemoryService,
   createPluginServices,
@@ -65,6 +66,21 @@ function resolveMemoryRecallAccess(api: OpenClawPluginApi, params: Record<string
   return {
     ...resolved,
     memoryRecallService: createPluginMemoryRecallService(api, {
+      scope: resolved.scope,
+      scopeKey: resolved.scopeKey,
+    }),
+  };
+}
+
+function resolveMemoryCompactionAccess(api: OpenClawPluginApi, params: Record<string, unknown>) {
+  const resolved = resolveMemoryToolAccess(api, params);
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  return {
+    ...resolved,
+    memoryCompactionService: createPluginMemoryCompactionService(api, {
       scope: resolved.scope,
       scopeKey: resolved.scopeKey,
     }),
@@ -330,6 +346,56 @@ export function registerReAgentTools(api: OpenClawPluginApi): void {
           scope: resolved.scope,
           scopeKey: resolved.scopeKey,
           file: saved,
+        },
+      );
+    },
+  });
+
+  api.registerTool({
+    name: "reagent_memory_compact",
+    label: "ReAgent Memory Compact",
+    description: "Compact older memory notes into one long-term summary entry.",
+    parameters: {
+      type: "object",
+      properties: {
+        olderThanDays: { type: "integer", minimum: 1, maximum: 365 },
+        minEntries: { type: "integer", minimum: 2, maximum: 50 },
+        maxEntries: { type: "integer", minimum: 2, maximum: 50 },
+        dryRun: { type: "boolean" },
+        scope: {
+          type: "string",
+          enum: ["workspace", "conversation"],
+        },
+        scopeKey: { type: "string", minLength: 1 },
+      },
+      additionalProperties: false,
+    },
+    async execute(_toolCallId, params) {
+      const resolved = resolveMemoryCompactionAccess(api, params);
+      if (!resolved.ok) {
+        return textToolResult(resolved.message, { ok: false });
+      }
+
+      const result = await resolved.memoryCompactionService.compact({
+        source: "manual",
+        ...(typeof params.olderThanDays === "number" ? { olderThanDays: params.olderThanDays } : {}),
+        ...(typeof params.minEntries === "number" ? { minEntries: params.minEntries } : {}),
+        ...(typeof params.maxEntries === "number" ? { maxEntries: params.maxEntries } : {}),
+        ...(typeof params.dryRun === "boolean" ? { dryRun: params.dryRun } : {}),
+      });
+
+      return textToolResult(
+        result.compactedEntryCount > 0
+          ? [
+              `Compacted ${result.compactedEntryCount} entries in ${resolved.scopeLabel}.`,
+              `Summary: ${result.summaryTitle ?? "n/a"}`,
+              `Path: ${result.summaryPath ?? "n/a"}`,
+            ].join("\n")
+          : `No eligible memory entries were old enough to compact in ${resolved.scopeLabel}.`,
+        {
+          scope: resolved.scope,
+          scopeKey: resolved.scopeKey,
+          result,
         },
       );
     },
