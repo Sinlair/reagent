@@ -6,9 +6,9 @@
 ## Scope
 
 - Root app
-- `packages/reagent-core`
-- `packages/reagent-openclaw`
-- `package/` reference package
+- Runtime / CLI
+- OpenClaw bridge / host surface
+- `package/` foundation package
 - Docs only
 
 ## Validation

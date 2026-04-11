@@ -310,38 +310,47 @@ export class ResearchTaskService {
     message?: string | undefined,
     extras: Partial<ResearchTaskRecord> = {}
   ): Promise<void> {
-    const nextTask = await this.mutateStore<ResearchTaskRecord | null>((store) => {
-      let updatedTask: ResearchTaskRecord | null = null;
-      store.tasks = store.tasks.map((task) => {
-        if (task.taskId !== taskId) {
-          return task;
-        }
+    const nextTask = await this.mutateStore<ResearchTaskRecord | null>(async (store) => {
+      const taskIndex = store.tasks.findIndex((task) => task.taskId === taskId);
+      if (taskIndex < 0) {
+        return null;
+      }
 
-        updatedTask = {
-          ...task,
-          ...extras,
-          state,
-          updatedAt: nowIso(),
-          ...(message?.trim() ? { message: message.trim() } : {}),
-          progress: progressForState(state),
-          transitions: pushTransition(task.transitions ?? [], state, message)
-        };
-        return updatedTask;
+      const currentTask = store.tasks[taskIndex];
+      if (!currentTask) {
+        return null;
+      }
+
+      const mergedTask = {
+        ...currentTask,
+        ...extras,
+      };
+      const updatedTask: ResearchTaskRecord = {
+        ...mergedTask,
+        request: mergedTask.request,
+        state,
+        updatedAt: nowIso(),
+        ...(message?.trim() ? { message: message.trim() } : {}),
+        progress: progressForState(state),
+        transitions: pushTransition(currentTask.transitions ?? [], state, message),
+      };
+
+      store.tasks[taskIndex] = updatedTask;
+
+      await this.researchRoundService.recordTaskProgress({
+        taskId,
+        state,
+        progress: updatedTask.progress,
+        message: updatedTask.message,
+        reviewStatus: updatedTask.reviewStatus,
       });
+
       return updatedTask;
     });
 
     if (!nextTask) {
       return;
     }
-
-    await this.researchRoundService.recordTaskProgress({
-      taskId,
-      state,
-      progress: nextTask.progress,
-      message: nextTask.message,
-      reviewStatus: nextTask.reviewStatus,
-    });
   }
 
   private async runTask(taskId: string): Promise<void> {

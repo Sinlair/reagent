@@ -51,11 +51,11 @@ body:
       options:
         - Root web workspace
         - Root runtime / API
+        - Runtime / CLI
         - WeChat native channel
         - OpenClaw bridge
-        - reagent-core package
-        - reagent-openclaw package
-        - package/ reference package
+        - OpenClaw host surface
+        - package/ foundation package
         - Documentation
     validations:
       required: true
