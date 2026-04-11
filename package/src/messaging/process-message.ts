@@ -1,12 +1,12 @@
 import path from "node:path";
 
-import { createTypingCallbacks } from "openclaw/plugin-sdk/channel-runtime";
+import { createTypingCallbacks } from "../sdk/channel-runtime.js";
 import {
   resolveSenderCommandAuthorizationWithRuntime,
   resolveDirectDmAuthorizationOutcome,
-} from "openclaw/plugin-sdk/command-auth";
-import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/infra-runtime";
-import type { PluginRuntime } from "openclaw/plugin-sdk/core";
+} from "../sdk/command-auth.js";
+import { resolvePreferredOpenClawTmpDir } from "../sdk/infra.js";
+import type { PluginRuntime } from "../sdk/core.js";
 
 import { sendTyping } from "../api/api.js";
 import type { WeixinMessage } from "../api/types.js";
@@ -36,7 +36,7 @@ const MEDIA_OUTBOUND_TEMP_DIR = path.join(resolvePreferredOpenClawTmpDir(), "wei
 /** Dependencies for processOneMessage, injected by the monitor loop. */
 export type ProcessMessageDeps = {
   accountId: string;
-  config: import("openclaw/plugin-sdk/core").OpenClawConfig;
+  config: import("../sdk/core.js").OpenClawConfig;
   channelRuntime: PluginRuntime["channel"];
   baseUrl: string;
   cdnBaseUrl: string;

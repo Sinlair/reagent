@@ -37,7 +37,8 @@ const UI = {
       commandGroupTabs: "Tabs",
       commandGroupActions: "Actions",
       commandGoTo: "Go to",
-      commandInsert: "Insert"
+      commandInsert: "Insert",
+      skipToContent: "Skip to main content"
     },
     tabs: {
       landing: "Workbench",
@@ -593,7 +594,8 @@ const UI = {
       commandGroupTabs: "\u9875\u9762",
       commandGroupActions: "\u547d\u4ee4",
       commandGoTo: "\u8df3\u8f6c",
-      commandInsert: "\u586b\u5165"
+      commandInsert: "\u586b\u5165",
+      skipToContent: "\u8df3\u8f6c\u5230\u4e3b\u5185\u5bb9"
     },
     tabs: {
       landing: "\u5de5\u4f5c\u53f0",

@@ -1503,7 +1503,7 @@ function renderAgentSessionsList(sessions) {
             )}</span>
             <span>${escapeHtml(`${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}`)}</span>
             <span>${escapeHtml(session.skillLabels.join(", ") || "-")}</span>
-            ${isCurrent ? `<span>${escapeHtml(state.lang === "zh" ? "褰撳墠鑱婂ぉ" : "Current chat")}</span>` : ""}
+            ${isCurrent ? `<span>${escapeHtml(state.lang === "zh" ? "\u5f53\u524d\u804a\u5929" : "Current chat")}</span>` : ""}
           </div>
         </article>
       `;
@@ -1688,10 +1688,10 @@ function renderSettingsOverview() {
         ]
       },
       {
-        title: "OpenClaw Plugin",
+        title: "OpenClaw Compatibility",
         rows: [
-          ["Package", deployment?.openclawPlugin?.packageName || "@sinlair/reagent-openclaw"],
-          ["Install", deployment?.openclawPlugin?.installCommand || "openclaw plugins install @sinlair/reagent-openclaw --yes"],
+          ["Package", deployment?.openclawPlugin?.packageName || "@tencent-weixin/openclaw-weixin"],
+          ["Install", deployment?.openclawPlugin?.installCommand || "openclaw plugins install @tencent-weixin/openclaw-weixin@2.1.1 --yes"],
           [
             "Plugin State",
             wechat?.providerMode === "openclaw"
@@ -2484,7 +2484,18 @@ function renderStatusRows(status) {
     [state.lang === "zh" ? "\u5df2\u8fde\u63a5" : "Connected", String(status.connected)],
     [state.lang === "zh" ? "\u751f\u547d\u5468\u671f" : "Lifecycle", status.lifecycleState || "-"],
     [state.lang === "zh" ? "\u539f\u56e0" : "Reason", status.lifecycleReason || "-"],
-    [state.lang === "zh" ? "\u8d26\u53f7" : "Account", status.accountName || status.accountId || "-"],
+    [
+      state.lang === "zh" ? "\u8d26\u53f7" : "Account",
+      status.accountName || status.accountId || "-"
+    ],
+    [
+      state.lang === "zh" ? "\u8d26\u53f7\u6570" : "Accounts",
+      Array.isArray(status.accounts) && status.accounts.length > 0 ? String(status.accounts.length) : "0"
+    ],
+    [
+      state.lang === "zh" ? "\u4f1a\u8bdd" : "Host Sessions",
+      status.hostSessionRegistryCount != null ? String(status.hostSessionRegistryCount) : "0"
+    ],
     [state.lang === "zh" ? "\u66f4\u65b0\u65f6\u95f4" : "Updated", formatTime(status.updatedAt)],
     [state.lang === "zh" ? "\u6700\u540e\u6d88\u606f" : "Last", status.lastMessage || status.lastError || "-"],
     [state.lang === "zh" ? "\u63d0\u4f9b\u65b9" : "Provider", status.providerMode]
@@ -2513,6 +2524,18 @@ function renderChannelNotes(status) {
   }
   if (status.lastError) notes.unshift(status.lastError);
   if (status.gatewayUrl) notes.push(`${state.lang === "zh" ? "\u7f51\u5173" : "Gateway"}: ${status.gatewayUrl}`);
+  if (Array.isArray(status.accounts) && status.accounts.length > 0) {
+    notes.push(
+      `${state.lang === "zh" ? "\u8d26\u53f7\u5217\u8868" : "Accounts"}: ${status.accounts
+        .map((account) => account.accountName || account.accountId)
+        .join(", ")}`
+    );
+  }
+  if (status.hostSessionRegistryUpdatedAt) {
+    notes.push(
+      `${state.lang === "zh" ? "\u4f1a\u8bdd\u7f13\u5b58\u66f4\u65b0" : "Host session registry updated"}: ${formatTime(status.hostSessionRegistryUpdatedAt)}`
+    );
+  }
   if (status.lastHealthyAt) notes.push(`${state.lang === "zh" ? "\u4e0a\u6b21\u5065\u5eb7" : "Last healthy"}: ${formatTime(status.lastHealthyAt)}`);
   if (status.lastRestartAt) notes.push(`${state.lang === "zh" ? "\u4e0a\u6b21\u91cd\u542f" : "Last restart"}: ${formatTime(status.lastRestartAt)}`);
   if (status.providerMode !== "mock") {
@@ -2525,8 +2548,8 @@ function renderChannelNotes(status) {
   if (status.providerMode === "openclaw") {
     notes.push(
       state.lang === "zh"
-        ? "OpenClaw \u63d2\u4ef6\u5b89\u88c5\u547d\u4ee4\uff1aopenclaw plugins install @sinlair/reagent-openclaw --yes"
-        : "OpenClaw plugin install: openclaw plugins install @sinlair/reagent-openclaw --yes"
+        ? "OpenClaw \u63d2\u4ef6\u5b89\u88c5\u547d\u4ee4\uff1aopenclaw plugins install @tencent-weixin/openclaw-weixin@2.1.1 --yes"
+        : "OpenClaw plugin install: openclaw plugins install @tencent-weixin/openclaw-weixin@2.1.1 --yes"
     );
   }
 
@@ -3982,10 +4005,8 @@ async function loadFeedback() {
 
 function renderLogsControls() {
   if (!els.logsFollowToggle) return;
-  const label = state.logsAutoFollow
-    ? t("logs.followOn", state.lang === "zh" ? "\u81ea\u52a8\u8ddf\u968f\uff1a\u5f00" : "Auto-follow: On")
-    : t("logs.followOff", state.lang === "zh" ? "\u81ea\u52a8\u8ddf\u968f\uff1a\u5173" : "Auto-follow: Off");
-  els.logsFollowToggle.textContent = label;
+  const label = state.logsAutoFollow ? t("logs.followOn") : t("logs.followOff");
+  els.logsFollowToggle.textContent = label || (state.logsAutoFollow ? "Auto-follow: On" : "Auto-follow: Off");
   els.logsFollowToggle.setAttribute("aria-pressed", String(Boolean(state.logsAutoFollow)));
   els.logsFollowToggle.classList.toggle("btn--active", Boolean(state.logsAutoFollow));
 }
@@ -6904,6 +6925,9 @@ i18n?.init(state);
 state.navCollapsed = loadRememberedNavCollapsed();
 i18n?.apply(state);
 updateShellClasses();
+document.querySelector(".skip-link")?.addEventListener("click", () => {
+  window.requestAnimationFrame(() => els.content?.focus({ preventScroll: true }));
+});
 bindOpenTabButtons();
 els.navCollapseToggle.title = state.navCollapsed ? t("common.expandNav", "Expand navigation") : t("common.collapseNav", "Collapse navigation");
 

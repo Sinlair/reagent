@@ -1,5 +1,5 @@
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
-import { buildChannelConfigSchema } from "openclaw/plugin-sdk/channel-config-schema";
+import type { OpenClawPluginApi } from "./src/sdk/plugin-entry.js";
+import { buildChannelConfigSchema } from "./src/sdk/channel-config.js";
 
 import { weixinPlugin } from "./src/channel.js";
 import { assertHostCompatibility } from "./src/compat.js";

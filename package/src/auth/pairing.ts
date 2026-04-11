@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { withFileLock } from "openclaw/plugin-sdk/infra-runtime";
+import { withFileLock } from "../sdk/infra.js";
 
 import { resolveStateDir } from "../storage/state-dir.js";
 import { logger } from "../util/logger.js";

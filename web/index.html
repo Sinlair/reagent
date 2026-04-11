@@ -3,11 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#2563eb" />
     <title>ReAgent Workbench</title>
-    <link rel="stylesheet" href="/styles.css?v=20260408-uifix" />
+    <link rel="stylesheet" href="/styles.css?v=20260410-refresh" />
   </head>
   <body>
+    <a class="skip-link" href="#content-root" data-i18n="common.skipToContent">Skip to main content</a>
     <div id="app-shell" class="shell">
       <button
         id="nav-backdrop"
@@ -346,7 +347,7 @@
         </aside>
       </div>
 
-      <main id="content-root" class="content">
+      <main id="content-root" class="content" tabindex="-1">
         <div id="product-alerts" class="content-alerts" hidden></div>
         <section class="workspace-panel workspace-panel--active" data-panel="landing">
           <div class="landing-shell">
@@ -2118,10 +2119,10 @@ Select a file to preview its content.</pre
                 Settings
               </div>
               <h2 id="settings-heading" class="page-title" data-i18n="settings.heading">
-                运行与交付
+                Runtime &amp; Delivery
               </h2>
               <p id="settings-subtitle" class="panel-sub" data-i18n="settings.sub">
-                查看 runtime service、渠道、MCP 和 bridge 设置。
+                Check runtime service, channels, MCP, and bridge settings.
               </p>
             </div>
           </div>
@@ -2134,10 +2135,10 @@ Select a file to preview its content.</pre
             <div>
               <div id="logs-kicker" class="section-kicker" data-i18n="logs.kicker">Logs</div>
               <h2 id="logs-heading" class="page-title" data-i18n="logs.heading">
-                运行日志
+                Runtime Logs
               </h2>
               <p id="logs-subtitle" class="panel-sub" data-i18n="logs.sub">
-                查看并跟随当前 runtime 的 stdout 和 stderr。
+                Inspect and follow stdout and stderr from the current runtime.
               </p>
             </div>
             <div class="panel-actions">
@@ -2146,8 +2147,9 @@ Select a file to preview its content.</pre
                 class="btn btn--ghost"
                 type="button"
                 aria-pressed="true"
+                data-i18n="logs.followOn"
               >
-                自动跟随：开
+                Auto-follow: On
               </button>
               <button
                 id="logs-clear-button"
@@ -2155,7 +2157,7 @@ Select a file to preview its content.</pre
                 type="button"
                 data-i18n="common.clear"
               >
-                清空视图
+                Clear view
               </button>
               <button
                 id="logs-copy-button"
@@ -2163,7 +2165,7 @@ Select a file to preview its content.</pre
                 type="button"
                 data-i18n="common.copy"
               >
-                复制
+                Copy
               </button>
               <button
                 id="refresh-logs"
@@ -2242,7 +2244,7 @@ Select a file to preview its content.</pre
         <div id="skill-detail"></div>
       </div>
     </div>
-    <script type="module" src="/i18n.js?v=20260408-uifix"></script>
-    <script type="module" src="/app.js?v=20260408-uifix"></script>
+    <script type="module" src="/i18n.js?v=20260410-refresh"></script>
+    <script type="module" src="/app.js?v=20260410-refresh"></script>
   </body>
 </html>

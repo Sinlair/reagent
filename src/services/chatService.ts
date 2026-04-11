@@ -4,6 +4,7 @@ import {
   type AgentSessionListEntry,
   type AgentSessionSummary
 } from "../agents/runtime.js";
+import type { AgentRuntimeHook } from "../agents/runtimeHooks.js";
 import type { OpenAiCompatClientShape, OpenAiReasoningEffort, OpenAiWireApi } from "../providers/llm/openAiCompatClient.js";
 import type { LlmRouteSelection } from "./llmRegistryService.js";
 import type { MemoryService } from "./memoryService.js";
@@ -14,10 +15,12 @@ interface ChatServiceOptions {
   model?: string;
   researchService?: Pick<ResearchService, "runResearch" | "listRecentReports" | "getReport">;
   wireApi?: OpenAiWireApi;
+  hooks?: AgentRuntimeHook[] | undefined;
 }
 
 export interface ChatServiceLike {
   reply(input: AgentChatInput): Promise<string>;
+  plainReply?(input: AgentChatInput): Promise<string>;
   listSessions?(): Promise<AgentSessionListEntry[]>;
   setRole?(senderId: string, roleId: string): Promise<AgentSessionSummary>;
   setSkills?(senderId: string, skillIds: string[]): Promise<AgentSessionSummary>;
@@ -41,12 +44,17 @@ export class ChatService implements ChatServiceLike {
       ...(options.model ? { model: options.model } : {}),
       ...(options.researchService ? { researchService: options.researchService } : {}),
       ...(options.wireApi ? { wireApi: options.wireApi } : {}),
+      ...(options.hooks ? { hooks: options.hooks } : {}),
     };
     this.runtime = new AgentRuntime(workspaceDir, memoryService, runtimeOptions);
   }
 
   async reply(input: AgentChatInput): Promise<string> {
     return this.runtime.reply(input);
+  }
+
+  async plainReply(input: AgentChatInput): Promise<string> {
+    return this.runtime.replyPlain(input);
   }
 
   async listSessions(): Promise<AgentSessionListEntry[]> {

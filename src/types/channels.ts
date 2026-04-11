@@ -34,6 +34,38 @@ export interface WeChatLifecycleAuditEntry {
   details?: Record<string, string | number | boolean | null> | undefined;
 }
 
+export interface OpenClawEventAuditEntry {
+  ts?: string | undefined;
+  event: string;
+  sessionKey?: string | undefined;
+  messageId?: string | undefined;
+  role?: string | undefined;
+  text?: string | undefined;
+}
+
+export interface OpenClawSessionRegistryEntry {
+  sessionKey: string;
+  channel?: string | undefined;
+  to?: string | undefined;
+  accountId?: string | undefined;
+  threadId?: string | number | undefined;
+  label?: string | undefined;
+  displayName?: string | undefined;
+  derivedTitle?: string | undefined;
+  lastMessagePreview?: string | undefined;
+  lastMessageId?: string | undefined;
+  lastMessageRole?: string | undefined;
+  updatedAt?: number | null | undefined;
+  lastSyncedAt: string;
+}
+
+export interface OpenClawCachedSessionMessage {
+  id: string;
+  role?: string | undefined;
+  text: string;
+  createdAt: string;
+}
+
 export interface WeChatBridgeDiagnostics {
   providerMode: "openclaw";
   cliPath: string;
@@ -50,6 +82,16 @@ export interface WeChatBridgeDiagnostics {
   recommendedActions: string[];
   lastError?: string | undefined;
   logTail: string[];
+}
+
+export interface WeChatChannelAccountSummary {
+  accountId: string;
+  accountName?: string | undefined;
+  configured?: boolean | undefined;
+  linked?: boolean | undefined;
+  running?: boolean | undefined;
+  connected?: boolean | undefined;
+  lastError?: string | undefined;
 }
 
 export interface WeChatChannelStatus {
@@ -76,6 +118,9 @@ export interface WeChatChannelStatus {
   pluginVersion?: string | undefined;
   gatewayUrl?: string | undefined;
   gatewayReachable?: boolean | undefined;
+  accounts?: WeChatChannelAccountSummary[] | undefined;
+  hostSessionRegistryCount?: number | undefined;
+  hostSessionRegistryUpdatedAt?: string | undefined;
   updatedAt: string;
   notes?: string[] | undefined;
 }

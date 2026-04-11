@@ -7,8 +7,6 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 
-import QRCode from "qrcode";
-
 import {
   DEFAULT_GATEWAY_PORT,
   getGatewayServiceStatus,
@@ -20,14 +18,43 @@ import {
   uninstallGatewayService,
   type GatewayStatusSnapshot,
 } from "./gatewayService.js";
+import {
+  applyRuntimeOverrides,
+  consumePositionals,
+  getBooleanFlag,
+  getIntegerFlag,
+  getOptionalBooleanFlag,
+  getStringFlag,
+  parseOptions,
+  serializeParsedOptions,
+  type ParsedOptions,
+} from "./cli/args.js";
+import { createChannelsCli } from "./cli/channels.js";
+import {
+  OPENCLAW_COMMAND_FAMILIES,
+  dispatchResearchCommand as runResearchCommandDispatch,
+  type OpenClawCommandFamily,
+  type PluginDelegateSubcommand,
+} from "./cli/dispatch.js";
+import { createMemoryCli } from "./cli/memory.js";
+import { createResearchArtifactsReportsCli } from "./cli/researchArtifactsReports.js";
+import { createResearchCandidatesCli } from "./cli/researchCandidates.js";
+import { createResearchDirectionDiscoveryCli } from "./cli/researchDirectionDiscovery.js";
+import { createResearchGraphFeedbackCli } from "./cli/researchGraphFeedback.js";
+import { createOpenClawCli } from "./cli/openClaw.js";
+import { createRuntimeSurfaceCli } from "./cli/runtimeSurface.js";
+import { createWorkspaceControlCli } from "./cli/workspaceControl.js";
+import type {
+  ResearchGraphExplainPayload,
+  ResearchGraphPathPayload,
+  ResearchGraphReportPayload,
+} from "./cli/researchGraphFeedback.js";
 import { packageRootDir, resolvePackagePath } from "./packagePaths.js";
-import { BundledPluginCatalogService, type BundledPluginRecord } from "./services/bundledPluginCatalogService.js";
+import type { BundledPluginRecord } from "./services/bundledPluginCatalogService.js";
+import type { OpenClawPluginState } from "./services/openClawHostCatalogService.js";
 import type {
   ChannelsStatusSnapshot,
   WeChatChannelStatus,
-  WeChatLifecycleAuditEntry,
-  WeChatLoginStartResult,
-  WeChatMessage,
 } from "./types/channels.js";
 import type {
   MemoryCompactionRecord,
@@ -48,10 +75,16 @@ import type {
 import type { ResearchDirectionProfile, ResearchDiscoveryQueryCandidate } from "./types/researchDirection.js";
 import type { ResearchDirectionReport } from "./types/researchDirectionReport.js";
 import type {
+  ResearchEvolutionCandidate,
+  ResearchEvolutionCandidateApplyOutcome,
+  ResearchEvolutionCandidateRollbackOutcome,
+} from "./types/researchEvolutionCandidate.js";
+import type {
   ResearchDiscoveryRunResult,
   ResearchDiscoveryRunSummary,
 } from "./types/researchDiscovery.js";
 import type { ResearchDiscoverySchedulerStatus } from "./types/researchDiscoveryScheduler.js";
+import type { JobRuntimeRunAuditEntry, JobRuntimeSnapshot } from "./services/jobRuntimeObservabilityService.js";
 import type { ResearchFeedbackRecord, ResearchFeedbackSummary } from "./types/researchFeedback.js";
 import type {
   DeepPaperAnalysisReport,
@@ -72,11 +105,6 @@ import type {
 } from "./services/workspaceConfigService.js";
 
 const require = createRequire(import.meta.url);
-
-type ParsedOptions = {
-  flags: Map<string, string | boolean>;
-  positionals: string[];
-};
 
 type RuntimeEnv = {
   DATABASE_URL: string;
@@ -144,120 +172,38 @@ type RuntimeMetaPayload = {
   };
 };
 
-type RuntimeLogPayload = {
-  lines: number;
-  source: string;
-  stdout: {
-    path: string | null;
-    content: string;
-  };
-  stderr: {
-    path: string | null;
-    content: string;
-  };
-  ts: number;
-};
-
-type GatewayProbePayload = {
-  url: string;
-  healthReachable: boolean;
-  healthStatus: string | null;
-  rpcReachable: boolean;
-  agent: string | null;
-  workspaceDir: string | null;
-  llmProvider: string | null;
-  wechatProvider: string | null;
-  error: string | null;
-};
-
-type ChannelMessagesPayload = {
-  messages: WeChatMessage[];
-};
-
-type ChannelLifecyclePayload = {
-  items: WeChatLifecycleAuditEntry[];
-};
-
-type ChannelSessionsPayload = {
-  sessions: Array<{
-    sessionId: string;
-    channel: string;
-    senderId: string;
-    roleId: string;
-    roleLabel: string;
-    skillIds: string[];
-    skillLabels: string[];
-    providerId: string;
-    providerLabel: string;
-    modelId: string;
-    modelLabel: string;
-    llmStatus: "ready" | "needs-setup" | "disabled";
-    llmSource: "registry" | "env" | "injected";
-    wireApi?: string | undefined;
-    turnCount: number;
-    lastUserMessage?: string | undefined;
-    lastAssistantMessage?: string | undefined;
-    updatedAt: string;
+type RuntimeJobsPayload = {
+  items: Array<{
+    id: string;
+    label: string;
+    snapshot: JobRuntimeSnapshot;
+    recentRuns: JobRuntimeRunAuditEntry[];
   }>;
 };
 
-type AgentRouteOption = {
-  providerId: string;
-  providerLabel: string;
-  modelId: string;
-  modelLabel: string;
-  llmStatus: "ready" | "needs-setup" | "disabled";
-  llmSource: "registry" | "env";
-  wireApi?: string | undefined;
+type OpenClawSessionSummaryPayload = {
+  sessionKey: string;
+  channel?: string | undefined;
+  to?: string | undefined;
+  accountId?: string | undefined;
+  threadId?: string | number | undefined;
+  label?: string | undefined;
+  displayName?: string | undefined;
+  derivedTitle?: string | undefined;
+  lastMessagePreview?: string | undefined;
+  updatedAt?: number | null | undefined;
 };
 
-type AgentSessionSummary = {
-  roleId: string;
-  roleLabel: string;
-  skillIds: string[];
-  skillLabels: string[];
-  providerId: string;
-  providerLabel: string;
-  modelId: string;
-  modelLabel: string;
-  llmStatus: "ready" | "needs-setup" | "disabled";
-  llmSource: "registry" | "env" | "injected";
-  wireApi?: string | undefined;
-  fallbackRoutes: AgentRouteOption[];
-  reasoningEffort: string;
-  defaultRoute: AgentRouteOption;
-  availableRoles: Array<{ id: string; label: string }>;
-  availableSkills: Array<{ id: string; label: string }>;
-  availableLlmProviders: Array<{ id: string; label: string; models?: Array<{ id: string; label: string }> }>;
-  availableReasoningEfforts: string[];
+type OpenClawHistoryMessagePayload = {
+  id?: string | undefined;
+  role?: string | undefined;
+  text: string;
+  raw: Record<string, unknown>;
 };
 
-type MemoryFilesPayload = {
-  files: MemoryFileSummary[];
-};
-
-type MemoryCompactionsPayload = {
-  items: MemoryCompactionRecord[];
-};
-
-type OpenClawPluginListPayload = {
-  plugins?: Array<{
-    id?: string;
-    name?: string;
-    version?: string;
-    enabled?: boolean;
-    status?: string;
-    channelIds?: string[];
-  }>;
-};
-
-type OpenClawPluginState = {
-  id: string;
-  name?: string | undefined;
-  version?: string | undefined;
-  enabled: boolean;
-  status?: string | undefined;
-  channelIds: string[];
+type OpenClawSessionEventPayload = {
+  event: string;
+  payload?: unknown;
 };
 
 type ResearchRecentPayload = {
@@ -268,109 +214,59 @@ type ResearchTasksPayload = {
   tasks: ResearchTaskSummary[];
 };
 
-type ResearchDirectionsPayload = {
-  profiles: ResearchDirectionProfile[];
-};
-
-type ResearchDiscoveryPlanPayload = {
-  candidates: ResearchDiscoveryQueryCandidate[];
-};
-
-type ResearchDiscoveryRecentPayload = {
-  runs: ResearchDiscoveryRunSummary[];
-};
-
-type ResearchFeedbackPayload = {
-  summary: ResearchFeedbackSummary;
-  items: ResearchFeedbackRecord[];
-};
-
-type ResearchModuleAssetsPayload = {
-  assets: ModuleAsset[];
-};
-
-type ResearchPresentationsPayload = {
-  presentations: WeeklyPresentationResult[];
-};
-
-type ResearchDirectionReportsPayload = {
-  reports: ResearchDirectionReport[];
-};
-
-type ResearchGraphReportPayload = {
-  generatedAt: string;
-  view: "asset" | "paper";
-  filters: ResearchMemoryGraphQuery;
-  stats: ResearchMemoryGraph["stats"];
-  isolatedNodeCount?: number | undefined;
-  hubs?: Array<{ node: ResearchMemoryNode; degree: number }> | undefined;
-  topNodes?: Array<{ node: ResearchMemoryNode; degree: number }> | undefined;
-  strongestEdges: Array<{
-    id: string;
-    source: string;
-    target: string;
-    label: string;
-    kind?: string | undefined;
-    weight?: number | undefined;
-    sourceLabel: string;
-    targetLabel: string;
-  }>;
-  components?: Array<{
-    id: string;
-    size: number;
-    edgeCount: number;
-    nodeTypes: Record<string, number>;
-    leadNodes: Array<{
-      id: string;
-      label: string;
-      type: string;
-      degree: number;
-    }>;
-    supportingLabels: string[];
-  }> | undefined;
-  isolatedNodes?: ResearchMemoryNode[] | undefined;
-  summary?: string[] | undefined;
-};
-
-type ResearchGraphPathPayload = {
-  generatedAt: string;
-  view: "asset" | "paper";
-  connected: boolean;
-  fromNode: ResearchMemoryNode | null;
-  toNode: ResearchMemoryNode | null;
-  hops: number;
-  pathNodeIds: string[];
-  pathNodes: ResearchMemoryNode[];
-  pathEdges: Array<{
-    id: string;
-    source: string;
-    target: string;
-    label: string;
-    kind?: string | undefined;
-    weight?: number | undefined;
-    sourceLabel: string;
-    targetLabel: string;
-  }>;
+type HomePayload = {
+  url: string;
+  version: string;
+  degraded: boolean;
+  warnings?: string[];
+  mode:
+    | "first-run"
+    | "runtime-stopped"
+    | "channel-setup"
+    | "active-research"
+    | "report-ready"
+    | "ready";
+  headline: string;
   summary: string;
+  runtime: RuntimeMetaPayload;
+  channels: ChannelsStatusSnapshot;
+  memory: MemoryStatus;
+  gateway: GatewayStatusSnapshot;
+  research: {
+    recentReports: ResearchReportSummary[];
+    recentTasks: ResearchTaskSummary[];
+    activeTaskCount: number;
+  };
+  nextSteps: string[];
+  dashboardUrl: string;
 };
 
-type ResearchGraphExplainPayload = {
-  generatedAt: string;
-  view: "asset" | "paper";
-  connected: boolean;
-  relationType: "missing" | "direct" | "indirect" | "disconnected";
-  fromNode: ResearchMemoryNode | null;
-  toNode: ResearchMemoryNode | null;
-  directEdges: ResearchGraphPathPayload["pathEdges"];
-  sharedNeighbors: ResearchMemoryNode[];
-  supportingLabels: string[];
-  path: {
-    hops: number;
-    pathNodeIds: string[];
-    pathNodes: ResearchMemoryNode[];
-    pathEdges: ResearchGraphPathPayload["pathEdges"];
-  } | null;
-  summary: string;
+type OnboardPayload = {
+  version: string;
+  envFile: {
+    path: string;
+    exists: boolean;
+  };
+  workspace: {
+    path: string;
+    exists: boolean;
+  };
+  database: {
+    url: string;
+    sqlitePath: string | null;
+    ready: boolean;
+  };
+  runtime: {
+    gatewayUrl: string;
+    gatewayInstalled: boolean;
+    gatewayReachable: boolean;
+  };
+  actions: {
+    apply: boolean;
+    skipDb: boolean;
+    installService: boolean;
+  };
+  nextSteps: string[];
 };
 
 type GatewayContext = {
@@ -385,127 +281,6 @@ type GatewayRequestOptions = {
   timeoutMs?: number;
   accept?: string;
 };
-
-function parseOptions(args: string[]): ParsedOptions {
-  const flags = new Map<string, string | boolean>();
-  const positionals: string[] = [];
-
-  let index = 0;
-  while (index < args.length) {
-    const token = args[index];
-    if (token === undefined) {
-      break;
-    }
-
-    if (!token.startsWith("--")) {
-      positionals.push(token);
-      index += 1;
-      continue;
-    }
-
-    const body = token.slice(2);
-    const eqIndex = body.indexOf("=");
-    if (eqIndex >= 0) {
-      flags.set(body.slice(0, eqIndex), body.slice(eqIndex + 1));
-      index += 1;
-      continue;
-    }
-
-    const next = args[index + 1];
-    if (next !== undefined && !next.startsWith("-")) {
-      flags.set(body, next);
-      index += 1;
-    } else {
-      flags.set(body, true);
-    }
-
-    index += 1;
-  }
-
-  return { flags, positionals };
-}
-
-function getStringFlag(options: ParsedOptions, ...names: string[]): string | undefined {
-  for (const name of names) {
-    const value = options.flags.get(name);
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-
-  return undefined;
-}
-
-function getBooleanFlag(options: ParsedOptions, ...names: string[]): boolean {
-  return names.some((name) => options.flags.get(name) === true);
-}
-
-function getIntegerFlag(options: ParsedOptions, ...names: string[]): number | undefined {
-  const raw = getStringFlag(options, ...names);
-  if (!raw || !/^\d+$/u.test(raw)) {
-    return undefined;
-  }
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function parseBooleanValue(raw: string): boolean | undefined {
-  const normalized = raw.trim().toLowerCase();
-  if (["1", "true", "yes", "on", "enabled"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off", "disabled"].includes(normalized)) {
-    return false;
-  }
-  return undefined;
-}
-
-function getOptionalBooleanFlag(options: ParsedOptions, ...names: string[]): boolean | undefined {
-  for (const name of names) {
-    const value = options.flags.get(name);
-    if (value === true) {
-      return true;
-    }
-    if (typeof value === "string") {
-      const parsed = parseBooleanValue(value);
-      if (parsed !== undefined) {
-        return parsed;
-      }
-    }
-  }
-  return undefined;
-}
-
-function consumePositionals(options: ParsedOptions, count: number): ParsedOptions {
-  return {
-    flags: new Map(options.flags),
-    positionals: options.positionals.slice(count),
-  };
-}
-
-function applyRuntimeOverrides(options: ParsedOptions): void {
-  const host = getStringFlag(options, "host");
-  const port = getStringFlag(options, "port");
-  const workspaceDir = getStringFlag(options, "workspace", "workspace-dir");
-  const databaseUrl = getStringFlag(options, "db-url", "database-url");
-  const openClawCliPath = getStringFlag(options, "openclaw-cli");
-
-  if (host) {
-    process.env.HOST = host;
-  }
-  if (port) {
-    process.env.PORT = port;
-  }
-  if (workspaceDir) {
-    process.env.PLATFORM_WORKSPACE_DIR = workspaceDir;
-  }
-  if (databaseUrl) {
-    process.env.DATABASE_URL = databaseUrl;
-  }
-  if (openClawCliPath) {
-    process.env.OPENCLAW_CLI_PATH = openClawCliPath;
-  }
-}
 
 async function loadRuntimeEnv(): Promise<RuntimeEnv> {
   const { env } = await import("./config/env.js");
@@ -525,7 +300,32 @@ Install:
   npm install -g @sinlair/reagent
 
 Core:
+  reagent home        Show the main runtime and workspace overview
+  reagent onboard     Inspect or apply first-run setup for the standalone runtime
+  reagent watch       Watch live OpenClaw host session events from the root CLI
+  reagent sessions    List live OpenClaw host sessions from the root CLI
+  reagent history     Read OpenClaw host chat history for a session
+  reagent login       Start the channel login flow
+  reagent wait        Wait for channel login completion
+  reagent logout      Log out the active channel session
+  reagent send        Send through the active OpenClaw/WeChat host path
+  reagent inspect     Inspect one OpenClaw plugin across snapshot and host state
+  reagent install     Install an OpenClaw plugin through the host path
+  reagent uninstall   Uninstall an OpenClaw plugin through the host path
+  reagent enable      Enable an OpenClaw plugin through the host path
+  reagent disable     Disable an OpenClaw plugin through the host path
+  reagent update      Update an OpenClaw plugin through the host path
   reagent runtime     Inspect health, status, dashboard, logs, and doctor output
+  reagent system      OpenClaw-style system surface over runtime and service control
+  reagent commands    Inspect inbound command registry, policy, and authorization
+  reagent models      Inspect or edit managed LLM provider routes
+  reagent mcp         Inspect or edit managed MCP server registry
+  reagent skills      Inspect or edit managed workspace skill state
+  reagent qr          Delegate to the OpenClaw qr command family
+  reagent devices     Delegate to the OpenClaw devices command family
+  reagent pairing     Delegate to the OpenClaw pairing command family
+  reagent acp / dns / hooks / nodes / sandbox / secrets / security / webhooks / exec-approvals / tui
+                     Delegate additional OpenClaw command families through the host CLI
   reagent research    Run or inspect research tasks, directions, discovery, and artifacts
   reagent config      Read, write, or validate managed workspace config
   reagent plugins     Inspect bundled OpenClaw plugin packages and delegate plugin lifecycle commands
@@ -564,38 +364,8 @@ Shared flags:
 Init flags:
   --force                   Overwrite .env during init
   --skip-db                 Skip prisma db push during init
-`);
-}
-
-function renderChannelsHelp(): void {
-  console.log(`ReAgent Channels
-
-Commands:
-  reagent channels status
-  reagent channels list
-  reagent channels logs
-  reagent channels messages
-  reagent channels chat <senderId> <text>
-  reagent channels inbound <senderId> <text>
-  reagent channels push <senderId> <text>
-  reagent channels send <senderId> <text>
-  reagent channels sessions
-  reagent channels agent ...
-  reagent channels login
-  reagent channels wait
-  reagent channels logout
-
-Flags:
-  --channel <id>            Accepted aliases: wechat, weixin, openclaw-weixin
-  --probe                   Prefer a live gateway probe before falling back to local status
-  --sender <id>             Sender/user id for chat, inbound, push, or send
-  --name <value>            Optional sender display name
-  --text <value>            Message text instead of positional arguments
-  --display-name <value>    Optional account display name for login completion
-  --force                   Start a fresh login flow
-  --wait                    Wait for login confirmation after "login"
-  --limit <n>               Limit message/log/session output
-  --json                    Print JSON output
+  --apply                   With onboard, apply the bootstrap actions locally
+  --install-service         With onboard --apply, also install the supervised service
 `);
 }
 
@@ -612,6 +382,8 @@ Commands:
   reagent memory policy
   reagent memory compact
   reagent memory compactions
+  reagent memory scheduler runtime
+  reagent memory scheduler runs [--limit N]
 
 Flags:
   --query <value>           Explicit query override for search/recall
@@ -633,8 +405,10 @@ function renderRuntimeHelp(): void {
   console.log(`ReAgent Runtime
 
 Commands:
+  reagent runtime home
   reagent runtime health
   reagent runtime status
+  reagent runtime jobs
   reagent runtime dashboard
   reagent runtime logs
   reagent runtime doctor
@@ -647,6 +421,7 @@ Notes:
 Flags:
   --follow                  With "logs", keep polling and print appended lines
   --poll <ms>               Poll interval for "logs --follow" (default: 2000)
+  --fix                     With "doctor", apply safe local repairs
   --json                    Print JSON output
 `);
 }
@@ -663,6 +438,7 @@ Commands:
   reagent research report <taskId>
   reagent research retry <taskId>
   reagent research handoff <taskId>
+  reagent research workstream <taskId> <search|reading|synthesis>
   reagent research directions
   reagent research direction ...
   reagent research discovery ...
@@ -679,6 +455,15 @@ Commands:
   reagent research direction-reports
   reagent research direction-report <reportId>
   reagent research direction-report generate
+  reagent research candidates
+  reagent research candidate <candidateId>
+  reagent research candidate generate --report <directionReportId>
+  reagent research candidate generate --asset <moduleAssetId>
+  reagent research candidate review <candidateId>
+  reagent research candidate approve <candidateId>
+  reagent research candidate reject <candidateId>
+  reagent research candidate apply <candidateId>
+  reagent research candidate rollback <candidateId>
 
 Direction commands:
   reagent research direction <directionId>
@@ -694,6 +479,8 @@ Discovery commands:
   reagent research discovery inspect <runId>
   reagent research discovery run
   reagent research discovery scheduler [status]
+  reagent research discovery scheduler runtime
+  reagent research discovery scheduler runs [--limit N]
   reagent research discovery scheduler set
   reagent research discovery scheduler tick
 
@@ -719,13 +506,20 @@ Flags:
   --question <value>        Optional research question
   --max-papers <n>          Max papers for run/enqueue
   --direction <id>          Direction id for discovery or report generation
+  --report <id>             Direction report id for candidate generation
+  --asset <id>              Module asset id for skill candidate generation
   --id <value>              Explicit id override for direction/task-oriented commands
   --limit <n>               Result limit for list/report commands
+  --status <value>          Status filter for candidate lists
+  --type <value>            Candidate type filter for candidate lists
   --view <asset|paper>      Research graph view
   --types <csv>             Research graph node types
   --search <value>          Research graph text filter
   --date-from <YYYY-MM-DD>  Research graph lower date filter
   --date-to <YYYY-MM-DD>    Research graph upper date filter
+  --reviewer <value>        Reviewer name for candidate review/apply actions
+  --notes <value>           Notes for candidate review/apply actions
+  --dry-run                 Preview candidate application without writing
   --out <file>              Write markdown or artifact output to a file
   --json                    Print JSON output
 `);
@@ -755,50 +549,17 @@ Flags:
 `);
 }
 
-function renderChannelsAgentHelp(): void {
-  console.log(`ReAgent Channels Agent
-
-Commands:
-  reagent channels agent sessions
-  reagent channels agent session <senderId>
-  reagent channels agent role <senderId> [roleId]
-  reagent channels agent skills <senderId> [skillId,skillId...]
-  reagent channels agent model <senderId> [providerId modelId]
-  reagent channels agent fallbacks <senderId> [providerId/modelId, ...]
-  reagent channels agent reasoning <senderId> [effort]
-
-Examples:
-  reagent channels agent session wx-user-1
-  reagent channels agent role wx-user-1 researcher
-  reagent channels agent skills wx-user-1 workspace-control,memory-ops
-  reagent channels agent model wx-user-1 proxy-a gpt-4o
-  reagent channels agent model wx-user-1 clear
-  reagent channels agent fallbacks wx-user-1 proxy-a/gpt-5.4,proxy-b/gpt-4.1
-  reagent channels agent fallbacks wx-user-1 clear
-  reagent channels agent reasoning wx-user-1 high
-
-Notes:
-  - omit the trailing value to inspect the current setting
-  - model "clear" resets the session to the default route
-  - fallbacks "clear" removes all fallback routes
-
-Flags:
-  --sender <id>             Use a senderId flag instead of the first positional
-  --json                    Print JSON output
-`);
-}
-
 function renderConfigHelp(): void {
   console.log(`ReAgent Config
 
 Commands:
-  reagent config file [llm|mcp|skills]
+  reagent config file [llm|mcp|skills|commands]
   reagent config get <path>
   reagent config set <path> <value>
   reagent config unset <path>
-  reagent config export [llm|mcp|skills]
-  reagent config import <llm|mcp|skills> <file|->
-  reagent config edit <llm|mcp|skills>
+  reagent config export [llm|mcp|skills|commands]
+  reagent config import <llm|mcp|skills|commands> <file|->
+  reagent config edit <llm|mcp|skills|commands>
   reagent config validate
   reagent config schema
 
@@ -807,12 +568,164 @@ Examples:
   reagent config set llm.providers[0].enabled true
   reagent config set mcp.servers[0].allowedTools "[\"maps_search\", \"maps_route\"]"
   reagent config unset skills.entries.workspace:research-brief.apiKey
+  reagent config set commands.remote.workspace-mutation.mode allowlist
 
 Flags:
   --workspace <path>        Override PLATFORM_WORKSPACE_DIR for this command
   --out <file>              Write exported config to a file instead of stdout
   --editor <command>        Editor command for "edit"
   --dry-run                 Preview writes without saving
+  --json                    Print JSON output
+`);
+}
+
+function renderModelsHelp(): void {
+  console.log(`ReAgent Models
+
+Commands:
+  reagent models
+  reagent models list
+  reagent models routes
+  reagent models file
+  reagent models get <path>
+  reagent models set <path> <value>
+  reagent models unset <path>
+  reagent models export
+  reagent models import <file|->
+  reagent models edit
+
+Notes:
+  - this is the OpenClaw-style model family over the managed llm registry
+  - get/set/unset paths are relative to "llm", for example "defaults.agent.providerId"
+  - file/export/import/edit delegate to the managed config surface for llm
+
+Flags:
+  --workspace <path>        Override PLATFORM_WORKSPACE_DIR for this command
+  --out <file>              Write exported config to a file instead of stdout
+  --editor <command>        Editor command for "edit"
+  --dry-run                 Preview writes without saving
+  --strict-json             Parse "set" values as strict JSON
+  --json                    Print JSON output
+`);
+}
+
+function renderMcpHelp(): void {
+  console.log(`ReAgent MCP
+
+Commands:
+  reagent mcp
+  reagent mcp list
+  reagent mcp file
+  reagent mcp get <path>
+  reagent mcp set <path> <value>
+  reagent mcp unset <path>
+  reagent mcp export
+  reagent mcp import <file|->
+  reagent mcp edit
+
+Notes:
+  - this is the OpenClaw-style MCP family over the managed mcp registry
+  - get/set/unset paths are relative to "mcp", for example "servers[0].serverUrl"
+  - file/export/import/edit delegate to the managed config surface for mcp
+
+Flags:
+  --workspace <path>        Override PLATFORM_WORKSPACE_DIR for this command
+  --out <file>              Write exported config to a file instead of stdout
+  --editor <command>        Editor command for "edit"
+  --dry-run                 Preview writes without saving
+  --strict-json             Parse "set" values as strict JSON
+  --json                    Print JSON output
+`);
+}
+
+function renderSkillsHelp(): void {
+  console.log(`ReAgent Skills
+
+Commands:
+  reagent skills
+  reagent skills list
+  reagent skills file
+  reagent skills get <path>
+  reagent skills set <path> <value>
+  reagent skills unset <path>
+  reagent skills export
+  reagent skills import <file|->
+  reagent skills edit
+
+Notes:
+  - this is the OpenClaw-style skills family over workspace skill state
+  - get/set/unset paths are relative to "skills", for example "entries.workspace:demo.enabled"
+  - file/export/import/edit delegate to the managed config surface for skills
+
+Flags:
+  --workspace <path>        Override PLATFORM_WORKSPACE_DIR for this command
+  --out <file>              Write exported config to a file instead of stdout
+  --editor <command>        Editor command for "edit"
+  --dry-run                 Preview writes without saving
+  --strict-json             Parse "set" values as strict JSON
+  --json                    Print JSON output
+`);
+}
+
+function renderSystemHelp(): void {
+  console.log(`ReAgent System
+
+Commands:
+  reagent system
+  reagent system status
+  reagent system health
+  reagent system home
+  reagent system doctor
+  reagent system logs
+  reagent system runtime ...
+  reagent system service ...
+
+Notes:
+  - this is the OpenClaw-style system family over the root runtime and service surfaces
+  - "runtime" and "service" delegate to the existing ReAgent command families
+
+Flags:
+  --url <value>             Override the HTTP gateway base URL for gateway-backed commands
+  --host <value>            Override HOST for this command
+  --port <value>            Override PORT for this command
+  --workspace <path>        Override PLATFORM_WORKSPACE_DIR for this command
+  --timeout <ms>            Override HTTP timeout for gateway-backed commands
+  --follow                  With "logs", keep polling and print appended lines
+  --poll <ms>               Poll interval for "logs --follow" (default: 2000)
+  --fix                     With "doctor", apply safe local repairs
+  --json                    Print JSON output
+`);
+}
+
+function renderCommandsHelp(): void {
+  console.log(`ReAgent Commands
+
+Commands:
+  reagent commands
+  reagent commands list
+  reagent commands policy
+  reagent commands authorize <ui|wechat|openclaw> <senderId> <command>
+  reagent commands explain <ui|wechat|openclaw> <senderId> <command>
+  reagent commands file
+  reagent commands get <path>
+  reagent commands set <path> <value>
+  reagent commands unset <path>
+  reagent commands export
+  reagent commands import <file|->
+  reagent commands edit
+
+Notes:
+  - "list" shows the shared inbound slash-command registry used by the runtime
+  - "policy" reads the managed inbound command policy config
+  - "authorize" and "explain" evaluate source, command tier, and remote allowlist policy
+  - config-oriented subcommands delegate to the managed "commands" config namespace
+
+Flags:
+  --workspace <path>        Override PLATFORM_WORKSPACE_DIR for this command
+  --out <file>              Write exported config to a file instead of stdout
+  --editor <command>        Editor command for "edit"
+  --dry-run                 Preview writes without saving
+  --strict-json             Parse "set" values as strict JSON
   --json                    Print JSON output
 `);
 }
@@ -839,7 +752,7 @@ Notes:
   - pass --openclaw-cli to target a non-default OpenClaw executable.
 
 Flags:
-  --source <id>             Marketplace source alias: reagent, bundled, reference
+  --source <id>             Marketplace source alias: reagent, bundled, upstream, foundation, reference
   --json                    Print JSON output
   --yes                     Pass --yes through to OpenClaw install/uninstall commands when supported
 `);
@@ -864,6 +777,15 @@ function resolveSqlitePath(databaseUrl: string, cwd: string): string | null {
 
 async function ensureDirectoryExists(targetPath: string): Promise<void> {
   await mkdir(targetPath, { recursive: true });
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await access(targetPath, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolvePrismaCliPath(): string {
@@ -1193,21 +1115,6 @@ async function openUrlInBrowser(targetUrl: string): Promise<boolean> {
   });
 }
 
-async function renderTerminalQr(value: string): Promise<string | null> {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  try {
-    return await QRCode.toString(trimmed, {
-      type: "terminal",
-      small: true,
-    });
-  } catch {
-    return null;
-  }
-}
-
 function formatYesNo(value: boolean): string {
   return value ? "yes" : "no";
 }
@@ -1247,20 +1154,6 @@ async function settleCliRequest<T>(promise: Promise<T>): Promise<{ ok: true; val
     return { ok: true, value: await promise };
   } catch (error) {
     return { ok: false, error: formatErrorMessage(error) };
-  }
-}
-
-function ensureSupportedChannel(options: ParsedOptions): void {
-  const requested = getStringFlag(options, "channel");
-  if (!requested) {
-    return;
-  }
-
-  const normalized = requested.trim().toLowerCase();
-  if (!["wechat", "weixin", "openclaw-weixin"].includes(normalized)) {
-    throw new Error(
-      `Unsupported channel target: ${requested}. ReAgent CLI currently exposes only the WeChat channel surface.`,
-    );
   }
 }
 
@@ -1339,7 +1232,17 @@ function printWeChatStatus(status: WeChatChannelStatus): void {
   console.log(`CLI version: ${formatWhen(status.cliVersion)}`);
   console.log(`Plugin installed: ${formatYesNo(Boolean(status.pluginInstalled))}`);
   console.log(`Plugin version: ${formatWhen(status.pluginVersion)}`);
+  console.log(`Host session registry: ${status.hostSessionRegistryCount ?? 0}`);
+  console.log(`Host session registry updated: ${formatWhen(status.hostSessionRegistryUpdatedAt)}`);
   console.log(`Last error: ${formatWhen(status.lastError)}`);
+  if (status.accounts && status.accounts.length > 0) {
+    console.log("Accounts:");
+    for (const account of status.accounts) {
+      console.log(
+        `  - ${account.accountId}${account.accountName ? ` (${account.accountName})` : ""} connected=${formatYesNo(Boolean(account.connected))} running=${formatYesNo(Boolean(account.running))}`,
+      );
+    }
+  }
   if (status.notes && status.notes.length > 0) {
     console.log("Notes:");
     for (const note of status.notes) {
@@ -1599,6 +1502,177 @@ function printConfigValidationReport(report: ConfigValidationReport): void {
   }
 }
 
+function printLlmSummary(summary: {
+  defaults: Partial<Record<"agent" | "research", { providerId: string; modelId: string }>>;
+  routes: Record<
+    "agent" | "research",
+    {
+      providerLabel: string;
+      modelLabel: string;
+      wireApi?: string | undefined;
+      status: string;
+      notes: string[];
+    }
+  >;
+  providers: Array<{
+    id: string;
+    label: string;
+    type: string;
+    status: string;
+    models: Array<{ id: string; label: string; status: string }>;
+  }>;
+}, workspaceDir: string): void {
+  console.log(`Workspace: ${workspaceDir}`);
+  console.log(
+    `Defaults: agent=${
+      summary.defaults.agent ? `${summary.defaults.agent.providerId}/${summary.defaults.agent.modelId}` : "-"
+    } research=${
+      summary.defaults.research ? `${summary.defaults.research.providerId}/${summary.defaults.research.modelId}` : "-"
+    }`,
+  );
+  console.log("Routes:");
+  for (const [purpose, route] of Object.entries(summary.routes)) {
+    console.log(
+      `  - ${purpose}: ${route.providerLabel}/${route.modelLabel}${route.wireApi ? ` via ${route.wireApi}` : ""} [${route.status}]`,
+    );
+    if (route.notes.length > 0) {
+      console.log(`    notes: ${route.notes.join(" ")}`);
+    }
+  }
+  console.log("Providers:");
+  if (summary.providers.length === 0) {
+    console.log("  - none");
+    return;
+  }
+  for (const provider of summary.providers) {
+    console.log(`  - ${provider.id} (${provider.label}) type=${provider.type} status=${provider.status}`);
+    console.log(
+      `    models: ${provider.models.length > 0 ? provider.models.map((model) => `${model.id} [${model.status}]`).join(", ") : "-"}`,
+    );
+  }
+}
+
+function printMcpServerStatuses(
+  servers: Array<{
+    serverLabel: string;
+    status: string;
+    serverUrl?: string | undefined;
+    connectorId?: string | undefined;
+    authorizationEnv?: string | undefined;
+    notes: string[];
+  }>,
+  workspaceDir: string,
+): void {
+  console.log(`Workspace: ${workspaceDir}`);
+  if (servers.length === 0) {
+    console.log("No MCP servers configured.");
+    return;
+  }
+  for (const server of servers) {
+    console.log(`${server.serverLabel} status=${server.status}`);
+    console.log(`Target=${server.serverUrl ?? server.connectorId ?? "-"}`);
+    console.log(`Authorization=${server.authorizationEnv ?? "-"}`);
+    if (server.notes.length > 0) {
+      console.log(`Notes=${server.notes.join(" ")}`);
+    }
+    console.log("");
+  }
+}
+
+function printSkillStatusReport(report: {
+  workspaceDir: string;
+  managedSkillsDir: string;
+  skills: Array<{
+    skillKey: string;
+    name: string;
+    eligible: boolean;
+    disabled: boolean;
+    always: boolean;
+    primaryEnv?: string | undefined;
+    missing: {
+      env: string[];
+      config: string[];
+      bins: string[];
+      os: string[];
+    };
+  }>;
+}): void {
+  console.log(`Workspace: ${report.workspaceDir}`);
+  console.log(`Skills dir: ${report.managedSkillsDir}`);
+  if (report.skills.length === 0) {
+    console.log("No workspace skills found.");
+    return;
+  }
+  for (const skill of report.skills) {
+    console.log(
+      `${skill.skillKey} name=${skill.name} eligible=${formatYesNo(skill.eligible)} disabled=${formatYesNo(skill.disabled)} always=${formatYesNo(skill.always)}`,
+    );
+    console.log(`Primary env=${skill.primaryEnv ?? "-"}`);
+    const missing = [...skill.missing.env, ...skill.missing.config, ...skill.missing.bins, ...skill.missing.os];
+    console.log(`Missing=${missing.length > 0 ? missing.join(", ") : "-"}`);
+    console.log("");
+  }
+}
+
+function printInboundCommandRegistry(
+  workspaceDir: string,
+  commands: Array<{
+    id: string;
+    names: string[];
+    usage: string;
+    tier: string;
+    allowedSources: string[];
+    requiresAgentControls: boolean;
+  }>,
+): void {
+  console.log(`Workspace: ${workspaceDir}`);
+  if (commands.length === 0) {
+    console.log("No inbound commands registered.");
+    return;
+  }
+  for (const command of commands) {
+    console.log(`${command.usage} tier=${command.tier}`);
+    console.log(`Names=${command.names.join(", ")}`);
+    console.log(`Sources=${command.allowedSources.join(", ")}`);
+    console.log(`Agent controls=${formatYesNo(command.requiresAgentControls)}`);
+    console.log("");
+  }
+}
+
+function printInboundCommandAuthorization(payload: {
+  source: string;
+  senderId: string;
+  command: string;
+  allowed: boolean;
+  reason: string;
+  spec?: {
+    usage: string;
+    tier: string;
+    allowedSources: string[];
+    requiresAgentControls: boolean;
+  } | undefined;
+  policy?: {
+    mode: string;
+    senderIds: string[];
+  } | undefined;
+}): void {
+  console.log(`Source: ${payload.source}`);
+  console.log(`Sender: ${payload.senderId}`);
+  console.log(`Command: ${payload.command}`);
+  console.log(`Allowed: ${formatYesNo(payload.allowed)}`);
+  console.log(`Reason: ${payload.reason}`);
+  if (payload.spec) {
+    console.log(`Usage: ${payload.spec.usage}`);
+    console.log(`Tier: ${payload.spec.tier}`);
+    console.log(`Allowed sources: ${payload.spec.allowedSources.join(", ")}`);
+    console.log(`Requires agent controls: ${formatYesNo(payload.spec.requiresAgentControls)}`);
+  }
+  if (payload.policy) {
+    console.log(`Policy mode: ${payload.policy.mode}`);
+    console.log(`Policy senders: ${payload.policy.senderIds.join(", ") || "-"}`);
+  }
+}
+
 function printBundledPluginList(
   items: Array<{
     plugin: BundledPluginRecord;
@@ -1606,12 +1680,12 @@ function printBundledPluginList(
   }>,
 ): void {
   if (items.length === 0) {
-    console.log("No bundled OpenClaw plugin packages found.");
+    console.log("No OpenClaw plugin packages found.");
     return;
   }
 
   for (const item of items) {
-    console.log(`${item.plugin.id} ${item.plugin.version} (${item.plugin.source})`);
+    console.log(`${item.plugin.id} ${item.plugin.version} (${formatPluginSource(item.plugin.source)})`);
     console.log(`Package: ${item.plugin.packageName}`);
     console.log(`Install spec: ${item.plugin.installSpec}`);
     console.log(`OpenClaw installed: ${formatYesNo(Boolean(item.host))}`);
@@ -1630,28 +1704,118 @@ function printBundledPluginList(
   }
 }
 
-function printAgentSessionSummary(summary: AgentSessionSummary): void {
-  console.log(`Role: ${summary.roleLabel} (${summary.roleId})`);
-  console.log(
-    `Model: ${summary.providerLabel}/${summary.modelLabel}${summary.wireApi ? ` via ${summary.wireApi}` : ""} [${summary.llmStatus}]`,
-  );
-  console.log(`Reasoning: ${summary.reasoningEffort}`);
-  console.log(`Skills: ${summary.skillLabels.join(", ") || "-"}`);
-  console.log(
-    `Fallbacks: ${
-      summary.fallbackRoutes.length > 0
-        ? summary.fallbackRoutes.map((route) => `${route.providerId}/${route.modelId}`).join(", ")
-        : "none"
-    }`,
-  );
-  console.log(
-    `Default route: ${summary.defaultRoute.providerLabel}/${summary.defaultRoute.modelLabel}${summary.defaultRoute.wireApi ? ` via ${summary.defaultRoute.wireApi}` : ""}`,
-  );
-  console.log(`Available roles: ${summary.availableRoles.map((role) => role.id).join(", ") || "-"}`);
-  console.log(`Available skills: ${summary.availableSkills.map((skill) => skill.id).join(", ") || "-"}`);
-  console.log(
-    `Available reasoning: ${summary.availableReasoningEfforts.join(", ") || "-"}`,
-  );
+function printOpenClawSessions(items: OpenClawSessionSummaryPayload[]): void {
+  if (items.length === 0) {
+    console.log("No OpenClaw sessions found.");
+    return;
+  }
+
+  for (const item of items) {
+    console.log(item.sessionKey);
+    console.log(`Channel: ${formatWhen(item.channel)}`);
+    console.log(`Target: ${formatWhen(item.to)}`);
+    console.log(`Account: ${formatWhen(item.accountId)}`);
+    console.log(`Thread: ${formatWhen(item.threadId == null ? undefined : String(item.threadId))}`);
+    console.log(`Title: ${formatWhen(item.displayName ?? item.derivedTitle ?? item.label)}`);
+    console.log(`Updated: ${formatWhen(typeof item.updatedAt === "number" ? new Date(item.updatedAt).toISOString() : undefined)}`);
+    if (item.lastMessagePreview) {
+      console.log(`Last: ${item.lastMessagePreview}`);
+    }
+    console.log("");
+  }
+}
+
+function printOpenClawHistory(messages: OpenClawHistoryMessagePayload[]): void {
+  if (messages.length === 0) {
+    console.log("No OpenClaw chat history messages found.");
+    return;
+  }
+
+  for (const message of messages) {
+    console.log(`${formatWhen(message.role)} ${formatWhen(message.id)}`);
+    console.log(message.text || "(non-text content)");
+    console.log("");
+  }
+}
+
+function extractOpenClawEventText(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as {
+    reason?: unknown;
+    message?: { content?: unknown } | undefined;
+    sessionKey?: unknown;
+  };
+  if (typeof record.reason === "string" && record.reason.trim()) {
+    return record.reason.trim();
+  }
+  if (record.message && typeof record.message === "object" && record.message) {
+    const message = record.message as { content?: unknown };
+    const content = message.content;
+    if (Array.isArray(content)) {
+      const text = content
+        .flatMap((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return [];
+          }
+          const item = entry as { text?: unknown };
+          return typeof item.text === "string" && item.text.trim() ? [item.text.trim()] : [];
+        })
+        .join("\n")
+        .trim();
+      return text || null;
+    }
+  }
+  return null;
+}
+
+function printOpenClawEvents(events: OpenClawSessionEventPayload[]): void {
+  if (events.length === 0) {
+    console.log("No OpenClaw session events captured.");
+    return;
+  }
+
+  for (const event of events) {
+    const payload =
+      event.payload && typeof event.payload === "object"
+        ? (event.payload as { sessionKey?: unknown })
+        : {};
+    const sessionKey =
+      typeof payload.sessionKey === "string" && payload.sessionKey.trim()
+        ? payload.sessionKey.trim()
+        : "-";
+    const text = extractOpenClawEventText(event.payload);
+    console.log(`[${event.event}] ${sessionKey}`);
+    if (text) {
+      console.log(text);
+    }
+    console.log("");
+  }
+}
+
+function printHomeSection(title: string, lines: string[]): void {
+  console.log(`${title}:`);
+  for (const line of lines) {
+    console.log(`  ${line}`);
+  }
+  console.log("");
+}
+
+function formatPluginSource(source: BundledPluginRecord["source"]): string {
+  return source === "reference" ? "foundation" : source;
+}
+
+function formatMarketplaceSource(source: "reagent" | "bundled" | "reference" | "upstream"): string {
+  return source === "reference" ? "foundation" : source;
+}
+
+function isFoundationPlugin(plugin: BundledPluginRecord): boolean {
+  return plugin.source === "reference";
+}
+
+function isUpstreamPlugin(plugin: BundledPluginRecord): boolean {
+  return plugin.source === "upstream";
 }
 
 function printResearchRecentReports(reports: ResearchReportSummary[]): void {
@@ -1733,6 +1897,18 @@ function printResearchTaskHandoff(handoff: ResearchTaskHandoff): void {
   console.log("");
   console.log(`Next step: ${handoff.nextRecommendedAction}`);
 
+  if (handoff.workstreams.length > 0) {
+    console.log("");
+    console.log("Workstreams:");
+    for (const workstream of handoff.workstreams) {
+      const active = handoff.activeWorkstreamId === workstream.id ? " active" : "";
+      console.log(`  - ${workstream.label} (${workstream.id}) status=${workstream.status}${active}`);
+      console.log(`    summary: ${workstream.summary}`);
+      console.log(`    next: ${workstream.nextStep}`);
+      console.log(`    path: ${handoff.workstreamPaths[workstream.id]}`);
+    }
+  }
+
   if (handoff.blockers.length > 0) {
     console.log("");
     console.log("Blockers:");
@@ -1747,6 +1923,9 @@ function printResearchTaskHandoff(handoff: ResearchTaskHandoff): void {
     ["Artifacts index", handoff.artifactsPath],
     ["Report", handoff.reportPath],
     ["Review", handoff.reviewPath],
+    ["Search workstream", handoff.workstreamPaths.search],
+    ["Reading workstream", handoff.workstreamPaths.reading],
+    ["Synthesis workstream", handoff.workstreamPaths.synthesis],
   ].filter(([, value]) => Boolean(value));
   if (dossierEntries.length > 0) {
     console.log("");
@@ -1902,6 +2081,57 @@ function printResearchSchedulerStatus(status: ResearchDiscoverySchedulerStatus):
   console.log(`Top K: ${status.topK}`);
   console.log(`Max papers per query: ${status.maxPapersPerQuery}`);
   console.log(`Updated: ${formatWhen(status.updatedAt)}`);
+}
+
+function printJobRuntimeSnapshot(snapshot: JobRuntimeSnapshot): void {
+  console.log(`Job: ${snapshot.jobName}`);
+  console.log(`Running: ${formatYesNo(snapshot.running)}`);
+  console.log(`Last trigger: ${formatWhen(snapshot.lastTrigger)}`);
+  console.log(`Last started: ${formatWhen(snapshot.lastStartedAt)}`);
+  console.log(`Last finished: ${formatWhen(snapshot.lastFinishedAt)}`);
+  console.log(`Last state: ${formatWhen(snapshot.lastState)}`);
+  console.log(`Last summary: ${formatWhen(snapshot.lastSummary)}`);
+  console.log(`Last error: ${formatWhen(snapshot.lastError)}`);
+  console.log(`Updated: ${formatWhen(snapshot.updatedAt)}`);
+}
+
+function printJobRuntimeRuns(items: JobRuntimeRunAuditEntry[]): void {
+  if (items.length === 0) {
+    console.log("No recent job runs recorded.");
+    return;
+  }
+
+  for (const item of items) {
+    console.log(`${item.ts} ${item.event} ${item.trigger} ${item.jobName}`);
+    if (item.state) {
+      console.log(`State: ${item.state}`);
+    }
+    if (item.summary) {
+      console.log(`Summary: ${item.summary}`);
+    }
+    if (item.error) {
+      console.log(`Error: ${item.error}`);
+    }
+    console.log("");
+  }
+}
+
+function printRuntimeJobs(items: RuntimeJobsPayload["items"]): void {
+  if (items.length === 0) {
+    console.log("No runtime jobs found.");
+    return;
+  }
+
+  for (const item of items) {
+    console.log(`${item.label} (${item.id})`);
+    printJobRuntimeSnapshot(item.snapshot);
+    if (item.recentRuns.length > 0) {
+      console.log("");
+      console.log("Recent runs:");
+      printJobRuntimeRuns(item.recentRuns);
+    }
+    console.log("");
+  }
 }
 
 function printResearchFeedback(summary: ResearchFeedbackSummary, items: ResearchFeedbackRecord[]): void {
@@ -2105,6 +2335,97 @@ function printResearchDirectionReport(report: ResearchDirectionReport): void {
   }
 }
 
+function printResearchEvolutionCandidates(candidates: ResearchEvolutionCandidate[]): void {
+  if (candidates.length === 0) {
+    console.log("No evolution candidates found.");
+    return;
+  }
+
+  for (const candidate of candidates) {
+    const label = candidate.payload.label;
+    console.log(`${candidate.id} ${candidate.status} ${candidate.candidateType} ${label}`);
+    console.log(`Source: ${candidate.sourceType}/${candidate.sourceId}`);
+    console.log("");
+  }
+}
+
+function printResearchEvolutionCandidate(candidate: ResearchEvolutionCandidate): void {
+  console.log(`ID: ${candidate.id}`);
+  console.log(`Title: ${candidate.title}`);
+  console.log(`Status: ${candidate.status}`);
+  console.log(`Type: ${candidate.candidateType}`);
+  console.log(`Source: ${candidate.sourceType}/${candidate.sourceId}`);
+  console.log(`Updated: ${candidate.updatedAt}`);
+  console.log("");
+
+  if (candidate.candidateType === "direction-preset") {
+    console.log(`Direction: ${formatWhen(candidate.payload.directionId)}`);
+    console.log("");
+    console.log(candidate.payload.summary);
+
+    if (candidate.payload.queryHints.length > 0) {
+      console.log("");
+      console.log(`Query hints: ${candidate.payload.queryHints.join(" | ")}`);
+    }
+    if (candidate.payload.knownBaselines.length > 0) {
+      console.log(`Baselines: ${candidate.payload.knownBaselines.join(", ")}`);
+    }
+    if (candidate.payload.evaluationPriorities.length > 0) {
+      console.log(`Evaluation: ${candidate.payload.evaluationPriorities.join(", ")}`);
+    }
+    if (candidate.payload.currentGoals.length > 0) {
+      console.log(`Goals: ${candidate.payload.currentGoals.join(" | ")}`);
+    }
+  } else {
+    console.log(`Skill: ${candidate.payload.skillKey}`);
+    console.log(`Repo: ${candidate.payload.sourceRepoUrl}`);
+    console.log(`Enabled by default: ${formatYesNo(candidate.payload.enabled)}`);
+    console.log("");
+    console.log(candidate.payload.description);
+    if (candidate.payload.relatedTools.length > 0) {
+      console.log("");
+      console.log(`Related tools: ${candidate.payload.relatedTools.join(", ")}`);
+    }
+    if (candidate.payload.selectedPaths.length > 0) {
+      console.log(`Selected paths: ${candidate.payload.selectedPaths.join(" | ")}`);
+    }
+  }
+
+  if (candidate.reviews[0]) {
+    console.log(`Latest review: ${candidate.reviews[0].decision} at ${candidate.reviews[0].createdAt}`);
+  }
+  if (candidate.applyHistory[0]) {
+    console.log(
+      `Latest apply: ${candidate.applyHistory[0].dryRun ? "dry-run" : "applied"} at ${candidate.applyHistory[0].appliedAt}`,
+    );
+  }
+  if (candidate.rollbackHistory[0]) {
+    console.log(`Latest rollback: ${candidate.rollbackHistory[0].rolledBackAt}`);
+  }
+}
+
+function printResearchEvolutionCandidateApplyOutcome(outcome: ResearchEvolutionCandidateApplyOutcome): void {
+  console.log(`Candidate: ${outcome.candidate.id}`);
+  console.log(`Target: ${outcome.result.targetType}/${outcome.result.targetId}`);
+  console.log(`Mode: ${outcome.result.dryRun ? "dry-run" : "apply"}`);
+  console.log(`Changed fields: ${outcome.result.changedFields.join(", ") || "-"}`);
+
+  if (outcome.result.notes) {
+    console.log(`Notes: ${outcome.result.notes}`);
+  }
+}
+
+function printResearchEvolutionCandidateRollbackOutcome(outcome: ResearchEvolutionCandidateRollbackOutcome): void {
+  console.log(`Candidate: ${outcome.candidate.id}`);
+  console.log(`Target: ${outcome.result.targetType}/${outcome.result.targetId}`);
+  console.log(`Reverted apply: ${outcome.result.revertedApplyAppliedAt}`);
+  console.log(`Changed fields: ${outcome.result.changedFields.join(", ") || "-"}`);
+
+  if (outcome.result.notes) {
+    console.log(`Notes: ${outcome.result.notes}`);
+  }
+}
+
 function resolveResearchTopic(options: ParsedOptions): string {
   const topic = getStringFlag(options, "topic") ?? options.positionals.join(" ").trim();
   if (!topic) {
@@ -2147,33 +2468,6 @@ function resolveResearchGraphQuery(options: ParsedOptions): ResearchMemoryGraphQ
     ...(dateFrom ? { dateFrom } : {}),
     ...(dateTo ? { dateTo } : {}),
   };
-}
-
-function resolveSenderId(options: ParsedOptions): string {
-  const senderId = getStringFlag(options, "sender") ?? options.positionals[0];
-  if (!senderId?.trim()) {
-    throw new Error("A senderId is required. Pass it positionally or via --sender.");
-  }
-  return senderId.trim();
-}
-
-function parseSkillSelections(raw: string): string[] {
-  return [...new Set(raw.split(/[,\n]/u).map((entry) => entry.trim()).filter(Boolean))];
-}
-
-function parseFallbackSelections(raw: string): Array<{ providerId: string; modelId: string }> {
-  return raw
-    .split(/[,\n]/u)
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const [providerId, modelId] = entry.split(/[/:]/u);
-      return {
-        providerId: providerId?.trim() || "",
-        modelId: modelId?.trim() || "",
-      };
-    })
-    .filter((entry) => entry.providerId.length > 0 && entry.modelId.length > 0);
 }
 
 async function readStdinText(): Promise<string> {
@@ -2246,56 +2540,6 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function resolveMessagePayload(
-  options: ParsedOptions,
-  textStartIndex: number,
-): { senderId: string; senderName?: string | undefined; text: string } {
-  const senderId = resolveSenderId(options);
-  const senderName = getStringFlag(options, "name", "sender-name");
-  const text =
-    getStringFlag(options, "text") ??
-    options.positionals.slice(textStartIndex).join(" ").trim();
-  if (!text) {
-    throw new Error("A message text is required. Pass it positionally or via --text.");
-  }
-  return {
-    senderId,
-    ...(senderName ? { senderName } : {}),
-    text,
-  };
-}
-
-function printChannelInboundResult(result: { accepted: boolean; reply: string; researchTaskId?: string | undefined }): void {
-  console.log(`Accepted: ${formatYesNo(result.accepted)}`);
-  if (result.researchTaskId) {
-    console.log(`Research task: ${result.researchTaskId}`);
-  }
-  console.log("");
-  console.log(result.reply);
-}
-
-function matchOpenClawPluginState(
-  plugin: BundledPluginRecord,
-  states: OpenClawPluginState[],
-): OpenClawPluginState | null {
-  const normalizedIds = new Set([
-    plugin.id.toLowerCase(),
-    plugin.packageName.toLowerCase(),
-    plugin.installSpec.toLowerCase(),
-  ]);
-
-  return (
-    states.find((state) => {
-      const candidates = [
-        state.id.toLowerCase(),
-        state.name?.toLowerCase(),
-        ...state.channelIds.map((entry) => entry.toLowerCase()),
-      ].filter(Boolean) as string[];
-      return candidates.some((candidate) => normalizedIds.has(candidate));
-    }) ?? null
-  );
-}
-
 async function runExternalCli(
   command: string,
   args: string[],
@@ -2357,10 +2601,10 @@ async function runExternalCli(
 
 function resolveConfigAlias(input: string | undefined): ManagedConfigAlias {
   const alias = input?.trim();
-  if (alias === "llm" || alias === "mcp" || alias === "skills") {
+  if (alias === "llm" || alias === "mcp" || alias === "skills" || alias === "commands") {
     return alias;
   }
-  throw new Error(`Unsupported config namespace: ${String(input ?? "")}. Use llm, mcp, or skills.`);
+  throw new Error(`Unsupported config namespace: ${String(input ?? "")}. Use llm, mcp, skills, or commands.`);
 }
 
 function resolveEditorCommand(options: ParsedOptions): string {
@@ -2394,29 +2638,6 @@ async function runEditorCommand(editorCommand: string, targetPath: string): Prom
 
   if (result.exitCode !== 0) {
     throw new Error(`Editor exited with code ${result.exitCode}`);
-  }
-}
-
-function parseOpenClawPluginStates(raw: string): OpenClawPluginState[] {
-  if (!raw.trim()) {
-    return [];
-  }
-
-  try {
-    const payload = JSON.parse(raw) as OpenClawPluginListPayload;
-    return (payload.plugins ?? [])
-      .filter((plugin): plugin is NonNullable<OpenClawPluginListPayload["plugins"]>[number] => Boolean(plugin))
-      .map((plugin) => ({
-        id: plugin.id?.trim() || plugin.name?.trim() || "",
-        ...(plugin.name?.trim() ? { name: plugin.name.trim() } : {}),
-        ...(plugin.version?.trim() ? { version: plugin.version.trim() } : {}),
-        enabled: Boolean(plugin.enabled || plugin.status === "loaded"),
-        ...(plugin.status?.trim() ? { status: plugin.status.trim() } : {}),
-        channelIds: (plugin.channelIds ?? []).filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0),
-      }))
-      .filter((plugin) => plugin.id.length > 0);
-  } catch {
-    return [];
   }
 }
 
@@ -2472,6 +2693,118 @@ async function initCommand(options: ParsedOptions): Promise<void> {
   console.log(`Next step: reagent service run --port ${DEFAULT_GATEWAY_PORT}`);
 }
 
+async function onboardCommand(options: ParsedOptions): Promise<void> {
+  applyRuntimeOverrides(options);
+  const context = await resolveGatewayContext(options);
+  const version = await readPackageVersion();
+  const apply = getBooleanFlag(options, "apply");
+  const skipDbPush = getBooleanFlag(options, "skip-db");
+  const installService = getBooleanFlag(options, "install-service");
+  const envTargetPath = path.join(process.cwd(), ".env");
+  const workspacePath = path.resolve(process.cwd(), context.runtimeEnv.PLATFORM_WORKSPACE_DIR);
+  const sqlitePath = resolveSqlitePath(context.runtimeEnv.DATABASE_URL, process.cwd());
+
+  let envExists = false;
+  try {
+    await access(envTargetPath, fsConstants.F_OK);
+    envExists = true;
+  } catch {
+    envExists = false;
+  }
+
+  let workspaceExists = false;
+  try {
+    await access(workspacePath, fsConstants.F_OK);
+    workspaceExists = true;
+  } catch {
+    workspaceExists = false;
+  }
+
+  if (apply) {
+    const initOptions: ParsedOptions = {
+      flags: new Map(options.flags),
+      positionals: [...options.positionals],
+    };
+    await initCommand(initOptions);
+    envExists = true;
+    workspaceExists = true;
+
+    if (installService) {
+      await gatewayInstallCommand({
+        flags: new Map(options.flags),
+        positionals: [],
+      });
+    }
+  }
+
+  const gateway = await maybeReadLocalGatewayStatus(context.baseUrl, context.runtimeEnv.PORT, false);
+  const nextSteps: string[] = [];
+
+  if (!envExists) {
+    nextSteps.push("Create the local environment file with `reagent onboard --apply`.");
+  }
+  if (!skipDbPush && !apply) {
+    nextSteps.push("Apply the initial database and workspace bootstrap with `reagent onboard --apply`.");
+  }
+  if (gateway?.installed) {
+    if (!gateway.healthReachable) {
+      nextSteps.push("Start the supervised runtime with `reagent service start`.");
+    }
+  } else {
+    nextSteps.push("Run the runtime in the foreground with `reagent service run`.");
+    nextSteps.push("Install the supervised service with `reagent service install` when you want always-on startup.");
+  }
+  nextSteps.push("Inspect the runtime overview with `reagent home`.");
+  nextSteps.push("Start the first research task with `reagent research enqueue \"topic\" --question \"...\"`.");
+
+  const payload: OnboardPayload = {
+    version,
+    envFile: {
+      path: envTargetPath,
+      exists: envExists,
+    },
+    workspace: {
+      path: workspacePath,
+      exists: workspaceExists,
+    },
+    database: {
+      url: context.runtimeEnv.DATABASE_URL,
+      sqlitePath,
+      ready: skipDbPush || apply,
+    },
+    runtime: {
+      gatewayUrl: context.baseUrl,
+      gatewayInstalled: Boolean(gateway?.installed),
+      gatewayReachable: Boolean(gateway?.healthReachable),
+    },
+    actions: {
+      apply,
+      skipDb: skipDbPush,
+      installService,
+    },
+    nextSteps,
+  };
+
+  if (getBooleanFlag(options, "json")) {
+    printJson(payload);
+    return;
+  }
+
+  console.log("ReAgent Onboard");
+  console.log(`Version: ${payload.version}`);
+  console.log(`Env file: ${payload.envFile.path} (${payload.envFile.exists ? "ready" : "missing"})`);
+  console.log(`Workspace: ${payload.workspace.path} (${payload.workspace.exists ? "ready" : "missing"})`);
+  console.log(`Database: ${payload.database.sqlitePath ?? payload.database.url} (${payload.database.ready ? "ready" : "pending"})`);
+  console.log(`Gateway URL: ${payload.runtime.gatewayUrl}`);
+  console.log(`Gateway installed: ${formatYesNo(payload.runtime.gatewayInstalled)}`);
+  console.log(`Gateway reachable: ${formatYesNo(payload.runtime.gatewayReachable)}`);
+  console.log("");
+  console.log("Next steps:");
+  for (const step of payload.nextSteps) {
+    console.log(`  - ${step}`);
+  }
+}
+
 async function startCommand(options: ParsedOptions): Promise<void> {
   applyRuntimeOverrides(options);
   process.env.NODE_ENV ??= "production";
@@ -2494,364 +2827,10 @@ async function gatewayRunCommand(options: ParsedOptions): Promise<void> {
   await import("./server.js");
 }
 
-function renderGatewayHelp(): void {
-  console.log(`ReAgent Gateway (Legacy Alias)
-
-Foreground:
-  reagent gateway
-  reagent gateway run
-  reagent gateway health
-  reagent gateway probe
-
-Service:
-  reagent gateway install
-  reagent gateway status
-  reagent gateway start
-  reagent gateway stop
-  reagent gateway restart
-  reagent gateway uninstall
-  reagent gateway logs
-
-Notes:
-  - Gateway commands default to port ${DEFAULT_GATEWAY_PORT}
-  - "reagent service ..." is the preferred control surface for supervised runtime control
-  - "reagent gateway ..." is kept as a compatibility alias
-  - "reagent daemon ..." is available as an OpenClaw-style compatibility alias
-  - macOS uses launchd, Linux uses systemd user services, Windows uses Scheduled Task with Startup-folder fallback
-  - Use --deep with "status" to scan for duplicate gateway installs on this host
-
-Flags:
-  --no-probe                Skip the live health probe for "status"
-  --require-rpc             Exit non-zero when "probe" cannot reach the runtime RPC surface
-`);
-}
-
-async function gatewayInstallCommand(options: ParsedOptions): Promise<void> {
-  const port = getStringFlag(options, "port");
-  const snapshot = await installGatewayService({
-    force: getBooleanFlag(options, "force"),
-    ...(port ? { port } : {}),
-    workingDirectory: process.cwd(),
-  });
-  printGatewayStatus(snapshot, getBooleanFlag(options, "json"));
-}
-
-async function gatewayStatusCommand(options: ParsedOptions): Promise<void> {
-  const snapshot = await getGatewayServiceStatus(getStringFlag(options, "port"), {
-    deep: getBooleanFlag(options, "deep"),
-    probe: !getBooleanFlag(options, "no-probe"),
-  });
-  printGatewayStatus(snapshot, getBooleanFlag(options, "json"));
-}
-
-async function gatewayProbeRuntime(baseUrl: string, timeoutMs: number): Promise<GatewayProbePayload> {
-  try {
-    const health = await requestGatewayJson<GatewayHealthPayload>(baseUrl, "/health", {
-      timeoutMs,
-    });
-    try {
-      const runtime = await requestGatewayJson<RuntimeMetaPayload>(baseUrl, "/api/runtime/meta", {
-        timeoutMs,
-      });
-      return {
-        url: baseUrl,
-        healthReachable: true,
-        healthStatus: health.status,
-        rpcReachable: true,
-        agent: runtime.agent,
-        workspaceDir: runtime.workspaceDir,
-        llmProvider: runtime.llmProvider,
-        wechatProvider: runtime.wechatProvider,
-        error: null,
-      };
-    } catch (error) {
-      return {
-        url: baseUrl,
-        healthReachable: true,
-        healthStatus: health.status,
-        rpcReachable: false,
-        agent: health.agent,
-        workspaceDir: null,
-        llmProvider: null,
-        wechatProvider: null,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  } catch (error) {
-    return {
-      url: baseUrl,
-      healthReachable: false,
-      healthStatus: null,
-      rpcReachable: false,
-      agent: null,
-      workspaceDir: null,
-      llmProvider: null,
-      wechatProvider: null,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-async function gatewayProbeCommand(options: ParsedOptions): Promise<void> {
-  const timeoutMs = resolveGatewayTimeoutMs(options);
-  const explicitUrl = getStringFlag(options, "url", "gateway-url");
-  const baseUrl =
-    explicitUrl
-      ? normalizeGatewayBaseUrl(explicitUrl)
-      : (await resolveGatewayContext(options)).baseUrl;
-  const payload = await gatewayProbeRuntime(baseUrl, timeoutMs);
-
-  if (getBooleanFlag(options, "require-rpc") && !payload.rpcReachable) {
-    throw new Error(payload.error ?? `Gateway probe could not reach the runtime RPC surface at ${payload.url}.`);
-  }
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  console.log(`Gateway URL: ${payload.url}`);
-  console.log(`Health reachable: ${formatYesNo(payload.healthReachable)}`);
-  console.log(`Health status: ${formatWhen(payload.healthStatus)}`);
-  console.log(`Runtime RPC reachable: ${formatYesNo(payload.rpcReachable)}`);
-  console.log(`Agent: ${formatWhen(payload.agent)}`);
-  console.log(`Workspace: ${formatWhen(payload.workspaceDir)}`);
-  console.log(`LLM provider: ${formatWhen(payload.llmProvider)}`);
-  console.log(`WeChat provider: ${formatWhen(payload.wechatProvider)}`);
-  if (payload.error) {
-    console.log(`Error: ${payload.error}`);
-  }
-}
-
-async function gatewayStartCommand(options: ParsedOptions): Promise<void> {
-  const snapshot = await startGatewayService();
-  printGatewayStatus(snapshot, getBooleanFlag(options, "json"));
-}
-
-async function gatewayStopCommand(options: ParsedOptions): Promise<void> {
-  const snapshot = await stopGatewayService();
-  if (getBooleanFlag(options, "json")) {
-    printGatewayStatus(snapshot, true);
-    return;
-  }
-  console.log("Gateway stop sent.");
-  printGatewayStatus(snapshot, false);
-}
-
-async function gatewayRestartCommand(options: ParsedOptions): Promise<void> {
-  const snapshot = await restartGatewayService();
-  printGatewayStatus(snapshot, getBooleanFlag(options, "json"));
-}
-
-async function gatewayUninstallCommand(options: ParsedOptions): Promise<void> {
-  await uninstallGatewayService();
-  if (getBooleanFlag(options, "json")) {
-    printJson({ ok: true, uninstalled: true });
-    return;
-  }
-  console.log("Gateway service uninstalled.");
-}
-
-async function gatewayLogsCommand(options: ParsedOptions): Promise<void> {
-  const lines = getIntegerFlag(options, "lines") ?? 40;
-  const stdoutTail = await readGatewayLogTail("out", lines);
-  const stderrTail = await readGatewayLogTail("err", lines);
-  console.log("---STDOUT---");
-  console.log(stdoutTail || "(empty)");
-  console.log("---STDERR---");
-  console.log(stderrTail || "(empty)");
-}
-
-async function gatewayCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderGatewayHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined) {
-    await gatewayRunCommand(options);
-    return;
-  }
-
-  if (subcommand === "--help" || subcommand === "-h" || subcommand === "help") {
-    renderGatewayHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "run") {
-    await gatewayRunCommand(subOptions);
-    return;
-  }
-  if (subcommand === "health") {
-    await healthCommand(subOptions);
-    return;
-  }
-  if (subcommand === "probe") {
-    await gatewayProbeCommand(subOptions);
-    return;
-  }
-  if (subcommand === "install") {
-    await gatewayInstallCommand(subOptions);
-    return;
-  }
-  if (subcommand === "status") {
-    await gatewayStatusCommand(subOptions);
-    return;
-  }
-  if (subcommand === "start") {
-    await gatewayStartCommand(subOptions);
-    return;
-  }
-  if (subcommand === "stop") {
-    await gatewayStopCommand(subOptions);
-    return;
-  }
-  if (subcommand === "restart") {
-    await gatewayRestartCommand(subOptions);
-    return;
-  }
-  if (subcommand === "uninstall") {
-    await gatewayUninstallCommand(subOptions);
-    return;
-  }
-  if (subcommand === "logs") {
-    await gatewayLogsCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown gateway command: ${subcommand}`);
-}
-
-async function runtimeCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderRuntimeHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "status") {
-    await statusCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "--help" || subcommand === "-h" || subcommand === "help") {
-    renderRuntimeHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "health") {
-    await healthCommand(subOptions);
-    return;
-  }
-  if (subcommand === "dashboard") {
-    await dashboardCommand(subOptions);
-    return;
-  }
-  if (subcommand === "logs") {
-    await logsCommand(subOptions);
-    return;
-  }
-  if (subcommand === "doctor") {
-    await doctorCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown runtime command: ${subcommand}`);
-}
-
-async function serviceCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderServiceHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "status") {
-    await gatewayStatusCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "--help" || subcommand === "-h" || subcommand === "help") {
-    renderServiceHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "run") {
-    await gatewayRunCommand(subOptions);
-    return;
-  }
-  if (subcommand === "install") {
-    await gatewayInstallCommand(subOptions);
-    return;
-  }
-  if (subcommand === "start") {
-    await gatewayStartCommand(subOptions);
-    return;
-  }
-  if (subcommand === "stop") {
-    await gatewayStopCommand(subOptions);
-    return;
-  }
-  if (subcommand === "restart") {
-    await gatewayRestartCommand(subOptions);
-    return;
-  }
-  if (subcommand === "uninstall") {
-    await gatewayUninstallCommand(subOptions);
-    return;
-  }
-  if (subcommand === "logs") {
-    await gatewayLogsCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown service command: ${subcommand}`);
-}
-
-async function healthCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const health = await requestGatewayJson<GatewayHealthPayload>(context.baseUrl, "/health", {
-    timeoutMs: context.timeoutMs,
-  });
-  const verbose = getBooleanFlag(options, "verbose", "deep");
-  const runtime =
-    verbose
-      ? await requestGatewayJson<RuntimeMetaPayload>(context.baseUrl, "/api/runtime/meta", {
-          timeoutMs: context.timeoutMs,
-        })
-      : null;
-  const payload = {
-    url: context.baseUrl,
-    health,
-    ...(runtime ? { runtime } : {}),
-  };
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  console.log(`Gateway URL: ${context.baseUrl}`);
-  console.log(`Status: ${health.status}`);
-  console.log(`Agent: ${health.agent}`);
-  console.log(`Time: ${health.time}`);
-  if (runtime) {
-    console.log(`Workspace: ${runtime.workspaceDir}`);
-    console.log(`LLM: ${runtime.llmProvider}/${runtime.llmModel}${runtime.llmWireApi ? ` via ${runtime.llmWireApi}` : ""}`);
-    console.log(`WeChat provider: ${runtime.wechatProvider}`);
-    console.log(`Health URL: ${runtime.deployment.gateway.runtime.healthUrl}`);
-  }
-}
-
 async function statusCommand(options: ParsedOptions): Promise<void> {
   const context = await resolveGatewayContext(options);
   const detailed = getBooleanFlag(options, "all", "verbose");
-  const [runtimeResult, channelsResult, memoryResult, localGateway] = await Promise.all([
+  const [runtimeResult, channelsResult, memoryResult, localGateway, openclawOverview] = await Promise.all([
     settleCliRequest(
       requestGatewayJson<RuntimeMetaPayload>(context.baseUrl, "/api/runtime/meta", {
         timeoutMs: context.timeoutMs,
@@ -2868,6 +2847,7 @@ async function statusCommand(options: ParsedOptions): Promise<void> {
       }),
     ),
     maybeReadLocalGatewayStatus(context.baseUrl, context.runtimeEnv.PORT, getBooleanFlag(options, "deep", "all")),
+    buildOpenClawOverview(),
   ]);
   const gateway = localGateway ?? (runtimeResult.ok ? runtimeResult.value.deployment.gateway.supervisor : null);
   if (!gateway) {
@@ -2889,6 +2869,12 @@ async function statusCommand(options: ParsedOptions): Promise<void> {
     channels,
     memory,
     gateway,
+    openclaw: {
+      ...openclawOverview,
+      cliPath: runtime.openclaw.cliPath,
+      gatewayUrl: runtime.openclaw.gatewayUrl,
+      channelId: runtime.openclaw.channelId,
+    },
   };
 
   if (getBooleanFlag(options, "json")) {
@@ -2911,6 +2897,9 @@ async function statusCommand(options: ParsedOptions): Promise<void> {
   console.log(`WeChat provider: ${runtime.wechatProvider}`);
   console.log(`Workspace: ${runtime.workspaceDir}`);
   console.log(`MCP: ${runtime.mcp.status} (${runtime.mcp.connectors} connector(s))`);
+  console.log(
+    `OpenClaw: snapshot=${formatYesNo(payload.openclaw.snapshotAvailable)} foundation=${payload.openclaw.foundationPackageCount} upstream=${payload.openclaw.importedExtensionCount} sessions=${payload.openclaw.sessionRegistryCount}`,
+  );
   console.log(`Channel connected: ${formatYesNo(channels.channels.wechat.connected)}`);
   console.log(`Memory files: ${memory.files}`);
   console.log(`Memory updated: ${formatWhen(memory.lastUpdatedAt)}`);
@@ -2924,1072 +2913,289 @@ async function statusCommand(options: ParsedOptions): Promise<void> {
   console.log("WeChat:");
   printWeChatStatus(channels.channels.wechat);
   console.log("");
+  printHomeSection("OpenClaw", [
+    `CLI: ${payload.openclaw.cliPath}`,
+    `Gateway URL: ${payload.openclaw.gatewayUrl}`,
+    `Channel: ${payload.openclaw.channelId}`,
+    `Snapshot imported: ${formatYesNo(payload.openclaw.snapshotAvailable)}`,
+    `Foundation packages: ${payload.openclaw.foundationPackageCount}`,
+    `Imported upstream extensions: ${payload.openclaw.importedExtensionCount}`,
+    `Cached host sessions: ${payload.openclaw.sessionRegistryCount}`,
+    `Session registry updated: ${formatWhen(payload.openclaw.sessionRegistryUpdatedAt)}`,
+    `Imported commit: ${payload.openclaw.sourceCommit ?? "-"}`,
+  ]);
+  console.log("");
   console.log("Memory:");
   printMemoryStatus(memory);
 }
 
-async function dashboardCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const url = `${context.baseUrl}/`;
-  const shouldOpen = !getBooleanFlag(options, "no-open");
-  const opened = shouldOpen ? await openUrlInBrowser(url) : false;
-  const payload = {
-    url,
-    opened,
-  };
+function buildHomeNextSteps(input: {
+  gateway: GatewayStatusSnapshot;
+  runtime: RuntimeMetaPayload;
+  channels: ChannelsStatusSnapshot;
+  memory: MemoryStatus;
+  recentReports: ResearchReportSummary[];
+  recentTasks: ResearchTaskSummary[];
+}): string[] {
+  const steps: string[] = [];
 
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  console.log(`Dashboard: ${url}`);
-  if (shouldOpen) {
-    console.log(opened ? "Opened the dashboard in the default browser." : "Could not open the browser automatically.");
-  }
-}
-
-async function logsCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "json") && getBooleanFlag(options, "follow")) {
-    throw new Error('logs --follow does not support --json. Use plain text output for streaming logs.');
-  }
-
-  const context = await resolveGatewayContext(options);
-  const lines = Math.max(20, Math.min(getIntegerFlag(options, "lines", "limit") ?? 120, 400));
-  const payload = await requestGatewayJson<RuntimeLogPayload>(
-    context.baseUrl,
-    `/api/ui/runtime-log?${buildQueryString({ lines })}`,
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  console.log(`Source: ${payload.source}`);
-  console.log(`Lines: ${payload.lines}`);
-  console.log(`Stdout log: ${payload.stdout.path ?? "-"}`);
-  console.log("---STDOUT---");
-  console.log(payload.stdout.content || "(empty)");
-  console.log(`Stderr log: ${payload.stderr.path ?? "-"}`);
-  console.log("---STDERR---");
-  console.log(payload.stderr.content || "(empty)");
-
-  if (!getBooleanFlag(options, "follow")) {
-    return;
-  }
-
-  const pollMs = Math.max(250, Math.min(getIntegerFlag(options, "poll", "poll-ms") ?? 2_000, 60_000));
-  let previousPayload = payload;
-
-  for (;;) {
-    await sleep(pollMs);
-    const nextPayload = await requestGatewayJson<RuntimeLogPayload>(
-      context.baseUrl,
-      `/api/ui/runtime-log?${buildQueryString({ lines })}`,
-      {
-        timeoutMs: context.timeoutMs,
-      },
+  if (!input.gateway.healthReachable) {
+    steps.push(
+      input.gateway.installed
+        ? "Start the supervised runtime with `reagent service start`."
+        : "Start the runtime with `reagent service run`.",
     );
-    const stdoutDelta = renderLogDelta("STDOUT", previousPayload.stdout.content, nextPayload.stdout.content);
-    const stderrDelta = renderLogDelta("STDERR", previousPayload.stderr.content, nextPayload.stderr.content);
-    for (const line of [...stdoutDelta, ...stderrDelta]) {
-      console.log(line);
-    }
-    previousPayload = nextPayload;
+    steps.push("Check the current runtime state with `reagent service status`.");
+    return steps;
   }
+
+  if (input.runtime.wechatProvider === "openclaw") {
+    steps.push("Inspect OpenClaw host and imported snapshot details with `reagent status --all`.");
+  }
+
+  if (input.runtime.wechatProvider !== "mock" && !input.channels.channels.wechat.connected) {
+    steps.push("Complete channel setup with `reagent channels login`.");
+  }
+
+  if (input.memory.files === 0) {
+    steps.push("Store the first durable note with `reagent memory remember \"...\" --title \"...\"`.");
+  }
+
+  const activeTask = input.recentTasks.find((task) => task.state !== "completed" && task.state !== "failed");
+  if (activeTask) {
+    steps.push(`Inspect the active research task with \`reagent research task ${activeTask.taskId}\`.`);
+  } else if (input.recentReports.length === 0) {
+    steps.push("Start the next research run with `reagent research enqueue \"topic\" --question \"...\"`.");
+  } else {
+    steps.push(`Review the latest report with \`reagent research report ${input.recentReports[0]!.taskId}\`.`);
+  }
+
+  steps.push("Open the dashboard when needed with `reagent dashboard --no-open`.");
+  return steps;
 }
 
-async function channelsStatusCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const probeRequested = getBooleanFlag(options, "probe", "deep");
-  const payload = await settleCliRequest(
-    requestGatewayJson<ChannelsStatusSnapshot>(context.baseUrl, "/api/channels/status", {
-      timeoutMs: context.timeoutMs,
-    }),
-  );
-
-  if (payload.ok) {
-    if (getBooleanFlag(options, "json")) {
-      printJson(payload.value);
-      return;
-    }
-
-    console.log(`Channels: ${payload.value.channelOrder.map((id) => payload.value.channelLabels[id] ?? id).join(", ")}`);
-    console.log("");
-    printWeChatStatus(payload.value.channels.wechat);
-    return;
+function buildHomeState(input: {
+  gateway: GatewayStatusSnapshot;
+  runtime: RuntimeMetaPayload;
+  channels: ChannelsStatusSnapshot;
+  memory: MemoryStatus;
+  recentReports: ResearchReportSummary[];
+  recentTasks: ResearchTaskSummary[];
+  activeTaskCount: number;
+}): Pick<HomePayload, "mode" | "headline" | "summary"> {
+  if (!input.gateway.healthReachable) {
+    return {
+      mode: "runtime-stopped",
+      headline: "Runtime needs attention",
+      summary: input.gateway.installed
+        ? "The supervised runtime is installed but not currently reachable."
+        : "The runtime is not running yet. Start it before using research and memory surfaces.",
+    };
   }
 
-  const gateway = await maybeReadLocalGatewayStatus(context.baseUrl, context.runtimeEnv.PORT, probeRequested);
+  if (
+    input.memory.files === 0 &&
+    input.recentReports.length === 0 &&
+    input.recentTasks.length === 0
+  ) {
+    return {
+      mode: "first-run",
+      headline: "First run setup",
+      summary: "The runtime is reachable, but this workspace has not produced memory or research artifacts yet.",
+    };
+  }
+
+  if (input.runtime.wechatProvider !== "mock" && !input.channels.channels.wechat.connected) {
+    return {
+      mode: "channel-setup",
+      headline: "Channel setup is still pending",
+      summary: "The runtime is healthy, but the configured WeChat channel is not connected yet.",
+    };
+  }
+
+  if (input.activeTaskCount > 0) {
+    return {
+      mode: "active-research",
+      headline: "Research is currently in progress",
+      summary: "At least one research task is active. Review the task state before starting another long run.",
+    };
+  }
+
+  if (input.recentReports.length > 0) {
+    return {
+      mode: "report-ready",
+      headline: "Recent research output is ready",
+      summary: "The runtime is healthy and there is at least one reusable report available to review or extend.",
+    };
+  }
+
+  return {
+    mode: "ready",
+    headline: "Runtime is ready",
+    summary: "Core runtime surfaces are available. Continue from research, memory, or the dashboard.",
+  };
+}
+
+async function homeCommand(options: ParsedOptions): Promise<void> {
+  const context = await resolveGatewayContext(options);
+  const [version, runtimeResult, channelsResult, memoryResult, recentReportsResult, recentTasksResult, localGateway] =
+    await Promise.all([
+      readPackageVersion(),
+      settleCliRequest(
+        requestGatewayJson<RuntimeMetaPayload>(context.baseUrl, "/api/runtime/meta", {
+          timeoutMs: context.timeoutMs,
+        }),
+      ),
+      settleCliRequest(
+        requestGatewayJson<ChannelsStatusSnapshot>(context.baseUrl, "/api/channels/status", {
+          timeoutMs: context.timeoutMs,
+        }),
+      ),
+      settleCliRequest(
+        requestGatewayJson<MemoryStatus>(context.baseUrl, "/api/memory/status", {
+          timeoutMs: context.timeoutMs,
+        }),
+      ),
+      settleCliRequest(
+        requestGatewayJson<ResearchRecentPayload>(
+          context.baseUrl,
+          `/api/research/recent?${buildQueryString({ limit: 3 })}`,
+          { timeoutMs: context.timeoutMs },
+        ),
+      ),
+      settleCliRequest(
+        requestGatewayJson<ResearchTasksPayload>(
+          context.baseUrl,
+          `/api/research/tasks?${buildQueryString({ limit: 5 })}`,
+          { timeoutMs: context.timeoutMs },
+        ),
+      ),
+      maybeReadLocalGatewayStatus(context.baseUrl, context.runtimeEnv.PORT, false),
+    ]);
+
+  const gateway = localGateway ?? (runtimeResult.ok ? runtimeResult.value.deployment.gateway.supervisor : null);
   if (!gateway) {
-    throw new Error(payload.error);
-  }
-  const fallback = await buildFallbackChannelsSnapshot(context.runtimeEnv, gateway, payload.error, probeRequested);
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(fallback);
-    return;
-  }
-
-  console.log("Channels: WeChat");
-  console.log("Mode: local fallback");
-  console.log("");
-  printWeChatStatus(fallback.channels.wechat);
-}
-
-async function channelsLogsCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const limit = Math.max(1, Math.min(getIntegerFlag(options, "limit", "lines") ?? 20, 100));
-  const payload = await requestGatewayJson<ChannelLifecyclePayload>(
-    context.baseUrl,
-    `/api/channels/wechat/lifecycle-audit?${buildQueryString({ limit })}`,
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
+    const [firstError] = summarizeCliWarnings([
+      runtimeResult,
+      channelsResult,
+      memoryResult,
+      recentReportsResult,
+      recentTasksResult,
+    ]);
+    throw new Error(firstError ?? "Home overview is unavailable.");
   }
 
-  if (payload.items.length === 0) {
-    console.log("No channel lifecycle records found.");
-    return;
-  }
-
-  for (const item of payload.items) {
-    console.log(`${formatWhen(item.ts)} event=${item.event} state=${formatWhen(item.state)}`);
-    if (item.reason) {
-      console.log(`Reason: ${item.reason}`);
-    }
-    if (item.details) {
-      console.log(`Details: ${JSON.stringify(item.details)}`);
-    }
-    console.log("");
-  }
-}
-
-async function channelsMessagesCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const limit = Math.max(1, Math.min(getIntegerFlag(options, "limit", "lines") ?? 20, 100));
-  const payload = await requestGatewayJson<ChannelMessagesPayload>(
-    context.baseUrl,
-    "/api/channels/wechat/messages",
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-  const messages = payload.messages.slice(-limit);
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ messages });
-    return;
-  }
-
-  if (messages.length === 0) {
-    console.log("No channel messages found.");
-    return;
-  }
-
-  for (const message of messages) {
-    const sender = message.senderName?.trim() || message.senderId?.trim() || "-";
-    console.log(`${message.createdAt} ${message.direction} ${sender}`);
-    console.log(message.text);
-    console.log("");
-  }
-}
-
-async function channelsChatCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const payload = resolveMessagePayload(options, 1);
-  const result = await requestGatewayJson<{ accepted: boolean; reply: string; researchTaskId?: string }>(
-    context.baseUrl,
-    "/api/channels/wechat/chat",
-    {
-      method: "POST",
-      body: payload,
-      timeoutMs: Math.max(context.timeoutMs, 60_000),
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ ...payload, ...result });
-    return;
-  }
-
-  printChannelInboundResult(result);
-}
-
-async function channelsInboundCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const payload = resolveMessagePayload(options, 1);
-  const result = await requestGatewayJson<{ accepted: boolean; reply: string; researchTaskId?: string }>(
-    context.baseUrl,
-    "/api/channels/wechat/inbound",
-    {
-      method: "POST",
-      body: payload,
-      timeoutMs: Math.max(context.timeoutMs, 60_000),
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ ...payload, ...result });
-    return;
-  }
-
-  printChannelInboundResult(result);
-}
-
-async function channelsPushCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const payload = resolveMessagePayload(options, 1);
-  const result = await requestGatewayJson<{ accepted: boolean; reply: string; researchTaskId?: string }>(
-    context.baseUrl,
-    "/api/channels/wechat/push",
-    {
-      method: "POST",
-      body: payload,
-      timeoutMs: Math.max(context.timeoutMs, 60_000),
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ ...payload, ...result });
-    return;
-  }
-
-  printChannelInboundResult(result);
-}
-
-async function channelsSessionsCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const limit = Math.max(1, Math.min(getIntegerFlag(options, "limit") ?? 20, 100));
-  const payload = await requestGatewayJson<ChannelSessionsPayload>(
-    context.baseUrl,
-    "/api/channels/wechat/agent/sessions",
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-  const sessions = payload.sessions.slice(0, limit);
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ sessions });
-    return;
-  }
-
-  if (sessions.length === 0) {
-    console.log("No agent sessions found.");
-    return;
-  }
-
-  for (const session of sessions) {
-    console.log(`${session.sessionId} sender=${session.senderId} updated=${session.updatedAt}`);
-    console.log(
-      `Role=${session.roleLabel} Model=${session.providerLabel}/${session.modelLabel}${session.wireApi ? ` via ${session.wireApi}` : ""} Turns=${session.turnCount}`,
-    );
-    console.log(`Skills=${session.skillLabels.join(", ") || "-"}`);
-    console.log("");
-  }
-}
-
-async function fetchAgentSessionSummary(context: GatewayContext, senderId: string): Promise<AgentSessionSummary> {
-  return requestGatewayJson<AgentSessionSummary>(
-    context.baseUrl,
-    `/api/channels/wechat/agent?${buildQueryString({ senderId })}`,
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-}
-
-async function channelsAgentSessionsCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = Math.max(1, Math.min(getIntegerFlag(options, "limit") ?? 20, 100));
-  const payload = await requestGatewayJson<ChannelSessionsPayload>(
-    context.baseUrl,
-    "/api/channels/wechat/agent/sessions",
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-  const sessions = payload.sessions.slice(0, limit);
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ sessions });
-    return;
-  }
-
-  if (sessions.length === 0) {
-    console.log("No agent sessions found.");
-    return;
-  }
-
-  for (const session of sessions) {
-    console.log(`${session.senderId} role=${session.roleId} updated=${session.updatedAt}`);
-    console.log(
-      `Model=${session.providerId}/${session.modelId}${session.wireApi ? ` via ${session.wireApi}` : ""} Turns=${session.turnCount}`,
-    );
-    console.log(`Skills=${session.skillIds.join(", ") || "-"}`);
-    console.log("");
-  }
-}
-
-async function channelsAgentSessionCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const senderId = resolveSenderId(options);
-  const summary = await fetchAgentSessionSummary(context, senderId);
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ senderId, ...summary });
-    return;
-  }
-
-  console.log(`Sender: ${senderId}`);
-  printAgentSessionSummary(summary);
-}
-
-async function channelsAgentRoleCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const senderId = resolveSenderId(options);
-  const roleId = options.positionals[1]?.trim();
-
-  if (!roleId) {
-    const summary = await fetchAgentSessionSummary(context, senderId);
-    if (getBooleanFlag(options, "json")) {
-      printJson({ senderId, roleId: summary.roleId, roleLabel: summary.roleLabel, availableRoles: summary.availableRoles });
-      return;
-    }
-    console.log(`Sender: ${senderId}`);
-    console.log(`Current role: ${summary.roleLabel} (${summary.roleId})`);
-    console.log(`Available roles: ${summary.availableRoles.map((role) => `${role.id} (${role.label})`).join(", ") || "-"}`);
-    return;
-  }
-
-  const summary = await requestGatewayJson<AgentSessionSummary>(context.baseUrl, "/api/channels/wechat/agent/role", {
-    method: "POST",
-    body: {
-      senderId,
-      roleId,
-    },
-    timeoutMs: context.timeoutMs,
+  const runtime = runtimeResult.ok ? runtimeResult.value : buildFallbackRuntimeMeta(context, gateway, runtimeResult.error);
+  const channels = channelsResult.ok
+    ? channelsResult.value
+    : await buildFallbackChannelsSnapshot(context.runtimeEnv, gateway, channelsResult.error, false);
+  const memory = memoryResult.ok ? memoryResult.value : buildFallbackMemoryStatus(context.runtimeEnv);
+  const recentReports = recentReportsResult.ok ? recentReportsResult.value.reports : [];
+  const recentTasks = recentTasksResult.ok ? recentTasksResult.value.tasks : [];
+  const warnings = summarizeCliWarnings([
+    runtimeResult,
+    channelsResult,
+    memoryResult,
+    recentReportsResult,
+    recentTasksResult,
+  ]);
+  const dashboardUrl = `${context.baseUrl}/`;
+  const activeTaskCount = recentTasks.filter((task) => task.state !== "completed" && task.state !== "failed").length;
+  const homeState = buildHomeState({
+    gateway,
+    runtime,
+    channels,
+    memory,
+    recentReports,
+    recentTasks,
+    activeTaskCount,
   });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ senderId, ...summary });
-    return;
-  }
-
-  console.log(`Sender: ${senderId}`);
-  console.log(`Role updated to ${summary.roleLabel} (${summary.roleId})`);
-}
-
-async function channelsAgentSkillsCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const senderId = resolveSenderId(options);
-  const raw = options.positionals.slice(1).join(" ").trim();
-
-  if (!raw) {
-    const summary = await fetchAgentSessionSummary(context, senderId);
-    if (getBooleanFlag(options, "json")) {
-      printJson({ senderId, skillIds: summary.skillIds, skillLabels: summary.skillLabels, availableSkills: summary.availableSkills });
-      return;
-    }
-    console.log(`Sender: ${senderId}`);
-    console.log(`Current skills: ${summary.skillLabels.join(", ") || "-"}`);
-    console.log(`Available skills: ${summary.availableSkills.map((skill) => `${skill.id} (${skill.label})`).join(", ") || "-"}`);
-    return;
-  }
-
-  const skillIds = parseSkillSelections(raw);
-  if (skillIds.length === 0) {
-    throw new Error("No valid skill ids were provided.");
-  }
-
-  const summary = await requestGatewayJson<AgentSessionSummary>(context.baseUrl, "/api/channels/wechat/agent/skills", {
-    method: "POST",
-    body: {
-      senderId,
-      skillIds,
+  const payload: HomePayload = {
+    url: context.baseUrl,
+    version,
+    degraded: warnings.length > 0,
+    ...(warnings.length > 0 ? { warnings } : {}),
+    mode: homeState.mode,
+    headline: homeState.headline,
+    summary: homeState.summary,
+    runtime,
+    channels,
+    memory,
+    gateway,
+    research: {
+      recentReports,
+      recentTasks,
+      activeTaskCount,
     },
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ senderId, ...summary });
-    return;
-  }
-
-  console.log(`Sender: ${senderId}`);
-  console.log(`Skills updated: ${summary.skillLabels.join(", ") || "-"}`);
-}
-
-async function channelsAgentModelCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const senderId = resolveSenderId(options);
-  const arg1 = options.positionals[1]?.trim();
-  const arg2 = options.positionals[2]?.trim();
-
-  if (!arg1) {
-    const summary = await fetchAgentSessionSummary(context, senderId);
-    if (getBooleanFlag(options, "json")) {
-      printJson({
-        senderId,
-        providerId: summary.providerId,
-        providerLabel: summary.providerLabel,
-        modelId: summary.modelId,
-        modelLabel: summary.modelLabel,
-        wireApi: summary.wireApi,
-        availableLlmProviders: summary.availableLlmProviders,
-      });
-      return;
-    }
-    console.log(`Sender: ${senderId}`);
-    console.log(
-      `Current model: ${summary.providerLabel}/${summary.modelLabel}${summary.wireApi ? ` via ${summary.wireApi}` : ""}`,
-    );
-    console.log(
-      `Available providers: ${summary.availableLlmProviders.map((provider) => provider.id).join(", ") || "-"}`,
-    );
-    return;
-  }
-
-  if (["clear", "reset", "default", "none"].includes(arg1.toLowerCase())) {
-    const summary = await requestGatewayJson<AgentSessionSummary>(context.baseUrl, "/api/channels/wechat/agent/model", {
-      method: "POST",
-      body: {
-        senderId,
-      },
-      timeoutMs: context.timeoutMs,
-    });
-    if (getBooleanFlag(options, "json")) {
-      printJson({ senderId, ...summary });
-      return;
-    }
-    console.log(`Sender: ${senderId}`);
-    console.log(
-      `Model reset to ${summary.providerLabel}/${summary.modelLabel}${summary.wireApi ? ` via ${summary.wireApi}` : ""}`,
-    );
-    return;
-  }
-
-  if (!arg2) {
-    throw new Error("channels agent model requires both providerId and modelId, or 'clear'.");
-  }
-
-  const summary = await requestGatewayJson<AgentSessionSummary>(context.baseUrl, "/api/channels/wechat/agent/model", {
-    method: "POST",
-    body: {
-      senderId,
-      providerId: arg1,
-      modelId: arg2,
-    },
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ senderId, ...summary });
-    return;
-  }
-
-  console.log(`Sender: ${senderId}`);
-  console.log(
-    `Model updated to ${summary.providerLabel}/${summary.modelLabel}${summary.wireApi ? ` via ${summary.wireApi}` : ""}`,
-  );
-}
-
-async function channelsAgentFallbacksCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const senderId = resolveSenderId(options);
-  const raw = options.positionals.slice(1).join(" ").trim();
-
-  if (!raw) {
-    const summary = await fetchAgentSessionSummary(context, senderId);
-    if (getBooleanFlag(options, "json")) {
-      printJson({ senderId, fallbackRoutes: summary.fallbackRoutes });
-      return;
-    }
-    console.log(`Sender: ${senderId}`);
-    console.log(
-      `Fallbacks: ${
-        summary.fallbackRoutes.length > 0
-          ? summary.fallbackRoutes.map((route) => `${route.providerId}/${route.modelId}`).join(", ")
-          : "none"
-      }`,
-    );
-    return;
-  }
-
-  const routes =
-    ["clear", "reset", "none"].includes(raw.toLowerCase()) ? [] : parseFallbackSelections(raw);
-
-  if (!["clear", "reset", "none"].includes(raw.toLowerCase()) && routes.length === 0) {
-    throw new Error("No valid fallback routes were provided.");
-  }
-
-  const summary = await requestGatewayJson<AgentSessionSummary>(
-    context.baseUrl,
-    "/api/channels/wechat/agent/fallbacks",
-    {
-      method: "POST",
-      body: {
-        senderId,
-        routes,
-      },
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ senderId, ...summary });
-    return;
-  }
-
-  console.log(`Sender: ${senderId}`);
-  console.log(
-    `Fallbacks updated: ${
-      summary.fallbackRoutes.length > 0
-        ? summary.fallbackRoutes.map((route) => `${route.providerId}/${route.modelId}`).join(", ")
-        : "none"
-    }`,
-  );
-}
-
-async function channelsAgentReasoningCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const senderId = resolveSenderId(options);
-  const reasoningEffort = options.positionals[1]?.trim();
-
-  if (!reasoningEffort) {
-    const summary = await fetchAgentSessionSummary(context, senderId);
-    if (getBooleanFlag(options, "json")) {
-      printJson({
-        senderId,
-        reasoningEffort: summary.reasoningEffort,
-        availableReasoningEfforts: summary.availableReasoningEfforts,
-      });
-      return;
-    }
-    console.log(`Sender: ${senderId}`);
-    console.log(`Current reasoning: ${summary.reasoningEffort}`);
-    console.log(`Available reasoning: ${summary.availableReasoningEfforts.join(", ") || "-"}`);
-    return;
-  }
-
-  const summary = await requestGatewayJson<AgentSessionSummary>(
-    context.baseUrl,
-    "/api/channels/wechat/agent/reasoning",
-    {
-      method: "POST",
-      body: {
-        senderId,
-        reasoningEffort,
-      },
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ senderId, ...summary });
-    return;
-  }
-
-  console.log(`Sender: ${senderId}`);
-  console.log(`Reasoning updated to ${summary.reasoningEffort}`);
-}
-
-async function printLoginPreview(result: WeChatLoginStartResult): Promise<void> {
-  console.log(result.message);
-  if (result.pairingCode) {
-    console.log(`Pairing code: ${result.pairingCode}`);
-    const qr = await renderTerminalQr(result.pairingCode);
-    if (qr) {
-      console.log(qr);
-    }
-  }
-  if (result.qrDataUrl) {
-    console.log("QR image is available in the dashboard/UI flow.");
-  }
-}
-
-async function channelsLoginCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const displayName = getStringFlag(options, "display-name", "name");
-  const startBody = {
-    force: getBooleanFlag(options, "force"),
-    ...(displayName ? { displayName } : {}),
+    nextSteps: buildHomeNextSteps({
+      gateway,
+      runtime,
+      channels,
+      memory,
+      recentReports,
+      recentTasks,
+    }),
+    dashboardUrl,
   };
-  const startResult = await requestGatewayJson<WeChatLoginStartResult>(
-    context.baseUrl,
-    "/api/channels/wechat/login/start",
-    {
-      method: "POST",
-      body: startBody,
-      timeoutMs: Math.max(context.timeoutMs, 30_000),
-    },
-  );
 
-  if (getBooleanFlag(options, "wait")) {
-    const completeResult = await requestGatewayJson<WeChatChannelStatus>(
-      context.baseUrl,
-      "/api/channels/wechat/login/complete",
-      {
-        method: "POST",
-        body: displayName ? { displayName } : {},
-        timeoutMs: Math.max(context.timeoutMs, 120_000),
-      },
-    );
+  if (getBooleanFlag(options, "json")) {
+    printJson(payload);
+    return;
+  }
 
-    if (getBooleanFlag(options, "json")) {
-      printJson({ start: startResult, complete: completeResult });
-      return;
+  if (warnings.length > 0) {
+    console.log("Warnings:");
+    for (const warning of warnings) {
+      console.log(`  - ${warning}`);
     }
-
-    await printLoginPreview(startResult);
     console.log("");
-    printWeChatStatus(completeResult);
-    return;
   }
 
-  if (getBooleanFlag(options, "json")) {
-    printJson(startResult);
-    return;
-  }
-
-  await printLoginPreview(startResult);
-}
-
-async function channelsWaitCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const displayName = getStringFlag(options, "display-name", "name");
-  const result = await requestGatewayJson<WeChatChannelStatus>(
-    context.baseUrl,
-    "/api/channels/wechat/login/complete",
-    {
-      method: "POST",
-      body: displayName ? { displayName } : {},
-      timeoutMs: Math.max(context.timeoutMs, 120_000),
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(result);
-    return;
-  }
-
-  printWeChatStatus(result);
-}
-
-async function channelsLogoutCommand(options: ParsedOptions): Promise<void> {
-  ensureSupportedChannel(options);
-  const context = await resolveGatewayContext(options);
-  const result = await requestGatewayJson<WeChatChannelStatus>(
-    context.baseUrl,
-    "/api/channels/wechat/logout",
-    {
-      method: "POST",
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(result);
-    return;
-  }
-
-  printWeChatStatus(result);
-}
-
-async function channelsAgentCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderChannelsAgentHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "sessions") {
-    await channelsAgentSessionsCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
-    renderChannelsAgentHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "session" || subcommand === "show" || subcommand === "status") {
-    await channelsAgentSessionCommand(subOptions);
-    return;
-  }
-  if (subcommand === "role") {
-    await channelsAgentRoleCommand(subOptions);
-    return;
-  }
-  if (subcommand === "skills") {
-    await channelsAgentSkillsCommand(subOptions);
-    return;
-  }
-  if (subcommand === "model") {
-    await channelsAgentModelCommand(subOptions);
-    return;
-  }
-  if (subcommand === "fallbacks") {
-    await channelsAgentFallbacksCommand(subOptions);
-    return;
-  }
-  if (subcommand === "reasoning") {
-    await channelsAgentReasoningCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown channels agent command: ${subcommand}`);
-}
-
-async function channelsCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderChannelsHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "status") {
-    await channelsStatusCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
-    renderChannelsHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "list") {
-    await channelsStatusCommand(subOptions);
-    return;
-  }
-  if (subcommand === "logs") {
-    await channelsLogsCommand(subOptions);
-    return;
-  }
-  if (subcommand === "messages") {
-    await channelsMessagesCommand(subOptions);
-    return;
-  }
-  if (subcommand === "chat") {
-    await channelsChatCommand(subOptions);
-    return;
-  }
-  if (subcommand === "inbound") {
-    await channelsInboundCommand(subOptions);
-    return;
-  }
-  if (subcommand === "push" || subcommand === "send") {
-    await channelsPushCommand(subOptions);
-    return;
-  }
-  if (subcommand === "sessions") {
-    await channelsSessionsCommand(subOptions);
-    return;
-  }
-  if (subcommand === "agent") {
-    await channelsAgentCommand(subOptions);
-    return;
-  }
-  if (subcommand === "login") {
-    await channelsLoginCommand(subOptions);
-    return;
-  }
-  if (subcommand === "wait") {
-    await channelsWaitCommand(subOptions);
-    return;
-  }
-  if (subcommand === "logout") {
-    await channelsLogoutCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown channels command: ${subcommand}`);
-}
-
-async function memoryStatusCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const status = await requestGatewayJson<MemoryStatus>(context.baseUrl, "/api/memory/status", {
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(status);
-    return;
-  }
-
-  printMemoryStatus(status);
-}
-
-async function memoryFilesCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = Math.max(1, Math.min(getIntegerFlag(options, "limit") ?? 100, 500));
-  const payload = await requestGatewayJson<MemoryFilesPayload>(context.baseUrl, "/api/memory/files", {
-    timeoutMs: context.timeoutMs,
-  });
-  const files = payload.files.slice(0, limit);
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ files });
-    return;
-  }
-
-  printMemoryFiles(files);
-}
-
-async function memoryFileCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const filePath = getStringFlag(options, "path") ?? options.positionals[0];
-  if (!filePath) {
-    throw new Error("memory file requires a path. Example: reagent memory file MEMORY.md");
-  }
-
-  const file = await requestGatewayJson<MemoryFileContent>(
-    context.baseUrl,
-    `/api/memory/file?${buildQueryString({ path: filePath })}`,
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(file);
-    return;
-  }
-
-  printMemoryFile(file);
-}
-
-async function memorySearchCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const query = getQueryInput(options);
-  if (!query) {
-    throw new Error("memory search requires a query. Example: reagent memory search model routing");
-  }
-
-  const limit = Math.max(1, Math.min(getIntegerFlag(options, "limit") ?? 6, 20));
-  const payload = await requestGatewayJson<{ query: string; results: MemorySearchResult[] }>(
-    context.baseUrl,
-    `/api/memory/search?${buildQueryString({ q: query, limit })}`,
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  console.log(`Query: ${payload.query}`);
+  console.log("ReAgent Home");
   console.log("");
-  printMemorySearchResults(payload.results);
-}
-
-async function memoryRecallCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const query = getQueryInput(options);
-  if (!query) {
-    throw new Error("memory recall requires a query. Example: reagent memory recall prior research choices");
-  }
-
-  const limit = Math.max(1, Math.min(getIntegerFlag(options, "limit") ?? 6, 20));
-  const payload = await requestGatewayJson<MemoryRecallResult>(
-    context.baseUrl,
-    `/api/memory/recall?${buildQueryString({
-      q: query,
-      limit,
-      includeWorkspace: getBooleanFlag(options, "include-workspace"),
-      includeArtifacts: getBooleanFlag(options, "include-artifacts"),
-    })}`,
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  console.log(`Query: ${payload.query}`);
-  console.log(`Generated: ${payload.generatedAt}`);
+  console.log(`Mode: ${payload.mode}`);
+  console.log(`Headline: ${payload.headline}`);
+  console.log(`${payload.summary}`);
   console.log("");
-  printMemoryRecallResults(payload);
-}
 
-async function memoryRememberCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const scope = getStringFlag(options, "scope") ?? "daily";
-  if (scope !== "daily" && scope !== "long-term") {
-    throw new Error(`Unsupported memory scope: ${scope}. Use "daily" or "long-term".`);
+  printHomeSection("Overview", [
+    `Version: ${version}`,
+    `Gateway URL: ${context.baseUrl}`,
+    `Dashboard: ${dashboardUrl}`,
+    `Workspace: ${runtime.workspaceDir}`,
+  ]);
+
+  printHomeSection("Runtime", [
+    `Gateway: ${gateway.healthReachable ? "running" : gateway.installed ? "installed" : "not installed"}`,
+    `Agent: ${runtime.agent}`,
+    `LLM: ${runtime.llmProvider}/${runtime.llmModel}${runtime.llmWireApi ? ` via ${runtime.llmWireApi}` : ""}`,
+    `WeChat provider: ${runtime.wechatProvider}`,
+    `Channel connected: ${formatYesNo(channels.channels.wechat.connected)}`,
+  ]);
+
+  printHomeSection("OpenClaw", [
+    `CLI: ${runtime.openclaw.cliPath}`,
+    `Gateway URL: ${runtime.openclaw.gatewayUrl}`,
+    `Channel: ${runtime.openclaw.channelId}`,
+  ]);
+
+  printHomeSection("Research", [
+    `Recent reports: ${recentReports.length}`,
+    `Recent tasks: ${recentTasks.length}`,
+    `Active tasks: ${payload.research.activeTaskCount}`,
+    `Latest report: ${recentReports[0] ? `${recentReports[0].topic} (${recentReports[0].generatedAt})` : "-"}`,
+    `Latest task: ${recentTasks[0] ? `${recentTasks[0].topic} | state=${recentTasks[0].state} | progress=${recentTasks[0].progress}%` : "-"}`,
+  ]);
+
+  printHomeSection("Memory", [
+    `Files: ${memory.files}`,
+    `Updated: ${formatWhen(memory.lastUpdatedAt)}`,
+  ]);
+
+  console.log("Next Steps:");
+  for (const step of payload.nextSteps) {
+    console.log(`  - ${step}`);
   }
-
-  const content = getStringFlag(options, "content") ?? options.positionals.join(" ").trim();
-  if (!content) {
-    throw new Error("memory remember requires content. Example: reagent memory remember The user prefers evidence-led reports");
-  }
-
-  const title = getStringFlag(options, "title");
-  const source = getStringFlag(options, "source");
-  const body = {
-    scope,
-    content,
-    ...(title ? { title } : {}),
-    ...(source ? { source } : {}),
-  };
-  const result = await requestGatewayJson<MemoryFileContent>(context.baseUrl, "/api/memory/remember", {
-    method: "POST",
-    body,
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(result);
-    return;
-  }
-
-  printMemoryFile(result);
-}
-
-async function memoryPolicyCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const result = await requestGatewayJson<MemoryPolicy>(context.baseUrl, "/api/memory/policy", {
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(result);
-    return;
-  }
-
-  console.log(`Updated: ${result.updatedAt}`);
-  console.log(`Auto compaction: ${formatYesNo(result.autoCompactionEnabled)}`);
-  console.log(`Interval minutes: ${result.autoCompactionIntervalMinutes}`);
-  console.log(`Older than days: ${result.autoCompactionOlderThanDays}`);
-  console.log(`Min entries: ${result.autoCompactionMinEntries}`);
-  console.log(`Max entries: ${result.autoCompactionMaxEntries}`);
-  console.log(`Max daily entries before auto compact: ${result.maxDailyEntriesBeforeAutoCompact}`);
-  console.log(`High-confidence long-term only: ${formatYesNo(result.highConfidenceLongTermOnly)}`);
-  console.log(`Never compact tags: ${result.neverCompactTags.join(", ") || "-"}`);
-}
-
-async function memoryCompactCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const olderThanDays = getIntegerFlag(options, "older-than-days");
-  const minEntries = getIntegerFlag(options, "min-entries");
-  const maxEntries = getIntegerFlag(options, "max-entries");
-  const body = {
-    ...(olderThanDays !== undefined ? { olderThanDays } : {}),
-    ...(minEntries !== undefined ? { minEntries } : {}),
-    ...(maxEntries !== undefined ? { maxEntries } : {}),
-    ...(getBooleanFlag(options, "dry-run") ? { dryRun: true } : {}),
-  };
-  const result = await requestGatewayJson<MemoryCompactionResult>(context.baseUrl, "/api/memory/compact", {
-    method: "POST",
-    body,
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(result);
-    return;
-  }
-
-  printMemoryCompactionResult(result);
-}
-
-async function memoryCompactionsCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = Math.max(1, Math.min(getIntegerFlag(options, "limit") ?? 20, 100));
-  const payload = await requestGatewayJson<MemoryCompactionsPayload>(
-    context.baseUrl,
-    `/api/memory/compactions?${buildQueryString({ limit })}`,
-    {
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  printCompactionRecords(payload.items);
-}
-
-async function memoryCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderMemoryHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "status") {
-    await memoryStatusCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
-    renderMemoryHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "files") {
-    await memoryFilesCommand(subOptions);
-    return;
-  }
-  if (subcommand === "file") {
-    await memoryFileCommand(subOptions);
-    return;
-  }
-  if (subcommand === "search") {
-    await memorySearchCommand(subOptions);
-    return;
-  }
-  if (subcommand === "recall") {
-    await memoryRecallCommand(subOptions);
-    return;
-  }
-  if (subcommand === "remember") {
-    await memoryRememberCommand(subOptions);
-    return;
-  }
-  if (subcommand === "policy") {
-    await memoryPolicyCommand(subOptions);
-    return;
-  }
-  if (subcommand === "compact") {
-    await memoryCompactCommand(subOptions);
-    return;
-  }
-  if (subcommand === "compactions") {
-    await memoryCompactionsCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown memory command: ${subcommand}`);
 }
 
 function resolveRequiredEntityId(options: ParsedOptions, label: string): string {
@@ -4127,973 +3333,68 @@ async function researchHandoffCommand(options: ParsedOptions): Promise<void> {
   printResearchTaskHandoff(handoff);
 }
 
-async function researchDirectionsCommand(options: ParsedOptions): Promise<void> {
+async function researchWorkstreamCommand(options: ParsedOptions): Promise<void> {
   const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayJson<ResearchDirectionsPayload>(context.baseUrl, "/api/research/directions", {
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
+  const taskId = options.positionals[0]?.trim();
+  const workstreamId = options.positionals[1]?.trim();
+  if (!taskId) {
+    throw new Error("research workstream requires a task id.");
   }
-  printResearchDirections(payload.profiles);
-}
-
-async function researchDirectionGetCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const directionId = resolveRequiredEntityId(options, "research direction");
-  const profile = await requestGatewayJson<ResearchDirectionProfile>(
-    context.baseUrl,
-    `/api/research/directions/${encodeURIComponent(directionId)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(profile);
-    return;
-  }
-  printResearchDirection(profile);
-}
-
-async function researchDirectionUpsertCommand(options: ParsedOptions): Promise<void> {
-  const source = options.positionals[0]?.trim();
-  if (!source) {
-    throw new Error("research direction upsert requires a JSON file path or '-' for stdin.");
+  if (workstreamId !== "search" && workstreamId !== "reading" && workstreamId !== "synthesis") {
+    throw new Error("research workstream requires one of: search, reading, synthesis.");
   }
 
-  const raw = await readInputSource(source);
-  const payload = raw.trim() ? (JSON.parse(raw) as unknown) : {};
-  const context = await resolveGatewayContext(options);
-  const result = await requestGatewayJson<ResearchDirectionProfile>(context.baseUrl, "/api/research/directions", {
-    method: "POST",
-    body: payload,
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ source, profile: result });
-    return;
-  }
-  printResearchDirection(result);
-}
-
-async function researchDirectionBriefCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const directionId = resolveRequiredEntityId(options, "research direction");
-  const markdown = await requestGatewayText(
-    context.baseUrl,
-    `/api/research/directions/${encodeURIComponent(directionId)}/brief-markdown`,
-    { timeoutMs: context.timeoutMs },
-  );
-  const outPath = getStringFlag(options, "out");
-
-  if (outPath) {
-    const resolvedOutPath = path.resolve(process.cwd(), outPath);
-    await mkdir(path.dirname(resolvedOutPath), { recursive: true });
-    await writeFile(resolvedOutPath, markdown.endsWith("\n") ? markdown : `${markdown}\n`, "utf8");
-    if (getBooleanFlag(options, "json")) {
-      printJson({ directionId, outPath: resolvedOutPath });
-      return;
-    }
-    console.log(`Wrote research brief to ${resolvedOutPath}`);
-    return;
-  }
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ directionId, markdown });
-    return;
-  }
-  process.stdout.write(markdown.endsWith("\n") ? markdown : `${markdown}\n`);
-}
-
-async function researchDirectionPlanCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const directionId = resolveRequiredEntityId(options, "research direction");
   const payload = await requestGatewayJson<{
-    profile: ResearchDirectionProfile;
-    candidates: ResearchDiscoveryQueryCandidate[];
-  }>(context.baseUrl, `/api/research/directions/${encodeURIComponent(directionId)}/plan`, {
-    timeoutMs: context.timeoutMs,
-  });
+    workstreamId: "search" | "reading" | "synthesis";
+    path: string;
+    content: string;
+  }>(
+    context.baseUrl,
+    `/api/research/tasks/${encodeURIComponent(taskId)}/workstreams/${encodeURIComponent(workstreamId)}`,
+    { timeoutMs: context.timeoutMs },
+  );
 
   if (getBooleanFlag(options, "json")) {
     printJson(payload);
     return;
   }
 
-  printResearchDirection(payload.profile);
+  console.log(`Workstream: ${payload.workstreamId}`);
+  console.log(`Path: ${payload.path}`);
   console.log("");
-  printResearchDiscoveryPlan(payload.candidates);
-}
-
-async function researchDirectionImportBriefCommand(options: ParsedOptions): Promise<void> {
-  const source = options.positionals[0]?.trim();
-  if (!source) {
-    throw new Error("research direction import-brief requires a markdown file path or '-' for stdin.");
-  }
-
-  const markdown = await readInputSource(source);
-  const directionId = getStringFlag(options, "id");
-  const context = await resolveGatewayContext(options);
-  const profile = await requestGatewayJson<ResearchDirectionProfile>(
-    context.baseUrl,
-    "/api/research/directions/import-markdown",
-    {
-      method: "POST",
-      body: {
-        markdown,
-        ...(directionId ? { id: directionId } : {}),
-      },
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ source, profile });
-    return;
-  }
-  printResearchDirection(profile);
-}
-
-async function researchDirectionDeleteCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const directionId = resolveRequiredEntityId(options, "research direction");
-  await requestGatewayResponse(context.baseUrl, `/api/research/directions/${encodeURIComponent(directionId)}`, {
-    method: "DELETE",
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ directionId, deleted: true });
-    return;
-  }
-  console.log(`Deleted research direction ${directionId}`);
-}
-
-async function researchDirectionCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderResearchHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (!subcommand) {
-    renderResearchHelp();
-    return;
-  }
-  if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
-    renderResearchHelp();
-    return;
-  }
-
-  if (subcommand === "upsert") {
-    await researchDirectionUpsertCommand(consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "brief") {
-    await researchDirectionBriefCommand(consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "plan") {
-    await researchDirectionPlanCommand(consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "import-brief") {
-    await researchDirectionImportBriefCommand(consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "delete" || subcommand === "remove" || subcommand === "rm") {
-    await researchDirectionDeleteCommand(consumePositionals(options, 1));
-    return;
-  }
-
-  await researchDirectionGetCommand(options);
-}
-
-async function researchDiscoveryPlanCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const directionId = getStringFlag(options, "direction", "id") ?? options.positionals[0];
-  const payload = await requestGatewayJson<ResearchDiscoveryPlanPayload>(
-    context.baseUrl,
-    `/api/research/discovery-plan?${buildQueryString({
-      ...(directionId?.trim() ? { directionId: directionId.trim() } : {}),
-    })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchDiscoveryPlan(payload.candidates);
-}
-
-async function researchDiscoveryRecentCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = getIntegerFlag(options, "limit") ?? 10;
-  const payload = await requestGatewayJson<ResearchDiscoveryRecentPayload>(
-    context.baseUrl,
-    `/api/research/discovery/recent?${buildQueryString({ limit })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchDiscoveryRuns(payload.runs);
-}
-
-async function researchDiscoveryInspectCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const runId = resolveRequiredEntityId(options, "discovery run");
-  const payload = await requestGatewayJson<ResearchDiscoveryRunResult>(
-    context.baseUrl,
-    `/api/research/discovery/runs/${encodeURIComponent(runId)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchDiscoveryRun(payload);
-}
-
-async function researchDiscoveryRunCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const directionId = getStringFlag(options, "direction");
-  const topK = getIntegerFlag(options, "top-k", "topK");
-  const maxPapersPerQuery = getIntegerFlag(options, "max-papers-per-query", "max-papers");
-  const senderId = getStringFlag(options, "sender");
-  const senderName = getStringFlag(options, "name", "sender-name");
-  const payload = await requestGatewayJson<ResearchDiscoveryRunResult>(
-    context.baseUrl,
-    "/api/research/discovery/run",
-    {
-      method: "POST",
-      body: {
-        ...(directionId ? { directionId } : {}),
-        ...(topK !== undefined ? { topK } : {}),
-        ...(maxPapersPerQuery !== undefined ? { maxPapersPerQuery } : {}),
-        ...(getBooleanFlag(options, "push", "push-to-wechat") ? { pushToWechat: true } : {}),
-        ...(senderId ? { senderId } : {}),
-        ...(senderName ? { senderName } : {}),
-      },
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchDiscoveryRun(payload);
-}
-
-async function researchDiscoverySchedulerStatusCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayJson<ResearchDiscoverySchedulerStatus>(
-    context.baseUrl,
-    "/api/research/discovery/scheduler",
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchSchedulerStatus(payload);
-}
-
-async function researchDiscoverySchedulerSetCommand(options: ParsedOptions): Promise<void> {
-  const enabled =
-    getOptionalBooleanFlag(options, "enabled") ??
-    (getBooleanFlag(options, "disable") ? false : undefined) ??
-    (getBooleanFlag(options, "enable") ? true : undefined);
-  const dailyTimeLocal = getStringFlag(options, "time", "daily-time", "dailyTimeLocal");
-  const senderId = getStringFlag(options, "sender");
-  const senderName = getStringFlag(options, "name", "sender-name");
-  const directionIds = parseCommaSeparatedValues(getStringFlag(options, "direction-ids", "directions"));
-  const topK = getIntegerFlag(options, "top-k", "topK");
-  const maxPapersPerQuery = getIntegerFlag(options, "max-papers-per-query", "max-papers");
-
-  const body = {
-    ...(enabled !== undefined ? { enabled } : {}),
-    ...(dailyTimeLocal ? { dailyTimeLocal } : {}),
-    ...(senderId ? { senderId } : {}),
-    ...(senderName ? { senderName } : {}),
-    ...(directionIds.length > 0 ? { directionIds } : {}),
-    ...(topK !== undefined ? { topK } : {}),
-    ...(maxPapersPerQuery !== undefined ? { maxPapersPerQuery } : {}),
-  };
-
-  if (Object.keys(body).length === 0) {
-    throw new Error("research discovery scheduler set requires at least one configuration flag.");
-  }
-
-  const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayJson<ResearchDiscoverySchedulerStatus>(
-    context.baseUrl,
-    "/api/research/discovery/scheduler",
-    {
-      method: "POST",
-      body,
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchSchedulerStatus(payload);
-}
-
-async function researchDiscoverySchedulerTickCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayJson<{
-    results: ResearchDiscoveryRunResult[];
-    status: ResearchDiscoverySchedulerStatus;
-  }>(context.baseUrl, "/api/research/discovery/scheduler/tick", {
-    method: "POST",
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  printResearchSchedulerStatus(payload.status);
-  if (payload.results.length > 0) {
-    console.log("");
-    printResearchDiscoveryRuns(
-      payload.results.map((item) => ({
-        runId: item.runId,
-        generatedAt: item.generatedAt,
-        directionIds: item.directionIds,
-        directionLabels: item.directionLabels,
-        topTitle: item.items[0]?.title,
-        itemCount: item.items.length,
-        pushed: item.pushed,
-      })),
-    );
-  }
-}
-
-async function researchDiscoverySchedulerCommand(options: ParsedOptions): Promise<void> {
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "status") {
-    await researchDiscoverySchedulerStatusCommand(
-      subcommand === undefined ? options : consumePositionals(options, 1),
-    );
-    return;
-  }
-  if (subcommand === "set" || subcommand === "configure") {
-    await researchDiscoverySchedulerSetCommand(consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "tick") {
-    await researchDiscoverySchedulerTickCommand(consumePositionals(options, 1));
-    return;
-  }
-
-  throw new Error(`Unknown research discovery scheduler command: ${subcommand}`);
-}
-
-async function researchDiscoveryCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderResearchHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "recent") {
-    await researchDiscoveryRecentCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
-    renderResearchHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-  if (subcommand === "plan") {
-    await researchDiscoveryPlanCommand(subOptions);
-    return;
-  }
-  if (subcommand === "inspect" || subcommand === "get") {
-    await researchDiscoveryInspectCommand(subOptions);
-    return;
-  }
-  if (subcommand === "run") {
-    await researchDiscoveryRunCommand(subOptions);
-    return;
-  }
-  if (subcommand === "scheduler") {
-    await researchDiscoverySchedulerCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown research discovery command: ${subcommand}`);
-}
-
-async function researchFeedbackListCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = getIntegerFlag(options, "limit") ?? 20;
-  const payload = await requestGatewayJson<ResearchFeedbackPayload>(
-    context.baseUrl,
-    `/api/research/feedback?${buildQueryString({ limit })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchFeedback(payload.summary, payload.items);
-}
-
-async function researchFeedbackRecordCommand(options: ParsedOptions): Promise<void> {
-  const feedback = getStringFlag(options, "kind") ?? options.positionals[0];
-  if (!feedback?.trim()) {
-    throw new Error("research feedback record requires a feedback kind.");
-  }
-
-  const senderId = getStringFlag(options, "sender");
-  const senderName = getStringFlag(options, "name", "sender-name");
-  const directionId = getStringFlag(options, "direction");
-  const topic = getStringFlag(options, "topic");
-  const paperTitle = getStringFlag(options, "paper-title", "paper");
-  const venue = getStringFlag(options, "venue");
-  const sourceUrl = getStringFlag(options, "source-url", "url");
-  const notes = getStringFlag(options, "notes");
-
-  const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayJson<ResearchFeedbackRecord>(context.baseUrl, "/api/research/feedback", {
-    method: "POST",
-    body: {
-      feedback: feedback.trim(),
-      ...(senderId ? { senderId } : {}),
-      ...(senderName ? { senderName } : {}),
-      ...(directionId ? { directionId } : {}),
-      ...(topic ? { topic } : {}),
-      ...(paperTitle ? { paperTitle } : {}),
-      ...(venue ? { venue } : {}),
-      ...(sourceUrl ? { sourceUrl } : {}),
-      ...(notes ? { notes } : {}),
-    },
-    timeoutMs: context.timeoutMs,
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  console.log(`Recorded feedback ${payload.feedback} at ${payload.createdAt}`);
-}
-
-async function researchFeedbackCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderResearchHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "list") {
-    await researchFeedbackListCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "record") {
-    await researchFeedbackRecordCommand(consumePositionals(options, 1));
-    return;
-  }
-
-  throw new Error(`Unknown research feedback command: ${subcommand}`);
-}
-
-function buildResearchGraphQueryString(options: ParsedOptions, extra: Record<string, string | number | boolean | undefined> = {}): string {
-  const query = resolveResearchGraphQuery(options);
-  return buildQueryString({
-    ...(query.view ? { view: query.view } : {}),
-    ...(query.types ? { types: query.types.join(",") } : {}),
-    ...(query.search ? { search: query.search } : {}),
-    ...(query.topic ? { topic: query.topic } : {}),
-    ...(query.dateFrom ? { dateFrom: query.dateFrom } : {}),
-    ...(query.dateTo ? { dateTo: query.dateTo } : {}),
-    ...extra,
-  });
-}
-
-async function researchGraphShowCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayJson<ResearchMemoryGraph>(
-    context.baseUrl,
-    `/api/research/memory-graph?${buildResearchGraphQueryString(options)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchGraph(payload);
-}
-
-async function researchGraphNodeCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const nodeId = resolveRequiredEntityId(options, "graph node");
-  const payload = await requestGatewayJson<ResearchMemoryNodeDetail>(
-    context.baseUrl,
-    `/api/research/memory-graph/${encodeURIComponent(nodeId)}?${buildResearchGraphQueryString(options)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  console.log(`${payload.node.type}:${payload.node.label}`);
-  console.log(`Links: ${payload.links.length}`);
-  console.log(`Related nodes: ${payload.relatedNodes.length}`);
-}
-
-async function researchGraphPathCommand(options: ParsedOptions): Promise<void> {
-  const from = getStringFlag(options, "from") ?? options.positionals[0];
-  const to = getStringFlag(options, "to") ?? options.positionals[1];
-  if (!from?.trim() || !to?.trim()) {
-    throw new Error("research graph path requires both from and to node ids.");
-  }
-
-  const context = await resolveGatewayContext(options);
-  const view = getStringFlag(options, "view");
-  const payload = await requestGatewayJson<ResearchGraphPathPayload>(
-    context.baseUrl,
-    `/api/research/memory-graph/path?${buildQueryString({
-      from: from.trim(),
-      to: to.trim(),
-      ...((view === "asset" || view === "paper") ? { view } : {}),
-    })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchGraphPath(payload);
-}
-
-async function researchGraphExplainCommand(options: ParsedOptions): Promise<void> {
-  const from = getStringFlag(options, "from") ?? options.positionals[0];
-  const to = getStringFlag(options, "to") ?? options.positionals[1];
-  if (!from?.trim() || !to?.trim()) {
-    throw new Error("research graph explain requires both from and to node ids.");
-  }
-
-  const context = await resolveGatewayContext(options);
-  const view = getStringFlag(options, "view");
-  const payload = await requestGatewayJson<ResearchGraphExplainPayload>(
-    context.baseUrl,
-    `/api/research/memory-graph/explain?${buildQueryString({
-      from: from.trim(),
-      to: to.trim(),
-      ...((view === "asset" || view === "paper") ? { view } : {}),
-    })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchGraphPath(payload);
-}
-
-async function researchGraphReportCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = getIntegerFlag(options, "limit") ?? 6;
-  const payload = await requestGatewayJson<ResearchGraphReportPayload>(
-    context.baseUrl,
-    `/api/research/memory-graph/report?${buildResearchGraphQueryString(options, { limit })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchGraphReport(payload);
-}
-
-async function researchGraphCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderResearchHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "show") {
-    await researchGraphShowCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "node") {
-    await researchGraphNodeCommand(consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "path") {
-    await researchGraphPathCommand(consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "explain") {
-    await researchGraphExplainCommand(consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "report") {
-    await researchGraphReportCommand(consumePositionals(options, 1));
-    return;
-  }
-
-  throw new Error(`Unknown research graph command: ${subcommand}`);
-}
-
-async function researchArtifactCommand(options: ParsedOptions): Promise<void> {
-  const artifactPath = options.positionals.join(" ").trim();
-  if (!artifactPath) {
-    throw new Error("research artifact requires a workspace-relative path.");
-  }
-
-  const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayBytes(
-    context.baseUrl,
-    `/api/research/artifact?${buildQueryString({ path: artifactPath })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-  const outPath = getStringFlag(options, "out");
-
-  if (outPath) {
-    const resolvedOutPath = path.resolve(process.cwd(), outPath);
-    await mkdir(path.dirname(resolvedOutPath), { recursive: true });
-    await writeFile(resolvedOutPath, Buffer.from(payload.bytes));
-    if (getBooleanFlag(options, "json")) {
-      printJson({
-        artifactPath,
-        outPath: resolvedOutPath,
-        contentType: payload.contentType,
-        bytes: payload.bytes.length,
-      });
-      return;
-    }
-    console.log(`Wrote research artifact to ${resolvedOutPath}`);
-    return;
-  }
-
-  const contentType = payload.contentType?.toLowerCase() ?? "";
-  const isTextual =
-    contentType.startsWith("text/") ||
-    contentType.includes("application/json") ||
-    contentType.includes("application/markdown");
-  if (!isTextual) {
-    throw new Error("Binary artifacts require --out <file>.");
-  }
-
-  const text = Buffer.from(payload.bytes).toString("utf8");
-  if (getBooleanFlag(options, "json")) {
-    printJson({ artifactPath, contentType: payload.contentType, content: text });
-    return;
-  }
-  process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
-}
-
-async function researchSourceCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const sourceItemId = resolveRequiredEntityId(options, "source item");
-  const payload = await requestGatewayJson<ResearchSourceItem>(
-    context.baseUrl,
-    `/api/research/source-items/${encodeURIComponent(sourceItemId)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchSourceItem(payload);
-}
-
-async function researchPaperReportCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const reportId = resolveRequiredEntityId(options, "paper report");
-  const payload = await requestGatewayJson<DeepPaperAnalysisReport>(
-    context.baseUrl,
-    `/api/research/paper-reports/${encodeURIComponent(reportId)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchPaperReport(payload);
-}
-
-async function researchRepoReportCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const reportId = resolveRequiredEntityId(options, "repo report");
-  const payload = await requestGatewayJson<RepoAnalysisReport>(
-    context.baseUrl,
-    `/api/research/repo-reports/${encodeURIComponent(reportId)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchRepoReport(payload);
-}
-
-async function researchModuleAssetsCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = getIntegerFlag(options, "limit") ?? 20;
-  const payload = await requestGatewayJson<ResearchModuleAssetsPayload>(
-    context.baseUrl,
-    `/api/research/module-assets/recent?${buildQueryString({ limit })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchModuleAssets(payload.assets);
-}
-
-async function researchModuleAssetCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const assetId = resolveRequiredEntityId(options, "module asset");
-  const payload = await requestGatewayJson<ModuleAsset>(
-    context.baseUrl,
-    `/api/research/module-assets/${encodeURIComponent(assetId)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchModuleAsset(payload);
-}
-
-async function researchPresentationsCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = getIntegerFlag(options, "limit") ?? 20;
-  const payload = await requestGatewayJson<ResearchPresentationsPayload>(
-    context.baseUrl,
-    `/api/research/presentations/recent?${buildQueryString({ limit })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchPresentations(payload.presentations);
-}
-
-async function researchPresentationCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const presentationId = resolveRequiredEntityId(options, "presentation");
-  const payload = await requestGatewayJson<WeeklyPresentationResult>(
-    context.baseUrl,
-    `/api/research/presentations/${encodeURIComponent(presentationId)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchPresentation(payload);
-}
-
-async function researchDirectionReportsCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const limit = getIntegerFlag(options, "limit") ?? 20;
-  const payload = await requestGatewayJson<ResearchDirectionReportsPayload>(
-    context.baseUrl,
-    `/api/research/direction-reports/recent?${buildQueryString({ limit })}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchDirectionReports(payload.reports);
-}
-
-async function researchDirectionReportGetCommand(options: ParsedOptions): Promise<void> {
-  const context = await resolveGatewayContext(options);
-  const reportId = resolveRequiredEntityId(options, "direction report");
-  const payload = await requestGatewayJson<ResearchDirectionReport>(
-    context.baseUrl,
-    `/api/research/direction-reports/${encodeURIComponent(reportId)}`,
-    { timeoutMs: context.timeoutMs },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchDirectionReport(payload);
-}
-
-async function researchDirectionReportGenerateCommand(options: ParsedOptions): Promise<void> {
-  const directionId = getStringFlag(options, "direction");
-  const positionalTopic = options.positionals.join(" ").trim();
-  const topic = getStringFlag(options, "topic") ?? (positionalTopic ? positionalTopic : undefined);
-  const days = getIntegerFlag(options, "days");
-  if (!directionId && !topic) {
-    throw new Error("research direction-report generate requires --direction <id> or --topic <value>.");
-  }
-
-  const context = await resolveGatewayContext(options);
-  const payload = await requestGatewayJson<ResearchDirectionReport>(
-    context.baseUrl,
-    "/api/research/direction-reports/generate",
-    {
-      method: "POST",
-      body: {
-        ...(directionId ? { directionId } : {}),
-        ...(topic ? { topic } : {}),
-        ...(days !== undefined ? { days } : {}),
-      },
-      timeoutMs: context.timeoutMs,
-    },
-  );
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-  printResearchDirectionReport(payload);
+  process.stdout.write(payload.content.endsWith("\n") ? payload.content : `${payload.content}\n`);
 }
 
 async function researchCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderResearchHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "recent") {
-    await researchRecentCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
-    renderResearchHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "run") {
-    await researchRunCommand(subOptions);
-    return;
-  }
-  if (subcommand === "enqueue") {
-    await researchEnqueueCommand(subOptions);
-    return;
-  }
-  if (subcommand === "tasks") {
-    await researchTasksCommand(subOptions);
-    return;
-  }
-  if (subcommand === "task") {
-    await researchTaskCommand(subOptions);
-    return;
-  }
-  if (subcommand === "report") {
-    await researchReportCommand(subOptions);
-    return;
-  }
-  if (subcommand === "retry") {
-    await researchRetryCommand(subOptions);
-    return;
-  }
-  if (subcommand === "handoff") {
-    await researchHandoffCommand(subOptions);
-    return;
-  }
-  if (subcommand === "directions") {
-    await researchDirectionsCommand(subOptions);
-    return;
-  }
-  if (subcommand === "direction") {
-    await researchDirectionCommand(subOptions);
-    return;
-  }
-  if (subcommand === "discovery") {
-    await researchDiscoveryCommand(subOptions);
-    return;
-  }
-  if (subcommand === "feedback") {
-    await researchFeedbackCommand(subOptions);
-    return;
-  }
-  if (subcommand === "graph") {
-    await researchGraphCommand(subOptions);
-    return;
-  }
-  if (subcommand === "artifact") {
-    await researchArtifactCommand(subOptions);
-    return;
-  }
-  if (subcommand === "source") {
-    await researchSourceCommand(subOptions);
-    return;
-  }
-  if (subcommand === "paper-report") {
-    await researchPaperReportCommand(subOptions);
-    return;
-  }
-  if (subcommand === "repo-report") {
-    await researchRepoReportCommand(subOptions);
-    return;
-  }
-  if (subcommand === "module-assets") {
-    await researchModuleAssetsCommand(subOptions);
-    return;
-  }
-  if (subcommand === "module-asset") {
-    await researchModuleAssetCommand(subOptions);
-    return;
-  }
-  if (subcommand === "presentations") {
-    await researchPresentationsCommand(subOptions);
-    return;
-  }
-  if (subcommand === "presentation") {
-    await researchPresentationCommand(subOptions);
-    return;
-  }
-  if (subcommand === "direction-reports") {
-    await researchDirectionReportsCommand(subOptions);
-    return;
-  }
-  if (subcommand === "direction-report") {
-    if (subOptions.positionals[0] === "generate") {
-      await researchDirectionReportGenerateCommand(consumePositionals(subOptions, 1));
-      return;
-    }
-    await researchDirectionReportGetCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown research command: ${subcommand}`);
+  await runResearchCommandDispatch(options, {
+    renderResearchHelp,
+    researchRecentCommand,
+    researchRunCommand,
+    researchEnqueueCommand,
+    researchTasksCommand,
+    researchTaskCommand,
+    researchReportCommand,
+    researchRetryCommand,
+    researchHandoffCommand,
+    researchWorkstreamCommand,
+    researchDirectionsCommand,
+    researchDirectionCommand,
+    researchDiscoveryCommand,
+    researchFeedbackCommand,
+    researchGraphCommand,
+    researchArtifactCommand,
+    researchSourceCommand,
+    researchPaperReportCommand,
+    researchRepoReportCommand,
+    researchModuleAssetsCommand,
+    researchModuleAssetCommand,
+    researchPresentationsCommand,
+    researchPresentationCommand,
+    researchDirectionReportsCommand,
+    researchDirectionReportCommand,
+    researchCandidatesCommand,
+    researchCandidateCommand,
+  });
 }
 
 async function resolveWorkspaceConfigService(options: ParsedOptions): Promise<WorkspaceConfigService> {
@@ -5104,577 +3405,49 @@ async function resolveWorkspaceConfigService(options: ParsedOptions): Promise<Wo
   return new module.WorkspaceConfigService(workspaceDir);
 }
 
-async function configFileCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const alias = options.positionals[0] as ManagedConfigAlias | undefined;
-  if (alias && !["llm", "mcp", "skills"].includes(alias)) {
-    throw new Error(`Unsupported config namespace: ${alias}. Use llm, mcp, or skills.`);
-  }
-
-  if (alias) {
-    const file = await service.getFile(alias);
-    if (getBooleanFlag(options, "json")) {
-      printJson(file);
-      return;
-    }
-    printManagedConfigFiles([file]);
-    return;
-  }
-
-  const files = await service.listFiles();
-  if (getBooleanFlag(options, "json")) {
-    printJson({ files });
-    return;
-  }
-  printManagedConfigFiles(files);
-}
-
-async function configGetCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const keyPath = options.positionals.join(" ").trim();
-  if (!keyPath) {
-    throw new Error("config get requires a path. Example: reagent config get llm.providers[0].enabled");
-  }
-
-  const result = await service.getValue(keyPath);
-  if (getBooleanFlag(options, "json")) {
-    printJson({
-      ...result,
-      found: result.value !== undefined,
-      ...(result.value === undefined ? { value: null } : { value: result.value }),
-    });
-    return;
-  }
-
-  console.log(`${result.alias}: ${result.file.path}`);
-  console.log("");
-  printConfigValue(result.value);
-}
-
-async function configSetCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const keyPath = options.positionals[0]?.trim();
-  if (!keyPath) {
-    throw new Error("config set requires a path.");
-  }
-
-  const rawValue = options.positionals.slice(1).join(" ").trim();
-  if (!rawValue) {
-    throw new Error("config set requires a value.");
-  }
-
-  let value: unknown;
-  if (getBooleanFlag(options, "strict-json")) {
-    value = JSON.parse(rawValue);
-  } else {
-    const module = await import("./services/workspaceConfigService.js");
-    value = module.coerceConfigValue(rawValue);
-  }
-
-  const result = await service.setValue(keyPath, value, {
-    dryRun: getBooleanFlag(options, "dry-run"),
-  });
-  if (getBooleanFlag(options, "json")) {
-    printJson(result);
-    return;
-  }
-
-  console.log(`${getBooleanFlag(options, "dry-run") ? "Previewed" : "Updated"} ${keyPath}`);
-  console.log(`File: ${result.file.path}`);
-  console.log("Previous:");
-  printConfigValue(result.previousValue);
-  console.log("Next:");
-  printConfigValue(result.nextValue);
-}
-
-async function configUnsetCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const keyPath = options.positionals.join(" ").trim();
-  if (!keyPath) {
-    throw new Error("config unset requires a path.");
-  }
-
-  const result = await service.unsetValue(keyPath, {
-    dryRun: getBooleanFlag(options, "dry-run"),
-  });
-  if (getBooleanFlag(options, "json")) {
-    printJson(result);
-    return;
-  }
-
-  console.log(`${getBooleanFlag(options, "dry-run") ? "Previewed" : "Unset"} ${keyPath}`);
-  console.log(`File: ${result.file.path}`);
-  console.log("Previous:");
-  printConfigValue(result.previousValue);
-}
-
-async function configExportCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const aliasRaw = options.positionals[0];
-  const outPath = getStringFlag(options, "out");
-
-  if (aliasRaw) {
-    const alias = resolveConfigAlias(aliasRaw);
-    const config = await service.readConfig(alias);
-    const rendered = `${JSON.stringify(config, null, 2)}\n`;
-    if (outPath) {
-      await writeFile(path.resolve(process.cwd(), outPath), rendered, "utf8");
-      if (!getBooleanFlag(options, "json")) {
-        console.log(`Exported ${alias} config to ${path.resolve(process.cwd(), outPath)}`);
-      } else {
-        printJson({ alias, outPath: path.resolve(process.cwd(), outPath) });
-      }
-      return;
-    }
-    process.stdout.write(rendered);
-    return;
-  }
-
-  const bundle = {
-    llm: await service.readConfig("llm"),
-    mcp: await service.readConfig("mcp"),
-    skills: await service.readConfig("skills"),
-  };
-  const rendered = `${JSON.stringify(bundle, null, 2)}\n`;
-  if (outPath) {
-    await writeFile(path.resolve(process.cwd(), outPath), rendered, "utf8");
-    if (!getBooleanFlag(options, "json")) {
-      console.log(`Exported managed config bundle to ${path.resolve(process.cwd(), outPath)}`);
-    } else {
-      printJson({ outPath: path.resolve(process.cwd(), outPath) });
-    }
-    return;
-  }
-  process.stdout.write(rendered);
-}
-
-async function configImportCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const alias = resolveConfigAlias(options.positionals[0]);
-  const source = options.positionals[1]?.trim();
-  if (!source) {
-    throw new Error("config import requires a source file path or '-' for stdin.");
-  }
-
-  const raw =
-    source === "-"
-      ? await readStdinText()
-      : await readFile(path.resolve(process.cwd(), source), "utf8");
-  const parsed = raw.trim() ? (JSON.parse(raw) as unknown) : {};
-  const result = await service.replaceConfig(alias, parsed, {
-    dryRun: getBooleanFlag(options, "dry-run"),
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({ ...result, source });
-    return;
-  }
-
-  console.log(`${getBooleanFlag(options, "dry-run") ? "Previewed" : "Imported"} ${alias} config from ${source}`);
-  console.log(`File: ${result.file.path}`);
-}
-
-async function configEditCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const alias = resolveConfigAlias(options.positionals[0]);
-  const file = await service.getFile(alias);
-  const editor = resolveEditorCommand(options);
-  const before = await service.readRawConfig(alias);
-
-  await runEditorCommand(editor, file.path);
-
-  let afterRaw: string;
-  try {
-    afterRaw = await service.readRawConfig(alias);
-    JSON.parse(afterRaw);
-  } catch (error) {
-    await writeFile(file.path, before, "utf8");
-    throw new Error(
-      `Edited config is not valid JSON and was reverted: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({
-      alias,
-      path: file.path,
-      editor,
-      changed: before !== afterRaw,
-    });
-    return;
-  }
-
-  console.log(`Edited ${alias} config with ${editor}`);
-  console.log(`Path: ${file.path}`);
-  console.log(`Changed: ${formatYesNo(before !== afterRaw)}`);
-}
-
-async function configValidateCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const report = await service.validate();
-  if (getBooleanFlag(options, "json")) {
-    printJson(report);
-    return;
-  }
-  printConfigValidationReport(report);
-}
-
-async function configSchemaCommand(options: ParsedOptions): Promise<void> {
-  const service = await resolveWorkspaceConfigService(options);
-  const schema = await service.buildSchema();
-  printJson(schema);
-}
-
-async function configCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderConfigHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "file") {
-    await configFileCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
-    renderConfigHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "get") {
-    await configGetCommand(subOptions);
-    return;
-  }
-  if (subcommand === "set") {
-    await configSetCommand(subOptions);
-    return;
-  }
-  if (subcommand === "unset") {
-    await configUnsetCommand(subOptions);
-    return;
-  }
-  if (subcommand === "export") {
-    await configExportCommand(subOptions);
-    return;
-  }
-  if (subcommand === "import") {
-    await configImportCommand(subOptions);
-    return;
-  }
-  if (subcommand === "edit") {
-    await configEditCommand(subOptions);
-    return;
-  }
-  if (subcommand === "validate") {
-    await configValidateCommand(subOptions);
-    return;
-  }
-  if (subcommand === "schema") {
-    await configSchemaCommand(subOptions);
-    return;
-  }
-
-  throw new Error(`Unknown config command: ${subcommand}`);
-}
-
-async function resolveOpenClawCliPath(options: ParsedOptions): Promise<string> {
+async function resolveWorkspaceDir(options: ParsedOptions): Promise<string> {
   applyRuntimeOverrides(options);
   const runtimeEnv = await loadRuntimeEnv();
-  return runtimeEnv.OPENCLAW_CLI_PATH;
-}
-
-async function readOpenClawPluginStates(cliPath: string): Promise<{ states: OpenClawPluginState[]; error?: string }> {
-  try {
-    const result = await runExternalCli(cliPath, ["plugins", "list", "--json"], {
-      timeoutMs: 10_000,
-    });
-    if (result.exitCode !== 0) {
-      return {
-        states: [],
-        error: result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`,
-      };
-    }
-    return {
-      states: parseOpenClawPluginStates(result.stdout),
-    };
-  } catch (error) {
-    return {
-      states: [],
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-function collectPluginDelegateFlags(options: ParsedOptions, names: string[]): string[] {
-  const args: string[] = [];
-  for (const name of names) {
-    const value = options.flags.get(name);
-    if (value === true) {
-      args.push(`--${name}`);
-      continue;
-    }
-    if (typeof value === "string" && value.trim()) {
-      args.push(`--${name}`, value.trim());
-    }
-  }
-  return args;
-}
-
-async function pluginsListCommand(options: ParsedOptions): Promise<void> {
-  const cliPath = await resolveOpenClawCliPath(options);
-  const catalog = new BundledPluginCatalogService(packageRootDir);
-  const [plugins, hostState] = await Promise.all([catalog.listPlugins(), readOpenClawPluginStates(cliPath)]);
-  const items = plugins
-    .map((plugin) => ({
-      plugin,
-      host: matchOpenClawPluginState(plugin, hostState.states),
-    }))
-    .filter((item) => !getBooleanFlag(options, "enabled") || Boolean(item.host?.enabled));
-
-  if (getBooleanFlag(options, "json")) {
-    printJson({
-      cliPath,
-      host: {
-        available: !hostState.error,
-        ...(hostState.error ? { error: hostState.error } : {}),
-        plugins: hostState.states,
-      },
-      bundled: items,
-    });
-    return;
-  }
-
-  if (hostState.error) {
-    console.log(`OpenClaw host probe: ${hostState.error}`);
-    console.log("");
-  }
-  printBundledPluginList(items);
-}
-
-function resolveMarketplaceSource(options: ParsedOptions): "reagent" | "bundled" | "reference" {
-  const raw = (getStringFlag(options, "source") ?? options.positionals[0] ?? "reagent").trim().toLowerCase();
-  if (raw === "reagent" || raw === "all" || raw === "repo") {
-    return "reagent";
-  }
-  if (raw === "bundled" || raw === "bundle") {
-    return "bundled";
-  }
-  if (raw === "reference" || raw === "compat" || raw === "package") {
-    return "reference";
-  }
-  throw new Error(`Unknown marketplace source: ${raw}`);
-}
-
-async function pluginsMarketplaceListCommand(options: ParsedOptions): Promise<void> {
-  const catalog = new BundledPluginCatalogService(packageRootDir);
-  const source = resolveMarketplaceSource(options);
-  const plugins = (await catalog.listPlugins()).filter((plugin) => source === "reagent" || plugin.source === source);
-  const payload = {
-    marketplace: {
-      requestedSource: getStringFlag(options, "source") ?? options.positionals[0] ?? "reagent",
-      resolvedSource: source,
-      available: true,
-      pluginCount: plugins.length,
-    },
-    plugins,
-  };
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  console.log(`Marketplace: ${payload.marketplace.resolvedSource}`);
-  console.log(`Plugins: ${payload.marketplace.pluginCount}`);
-  console.log("");
-  printBundledPluginList(plugins.map((plugin) => ({ plugin, host: null })));
-}
-
-function renderPluginsMarketplaceHelp(): void {
-  console.log(`ReAgent Plugins Marketplace
-
-Commands:
-  reagent plugins marketplace list [source]
-
-Sources:
-  reagent                List all plugin packages shipped in this repo
-  bundled                List bundled packages from packages/*
-  reference              List compatibility/reference packages from package/
-
-Flags:
-  --source <id>          Marketplace source alias
-  --json                 Print JSON output
-`);
-}
-
-async function pluginsInspectCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "all")) {
-    await pluginsListCommand(options);
-    return;
-  }
-
-  const target = options.positionals.join(" ").trim();
-  if (!target) {
-    throw new Error("plugins inspect requires a plugin id or package name.");
-  }
-
-  const cliPath = await resolveOpenClawCliPath(options);
-  const catalog = new BundledPluginCatalogService(packageRootDir);
-  const [plugin, hostState] = await Promise.all([catalog.getPlugin(target), readOpenClawPluginStates(cliPath)]);
-  const host = plugin ? matchOpenClawPluginState(plugin, hostState.states) : null;
-  const payload = {
-    target,
-    ...(plugin ? { bundled: plugin } : {}),
-    host: {
-      available: !hostState.error,
-      ...(hostState.error ? { error: hostState.error } : {}),
-      ...(host ? { plugin: host } : {}),
-    },
-  };
-
-  if (getBooleanFlag(options, "json")) {
-    printJson(payload);
-    return;
-  }
-
-  if (plugin) {
-    printBundledPluginList([{ plugin, host }]);
-    return;
-  }
-
-  if (host) {
-    console.log(`${host.id} installed in OpenClaw`);
-    console.log(`Enabled: ${formatYesNo(host.enabled)}`);
-    console.log(`Version: ${formatWhen(host.version)}`);
-    return;
-  }
-
-  throw new Error(`Plugin not found in bundled catalog or OpenClaw host inventory: ${target}`);
-}
-
-async function delegatePluginCommand(
-  options: ParsedOptions,
-  subcommand: "install" | "uninstall" | "enable" | "disable" | "update" | "doctor",
-): Promise<void> {
-  const cliPath = await resolveOpenClawCliPath(options);
-  const catalog = new BundledPluginCatalogService(packageRootDir);
-  const target = options.positionals[0]?.trim();
-  const delegatedArgs = ["plugins", subcommand];
-
-  if (subcommand !== "doctor") {
-    if (!target && !(subcommand === "update" && getBooleanFlag(options, "all"))) {
-      throw new Error(`plugins ${subcommand} requires a plugin id.`);
-    }
-    const resolvedTarget = target ?? "";
-    if (subcommand === "install") {
-      const plugin = await catalog.getPlugin(resolvedTarget);
-      delegatedArgs.push(plugin?.installSpec ?? resolvedTarget);
-      delegatedArgs.push(...collectPluginDelegateFlags(options, ["yes", "force", "pin", "link", "json"]));
-    } else if (subcommand === "update") {
-      if (target) {
-        delegatedArgs.push(target);
-      }
-      delegatedArgs.push(...collectPluginDelegateFlags(options, ["all", "yes", "json"]));
-    } else if (subcommand === "uninstall") {
-      delegatedArgs.push(resolvedTarget);
-      delegatedArgs.push(...collectPluginDelegateFlags(options, ["dry-run", "keep-files", "json", "yes"]));
-    } else {
-      delegatedArgs.push(resolvedTarget);
-      delegatedArgs.push(...collectPluginDelegateFlags(options, ["json", "yes"]));
-    }
-  } else {
-    delegatedArgs.push(...collectPluginDelegateFlags(options, ["json"]));
-  }
-
-  const result = await runExternalCli(cliPath, delegatedArgs, {
-    timeoutMs: 120_000,
-    inheritStdio: !getBooleanFlag(options, "json"),
-  });
-
-  if (getBooleanFlag(options, "json")) {
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || `OpenClaw exited with code ${result.exitCode}`);
-    }
-    process.stdout.write(result.stdout);
-    return;
-  }
-
-  if (result.exitCode !== 0) {
-    throw new Error(result.stderr.trim() || result.stdout.trim() || `OpenClaw exited with code ${result.exitCode}`);
-  }
-}
-
-async function pluginsCommand(options: ParsedOptions): Promise<void> {
-  if (getBooleanFlag(options, "help", "h")) {
-    renderPluginsHelp();
-    return;
-  }
-
-  const subcommand = options.positionals[0];
-  if (subcommand === undefined || subcommand === "list") {
-    await pluginsListCommand(subcommand === undefined ? options : consumePositionals(options, 1));
-    return;
-  }
-  if (subcommand === "help" || subcommand === "--help" || subcommand === "-h") {
-    renderPluginsHelp();
-    return;
-  }
-
-  const subOptions = consumePositionals(options, 1);
-
-  if (subcommand === "inspect" || subcommand === "info") {
-    await pluginsInspectCommand(subOptions);
-    return;
-  }
-  if (subcommand === "marketplace") {
-    const marketplaceCommand = subOptions.positionals[0];
-    if (marketplaceCommand === undefined || marketplaceCommand === "list") {
-      await pluginsMarketplaceListCommand(
-        marketplaceCommand === undefined ? subOptions : consumePositionals(subOptions, 1),
-      );
-      return;
-    }
-    if (marketplaceCommand === "help" || marketplaceCommand === "--help" || marketplaceCommand === "-h") {
-      renderPluginsMarketplaceHelp();
-      return;
-    }
-    throw new Error(`Unknown plugins marketplace command: ${marketplaceCommand}`);
-  }
-  if (subcommand === "install") {
-    await delegatePluginCommand(subOptions, "install");
-    return;
-  }
-  if (subcommand === "uninstall") {
-    await delegatePluginCommand(subOptions, "uninstall");
-    return;
-  }
-  if (subcommand === "enable") {
-    await delegatePluginCommand(subOptions, "enable");
-    return;
-  }
-  if (subcommand === "disable") {
-    await delegatePluginCommand(subOptions, "disable");
-    return;
-  }
-  if (subcommand === "update") {
-    await delegatePluginCommand(subOptions, "update");
-    return;
-  }
-  if (subcommand === "doctor") {
-    await delegatePluginCommand(subOptions, "doctor");
-    return;
-  }
-
-  throw new Error(`Unknown plugins command: ${subcommand}`);
+  return path.resolve(process.cwd(), runtimeEnv.PLATFORM_WORKSPACE_DIR);
 }
 
 async function doctorCommand(options: ParsedOptions): Promise<void> {
   applyRuntimeOverrides(options);
   const version = await readPackageVersion();
   const runtimeEnv = await loadRuntimeEnv();
+  const envTargetPath = path.join(process.cwd(), ".env");
+  const workspacePath = path.resolve(process.cwd(), runtimeEnv.PLATFORM_WORKSPACE_DIR);
   const sqlitePath = resolveSqlitePath(runtimeEnv.DATABASE_URL, process.cwd());
+  const sqliteDirPath = sqlitePath ? path.dirname(sqlitePath) : null;
+  const fix = getBooleanFlag(options, "fix");
+  const skipDbPush = getBooleanFlag(options, "skip-db");
+  let envExists = await pathExists(envTargetPath);
+  let workspaceExists = await pathExists(workspacePath);
+  let sqliteDirExists = sqliteDirPath ? await pathExists(sqliteDirPath) : true;
+  const fixesApplied: string[] = [];
+
+  if (fix) {
+    if (!envExists) {
+      await copyFile(resolvePackagePath(".env.example"), envTargetPath);
+      envExists = true;
+      fixesApplied.push(`Created ${envTargetPath}`);
+    }
+    if (!workspaceExists) {
+      await ensureDirectoryExists(workspacePath);
+      workspaceExists = true;
+      fixesApplied.push(`Created workspace directory ${workspacePath}`);
+    }
+    if (sqliteDirPath && !sqliteDirExists) {
+      await ensureDirectoryExists(sqliteDirPath);
+      sqliteDirExists = true;
+      fixesApplied.push(`Created SQLite directory ${sqliteDirPath}`);
+    }
+    if (!skipDbPush) {
+      await runDbPush(runtimeEnv);
+      fixesApplied.push("Applied Prisma db push.");
+    }
+  }
+
   const openClawStatus = await probeCommand(runtimeEnv.OPENCLAW_CLI_PATH, ["--version"]);
   const gatewayPort = getStringFlag(options, "port") ?? DEFAULT_GATEWAY_PORT;
   const gatewayStatus = await getGatewayServiceStatus(gatewayPort, {
@@ -5687,9 +3460,16 @@ async function doctorCommand(options: ParsedOptions): Promise<void> {
     currentDirectory: process.cwd(),
     host: runtimeEnv.HOST,
     port: runtimeEnv.PORT,
-    workspace: path.resolve(process.cwd(), runtimeEnv.PLATFORM_WORKSPACE_DIR),
+    workspace: workspacePath,
     databaseUrl: runtimeEnv.DATABASE_URL,
     sqlitePath: sqlitePath ?? "(non-file datasource)",
+    sqliteDirPath: sqliteDirPath ?? null,
+    envFile: {
+      path: envTargetPath,
+      exists: envExists,
+    },
+    workspaceReady: workspaceExists,
+    sqliteDirReady: sqliteDirExists,
     schemaPath: resolvePackagePath("prisma", "schema.prisma"),
     webAssets: resolvePackagePath("web"),
     openclawCli: runtimeEnv.OPENCLAW_CLI_PATH,
@@ -5697,6 +3477,11 @@ async function doctorCommand(options: ParsedOptions): Promise<void> {
     gatewayDefaultPort: DEFAULT_GATEWAY_PORT,
     gatewayInspectPort: gatewayStatus.port,
     gateway: gatewayStatus,
+    actions: {
+      fix,
+      skipDb: skipDbPush,
+      fixesApplied,
+    },
   };
 
   if (getBooleanFlag(options, "json")) {
@@ -5709,21 +3494,383 @@ async function doctorCommand(options: ParsedOptions): Promise<void> {
   console.log(`Current directory: ${payload.currentDirectory}`);
   console.log(`Host: ${payload.host}`);
   console.log(`Port: ${payload.port}`);
+  console.log(`Env file: ${payload.envFile.path} (${payload.envFile.exists ? "ready" : "missing"})`);
   console.log(`Workspace: ${payload.workspace}`);
+  console.log(`Workspace ready: ${formatYesNo(payload.workspaceReady)}`);
   console.log(`Database URL: ${payload.databaseUrl}`);
   console.log(`SQLite path: ${payload.sqlitePath}`);
+  console.log(`SQLite dir: ${payload.sqliteDirPath ?? "-"}`);
+  console.log(`SQLite dir ready: ${formatYesNo(payload.sqliteDirReady)}`);
   console.log(`Schema path: ${payload.schemaPath}`);
   console.log(`Web assets: ${payload.webAssets}`);
   console.log(`OpenClaw CLI: ${payload.openclawCli}`);
   console.log(`OpenClaw status: ${payload.openclawStatus}`);
   console.log(`Gateway default port: ${payload.gatewayDefaultPort}`);
   console.log(`Gateway inspect port: ${payload.gatewayInspectPort}`);
+  if (payload.actions.fix) {
+    console.log(`Fix mode: yes${payload.actions.skipDb ? " (db push skipped)" : ""}`);
+    if (payload.actions.fixesApplied.length > 0) {
+      console.log("Applied fixes:");
+      for (const item of payload.actions.fixesApplied) {
+        console.log(`  - ${item}`);
+      }
+    } else {
+      console.log("Applied fixes: none");
+    }
+  }
   printGatewayStatus(gatewayStatus, false);
 }
 
 async function versionCommand(): Promise<void> {
   console.log(await readPackageVersion());
 }
+
+const {
+  renderChannelsHelp,
+  renderChannelsAgentHelp,
+  channelsStatusCommand,
+  channelsLogsCommand,
+  channelsMessagesCommand,
+  channelsChatCommand,
+  channelsInboundCommand,
+  channelsPushCommand,
+  channelsSessionsCommand,
+  channelsAgentSessionsCommand,
+  channelsAgentSessionCommand,
+  channelsAgentRoleCommand,
+  channelsAgentSkillsCommand,
+  channelsAgentModelCommand,
+  channelsAgentFallbacksCommand,
+  channelsAgentReasoningCommand,
+  channelsLoginCommand,
+  channelsWaitCommand,
+  channelsLogoutCommand,
+  channelsAgentCommand,
+  channelsCommand,
+} = createChannelsCli({
+  resolveGatewayContext,
+  settleCliRequest,
+  requestGatewayJson,
+  maybeReadLocalGatewayStatus,
+  buildFallbackChannelsSnapshot,
+  printJson,
+  printWeChatStatus,
+  formatWhen,
+  printOpenClawSessions,
+  buildQueryString,
+});
+
+const {
+  buildOpenClawOverview,
+  openClawInspectCommand,
+  openClawSessionsCommand,
+  openClawHistoryCommand,
+  openClawWatchCommand,
+  openClawSyncCommand,
+  pluginsListCommand,
+  pluginsMarketplaceListCommand,
+  renderPluginsMarketplaceHelp,
+  pluginsInspectCommand,
+  delegatePluginCommand,
+  delegateOpenClawCommandFamily,
+  pluginsCommand,
+} = createOpenClawCli({
+  loadRuntimeEnv,
+  renderPluginsHelp,
+  printJson,
+  printBundledPluginList,
+  formatMarketplaceSource,
+  formatYesNo,
+  formatWhen,
+  printOpenClawSessions,
+  printOpenClawHistory,
+  printOpenClawEvents,
+  runExternalCli,
+});
+
+const {
+  gatewayInstallCommand,
+  gatewayCommand,
+  healthCommand,
+  dashboardCommand,
+  logsCommand,
+  runtimeCommand,
+  serviceCommand,
+  systemCommand,
+} = createRuntimeSurfaceCli({
+  gatewayRunCommand,
+  resolveGatewayContext,
+  resolveGatewayTimeoutMs,
+  normalizeGatewayBaseUrl,
+  requestGatewayJson,
+  buildQueryString,
+  printJson,
+  printGatewayStatus,
+  formatYesNo,
+  formatWhen,
+  printRuntimeJobs,
+  renderRuntimeHelp,
+  renderServiceHelp,
+  renderSystemHelp,
+  statusCommand,
+  homeCommand,
+  doctorCommand,
+  openUrlInBrowser,
+  renderLogDelta,
+  sleep,
+});
+
+const {
+  memoryStatusCommand,
+  memoryFilesCommand,
+  memoryFileCommand,
+  memorySearchCommand,
+  memoryRecallCommand,
+  memoryRememberCommand,
+  memoryPolicyCommand,
+  memoryCompactCommand,
+  memoryCompactionsCommand,
+  memorySchedulerRuntimeCommand,
+  memorySchedulerRunsCommand,
+  memoryCommand,
+} = createMemoryCli({
+  resolveGatewayContext,
+  requestGatewayJson,
+  buildQueryString,
+  printJson,
+  renderMemoryHelp,
+  printMemoryStatus,
+  printMemoryFiles,
+  printMemoryFile,
+  printMemorySearchResults,
+  printMemoryRecallResults,
+  printMemoryCompactionResult,
+  printCompactionRecords,
+  printJobRuntimeSnapshot,
+  printJobRuntimeRuns,
+  getQueryInput,
+  formatYesNo,
+});
+
+const {
+  configFileCommand,
+  configGetCommand,
+  configSetCommand,
+  configUnsetCommand,
+  configExportCommand,
+  configImportCommand,
+  configEditCommand,
+  configValidateCommand,
+  configSchemaCommand,
+  configCommand,
+  modelsListCommand,
+  modelsRoutesCommand,
+  modelsCommand,
+  mcpListCommand,
+  mcpCommand,
+  skillsListCommand,
+  skillsCommand,
+  commandsListCommand,
+  commandsPolicyCommand,
+  commandsAuthorizeCommand,
+  commandsCommand,
+} = createWorkspaceControlCli({
+  resolveWorkspaceConfigService,
+  resolveWorkspaceDir,
+  resolveConfigAlias,
+  resolveEditorCommand,
+  runEditorCommand,
+  readStdinText,
+  printJson,
+  printManagedConfigFiles,
+  printConfigValue,
+  printConfigValidationReport,
+  printLlmSummary,
+  printMcpServerStatuses,
+  printSkillStatusReport,
+  printInboundCommandRegistry,
+  printInboundCommandAuthorization,
+  formatYesNo,
+  renderConfigHelp,
+  renderModelsHelp,
+  renderMcpHelp,
+  renderSkillsHelp,
+  renderCommandsHelp,
+});
+
+const {
+  researchArtifactCommand,
+  researchSourceCommand,
+  researchPaperReportCommand,
+  researchRepoReportCommand,
+  researchModuleAssetsCommand,
+  researchModuleAssetCommand,
+  researchPresentationsCommand,
+  researchPresentationCommand,
+  researchDirectionReportsCommand,
+  researchDirectionReportGetCommand,
+  researchDirectionReportGenerateCommand,
+  researchDirectionReportCommand,
+} = createResearchArtifactsReportsCli({
+  resolveGatewayContext,
+  requestGatewayBytes,
+  requestGatewayJson,
+  buildQueryString,
+  printJson,
+  resolveRequiredEntityId,
+  printResearchSourceItem,
+  printResearchPaperReport,
+  printResearchRepoReport,
+  printResearchModuleAssets,
+  printResearchModuleAsset,
+  printResearchPresentations,
+  printResearchPresentation,
+  printResearchDirectionReports,
+  printResearchDirectionReport,
+});
+
+const {
+  researchCandidatesCommand,
+  researchCandidateGetCommand,
+  researchCandidateGenerateCommand,
+  researchCandidateReviewCommand,
+  researchCandidateApproveCommand,
+  researchCandidateRejectCommand,
+  researchCandidateApplyCommand,
+  researchCandidateRollbackCommand,
+  researchCandidateCommand,
+} = createResearchCandidatesCli({
+  resolveGatewayContext,
+  requestGatewayJson,
+  buildQueryString,
+  printJson,
+  resolveRequiredEntityId,
+  printResearchEvolutionCandidates,
+  printResearchEvolutionCandidate,
+  printResearchEvolutionCandidateApplyOutcome,
+  printResearchEvolutionCandidateRollbackOutcome,
+});
+
+const {
+  researchDirectionsCommand,
+  researchDirectionGetCommand,
+  researchDirectionUpsertCommand,
+  researchDirectionBriefCommand,
+  researchDirectionPlanCommand,
+  researchDirectionImportBriefCommand,
+  researchDirectionDeleteCommand,
+  researchDirectionCommand,
+  researchDiscoveryPlanCommand,
+  researchDiscoveryRecentCommand,
+  researchDiscoveryInspectCommand,
+  researchDiscoveryRunCommand,
+  researchDiscoverySchedulerStatusCommand,
+  researchDiscoverySchedulerSetCommand,
+  researchDiscoverySchedulerTickCommand,
+  researchDiscoverySchedulerRuntimeCommand,
+  researchDiscoverySchedulerRunsCommand,
+  researchDiscoverySchedulerCommand,
+  researchDiscoveryCommand,
+} = createResearchDirectionDiscoveryCli({
+  resolveGatewayContext,
+  requestGatewayJson,
+  requestGatewayText,
+  requestGatewayResponse,
+  buildQueryString,
+  printJson,
+  printResearchDirections,
+  printResearchDirection,
+  printResearchDiscoveryPlan,
+  printResearchDiscoveryRuns,
+  printResearchDiscoveryRun,
+  printResearchSchedulerStatus,
+  printJobRuntimeSnapshot,
+  printJobRuntimeRuns,
+  resolveRequiredEntityId,
+  parseCommaSeparatedValues,
+  readInputSource,
+  renderResearchHelp,
+});
+
+const {
+  researchFeedbackListCommand,
+  researchFeedbackRecordCommand,
+  researchFeedbackCommand,
+  researchGraphShowCommand,
+  researchGraphNodeCommand,
+  researchGraphPathCommand,
+  researchGraphExplainCommand,
+  researchGraphReportCommand,
+  researchGraphCommand,
+} = createResearchGraphFeedbackCli({
+  resolveGatewayContext,
+  requestGatewayJson,
+  buildQueryString,
+  printJson,
+  printResearchFeedback,
+  resolveResearchGraphQuery,
+  printResearchGraph,
+  printResearchGraphReport,
+  printResearchGraphPath,
+  resolveRequiredEntityId,
+  renderResearchHelp,
+});
+
+type CliCommandHandler = (options: ParsedOptions) => Promise<void>;
+
+function createOpenClawFamilyHandler(family: OpenClawCommandFamily): CliCommandHandler {
+  return async (options) => delegateOpenClawCommandFamily(options, family);
+}
+
+function createPluginDelegateHandler(subcommand: PluginDelegateSubcommand): CliCommandHandler {
+  return async (options) => delegatePluginCommand(options, subcommand);
+}
+
+const ROOT_OPENCLAW_FAMILY_HANDLERS = Object.fromEntries(
+  OPENCLAW_COMMAND_FAMILIES.map((family) => [family, createOpenClawFamilyHandler(family)]),
+) as Record<OpenClawCommandFamily, CliCommandHandler>;
+
+const ROOT_PLUGIN_DELEGATE_HANDLERS = Object.fromEntries(
+  (["install", "uninstall", "enable", "disable", "update"] as PluginDelegateSubcommand[])
+    .map((subcommand) => [subcommand, createPluginDelegateHandler(subcommand)]),
+) as Record<Exclude<PluginDelegateSubcommand, "doctor">, CliCommandHandler>;
+
+const ROOT_COMMAND_HANDLERS: Record<string, CliCommandHandler> = {
+  health: healthCommand,
+  login: channelsLoginCommand,
+  wait: channelsWaitCommand,
+  logout: channelsLogoutCommand,
+  ...ROOT_OPENCLAW_FAMILY_HANDLERS,
+  send: channelsPushCommand,
+  push: channelsPushCommand,
+  sessions: openClawSessionsCommand,
+  history: openClawHistoryCommand,
+  inspect: openClawInspectCommand,
+  ...ROOT_PLUGIN_DELEGATE_HANDLERS,
+  onboard: onboardCommand,
+  home: homeCommand,
+  status: statusCommand,
+  watch: openClawWatchCommand,
+  dashboard: dashboardCommand,
+  logs: logsCommand,
+  runtime: runtimeCommand,
+  system: systemCommand,
+  commands: commandsCommand,
+  models: modelsCommand,
+  mcp: mcpCommand,
+  skills: skillsCommand,
+  research: researchCommand,
+  config: configCommand,
+  plugins: pluginsCommand,
+  channels: channelsCommand,
+  memory: memoryCommand,
+  gateway: gatewayCommand,
+  service: serviceCommand,
+  daemon: serviceCommand,
+  start: startCommand,
+  init: initCommand,
+  doctor: doctorCommand,
+};
 
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
@@ -5742,86 +3889,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const command = rawArgs[0];
+  const command = rawArgs[0]!;
   const options = parseOptions(rawArgs.slice(1));
 
-  if (command === "health") {
-    await healthCommand(options);
-    return;
-  }
-
-  if (command === "status") {
-    await statusCommand(options);
-    return;
-  }
-
-  if (command === "dashboard") {
-    await dashboardCommand(options);
-    return;
-  }
-
-  if (command === "logs") {
-    await logsCommand(options);
-    return;
-  }
-
-  if (command === "runtime") {
-    await runtimeCommand(options);
-    return;
-  }
-
-  if (command === "research") {
-    await researchCommand(options);
-    return;
-  }
-
-  if (command === "config") {
-    await configCommand(options);
-    return;
-  }
-
-  if (command === "plugins") {
-    await pluginsCommand(options);
-    return;
-  }
-
-  if (command === "channels") {
-    await channelsCommand(options);
-    return;
-  }
-
-  if (command === "memory") {
-    await memoryCommand(options);
-    return;
-  }
-
-  if (command === "gateway") {
-    await gatewayCommand(options);
-    return;
-  }
-
-  if (command === "service") {
-    await serviceCommand(options);
-    return;
-  }
-
-  if (command === "daemon") {
-    await serviceCommand(options);
-    return;
-  }
-
-  if (command === "start") {
-    await startCommand(options);
-    return;
-  }
-
-  if (command === "init") {
-    await initCommand(options);
-    return;
-  }
-
-  if (command === "doctor") {
-    await doctorCommand(options);
+  const commandHandler = ROOT_COMMAND_HANDLERS[command];
+  if (commandHandler) {
+    await commandHandler(options);
     return;
   }
 

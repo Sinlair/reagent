@@ -6,6 +6,7 @@ import path from "node:path";
 import Fastify from "fastify";
 
 import { registerMemoryRoutes } from "../dist/routes/memory.js";
+import { MemoryCompactionSchedulerService } from "../dist/services/memoryCompactionSchedulerService.js";
 import { MemoryCompactionService } from "../dist/services/memoryCompactionService.js";
 import { MemoryRecallService } from "../dist/services/memoryRecallService.js";
 import { MemoryService } from "../dist/services/memoryService.js";
@@ -37,8 +38,9 @@ async function main() {
       const memory = new MemoryService(dir);
       const recall = new MemoryRecallService(dir);
       const compaction = new MemoryCompactionService(dir);
+      const scheduler = new MemoryCompactionSchedulerService(dir, compaction);
       await memory.ensureWorkspace();
-      await registerMemoryRoutes(app, memory, recall, compaction);
+      await registerMemoryRoutes(app, memory, recall, compaction, scheduler, async () => scheduler.refresh());
 
       await memory.remember({
         scope: "daily",
@@ -111,6 +113,21 @@ async function main() {
       assert.equal(historyResponse.statusCode, 200);
       assert.equal(historyResponse.json().items.length >= 1, true);
       assert.equal(historyResponse.json().items[0].status, "compacted");
+
+      const runtimeResponse = await app.inject({
+        method: "GET",
+        url: "/api/memory/compaction-scheduler/runtime",
+      });
+      assert.equal(runtimeResponse.statusCode, 200);
+      assert.equal(typeof runtimeResponse.json().running, "boolean");
+
+      const runsResponse = await app.inject({
+        method: "GET",
+        url: "/api/memory/compaction-scheduler/runs?limit=5",
+      });
+      assert.equal(runsResponse.statusCode, 200);
+      assert.equal(Array.isArray(runsResponse.json().items), true);
+      assert.equal(runsResponse.json().items.length >= 1, true);
 
       await app.close();
     });

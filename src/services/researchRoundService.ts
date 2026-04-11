@@ -7,6 +7,8 @@ import type {
   ResearchTaskHandoffArtifactRef,
   ResearchTaskReviewStatus,
   ResearchTaskState,
+  ResearchTaskWorkstream,
+  ResearchTaskWorkstreamId,
 } from "../types/researchTask.js";
 
 interface ResearchRoundArtifactStore {
@@ -14,10 +16,24 @@ interface ResearchRoundArtifactStore {
   items: ResearchTaskHandoffArtifactRef[];
 }
 
+interface ResearchRoundWorkstreamEvent {
+  workstreamId: ResearchTaskWorkstreamId;
+  state: ResearchTaskState;
+  progress: number;
+  at: string;
+  message: string;
+}
+
+interface ResearchRoundWorkstreamEventStore {
+  updatedAt: string;
+  items: ResearchRoundWorkstreamEvent[];
+}
+
 interface ResearchRoundManifest {
   taskId: string;
   topic: string;
   question?: string | undefined;
+  request?: ResearchRequest | undefined;
   createdAt: string;
   updatedAt: string;
   attempt: number;
@@ -52,6 +68,11 @@ interface ResearchRoundPaths {
   reportPath: string;
   reviewFsPath: string;
   reviewPath: string;
+  workstreamDir: string;
+  workstreamEventsFsPath: string;
+  workstreamEventsPath: string;
+  workstreamPaths: Record<ResearchTaskWorkstreamId, string>;
+  workstreamFsPaths: Record<ResearchTaskWorkstreamId, string>;
 }
 
 function nowIso(): string {
@@ -132,6 +153,156 @@ function nextRecommendedAction(
   }
 }
 
+function deriveActiveWorkstreamId(
+  state: ResearchTaskState,
+  progress: number,
+): ResearchTaskWorkstreamId | undefined {
+  switch (state) {
+    case "queued":
+    case "planning":
+    case "fetching":
+    case "normalizing":
+    case "searching-paper":
+      return "search";
+    case "downloading-paper":
+    case "parsing":
+    case "analyzing-paper":
+    case "checking-repo":
+    case "extracting-module":
+      return "reading";
+    case "generating-summary":
+    case "generating-ppt":
+    case "persisting":
+      return "synthesis";
+    case "failed":
+      return progress < 40 ? "search" : progress < 80 ? "reading" : "synthesis";
+    case "completed":
+    default:
+      return undefined;
+  }
+}
+
+function deriveEventWorkstreamId(
+  state: ResearchTaskState,
+  progress: number,
+): ResearchTaskWorkstreamId | undefined {
+  if (state === "completed") {
+    return "synthesis";
+  }
+
+  return deriveActiveWorkstreamId(state, progress);
+}
+
+function buildWorkstreams(
+  state: ResearchTaskState,
+  progress: number,
+  reviewStatus: ResearchTaskReviewStatus,
+): ResearchTaskWorkstream[] {
+  const active = deriveActiveWorkstreamId(state, progress);
+
+  const searchStatus =
+    state === "completed"
+      ? "completed"
+      : active === "search"
+        ? state === "failed"
+          ? "blocked"
+          : "in_progress"
+        : ["reading", "synthesis"].includes(active ?? "")
+          ? "completed"
+          : "pending";
+  const readingStatus =
+    state === "completed"
+      ? "completed"
+      : active === "reading"
+        ? state === "failed"
+          ? "blocked"
+          : "in_progress"
+        : active === "synthesis"
+          ? "completed"
+          : active === "search"
+            ? "pending"
+            : "pending";
+  const synthesisStatus =
+    state === "completed"
+      ? reviewStatus === "needs-review"
+        ? "blocked"
+        : "completed"
+      : active === "synthesis"
+        ? state === "failed"
+          ? "blocked"
+          : "in_progress"
+        : "pending";
+
+  return [
+    {
+      id: "search",
+      label: "Search",
+      status: searchStatus,
+      summary:
+        searchStatus === "completed"
+          ? "Candidate retrieval and ranking have been completed for this round."
+          : searchStatus === "in_progress"
+            ? "Discovery, retrieval quality, and candidate ranking are the active focus."
+            : searchStatus === "blocked"
+              ? "Search work is blocked and needs operator review before continuing."
+              : "Search has not started yet for this round.",
+      nextStep:
+        searchStatus === "completed"
+          ? "Reuse the saved candidate set and move into deeper paper/repo reading."
+          : "Inspect retrieval quality, candidate breadth, and ranking reasons.",
+    },
+    {
+      id: "reading",
+      label: "Reading",
+      status: readingStatus,
+      summary:
+        readingStatus === "completed"
+          ? "Paper content, repo evidence, and reusable module signals are captured."
+          : readingStatus === "in_progress"
+            ? "The round is consolidating paper text, repo evidence, and implementation signals."
+            : readingStatus === "blocked"
+              ? "Reading and evidence consolidation need review before synthesis can continue."
+              : "Reading and evidence extraction have not started yet.",
+      nextStep:
+        readingStatus === "completed"
+          ? "Review evidence coverage and then hand off to synthesis."
+          : "Validate content extraction quality and evidence coverage before synthesis.",
+    },
+    {
+      id: "synthesis",
+      label: "Synthesis",
+      status: synthesisStatus,
+      summary:
+        synthesisStatus === "completed"
+          ? reviewStatus === "needs-review"
+            ? "A synthesis exists, but it still needs operator review."
+            : "The final synthesis and deliverables are complete for this round."
+          : synthesisStatus === "in_progress"
+            ? "The round is generating the final synthesis, review, or delivery artifacts."
+            : synthesisStatus === "blocked"
+              ? "Synthesis is blocked and needs operator review or a retry."
+              : "Synthesis has not started yet.",
+      nextStep:
+        synthesisStatus === "completed"
+          ? reviewStatus === "needs-review"
+            ? "Open review.md, address critique items, and decide whether a retry is needed."
+            : "Reuse the report or continue with the next research direction."
+          : "Review the brief, evidence, and current draft before finalizing delivery.",
+    },
+  ];
+}
+
+function workstreamTitle(workstream: ResearchTaskWorkstream): string {
+  return `${workstream.label} workstream`;
+}
+
+function defaultWorkstreamEventStore(): ResearchRoundWorkstreamEventStore {
+  return {
+    updatedAt: nowIso(),
+    items: [],
+  };
+}
+
 function buildReviewMarkdown(report: ResearchReport): string {
   const critique = report.critique;
   const lines = [
@@ -167,6 +338,27 @@ export class ResearchRoundService {
     }
   }
 
+  async getWorkstreamMemo(
+    taskId: string,
+    workstreamId: ResearchTaskWorkstreamId,
+  ): Promise<{
+    workstreamId: ResearchTaskWorkstreamId;
+    path: string;
+    content: string;
+  } | null> {
+    try {
+      const paths = this.buildPaths(taskId);
+      const content = await readFile(paths.workstreamFsPaths[workstreamId], "utf8");
+      return {
+        workstreamId,
+        path: paths.workstreamPaths[workstreamId],
+        content,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   getRoundPointers(taskId: string): { roundPath: string; handoffPath: string } {
     const paths = this.buildPaths(taskId);
     return {
@@ -193,6 +385,7 @@ export class ResearchRoundService {
       taskId: input.taskId,
       topic: input.topic,
       ...(input.question?.trim() ? { question: input.question.trim() } : {}),
+      request: input.request,
       createdAt: input.createdAt,
       updatedAt: input.createdAt,
       attempt: input.attempt,
@@ -214,13 +407,26 @@ export class ResearchRoundService {
       updatedAt: input.createdAt,
       items: [],
     } satisfies ResearchRoundArtifactStore);
+    const initialWorkstreamId = deriveActiveWorkstreamId("queued", input.progress) ?? "search";
+    await this.writeJson(paths.workstreamEventsFsPath, {
+      updatedAt: input.createdAt,
+      items: [
+        {
+          workstreamId: initialWorkstreamId,
+          state: "queued",
+          progress: input.progress,
+          at: input.createdAt,
+          message: manifest.currentMessage ?? "Task queued.",
+        },
+      ],
+    } satisfies ResearchRoundWorkstreamEventStore);
     await writeFile(paths.briefFsPath, this.buildBriefMarkdown(input), "utf8");
     await writeFile(
       paths.progressLogFsPath,
       `# Progress Log\n\n- [${formatTimestamp(input.createdAt)}] \`queued\` (${input.progress}%) ${manifest.currentMessage}\n`,
       "utf8",
     );
-    await this.writeJson(paths.handoffFsPath, this.buildHandoff(manifest));
+    await this.writeManifestArtifactsAndHandoff(manifest);
   }
 
   async deleteRound(taskId: string): Promise<void> {
@@ -248,6 +454,17 @@ export class ResearchRoundService {
       ...(input.message?.trim() ? { currentMessage: input.message.trim() } : {}),
       ...(input.reviewStatus ? { reviewStatus: input.reviewStatus } : {}),
     };
+
+    const workstreamId = deriveEventWorkstreamId(input.state, input.progress);
+    if (workstreamId) {
+      await this.appendWorkstreamEvent(input.taskId, {
+        workstreamId,
+        state: input.state,
+        progress: input.progress,
+        at: updatedAt,
+        message: input.message?.trim() || manifest.currentMessage || "State updated.",
+      });
+    }
 
     await this.writeManifestArtifactsAndHandoff(nextManifest);
     await this.appendProgressEntry(
@@ -321,6 +538,18 @@ export class ResearchRoundService {
     const artifactsFsPath = path.join(roundDir, "artifacts.json");
     const reportFsPath = path.join(roundDir, "report.json");
     const reviewFsPath = path.join(roundDir, "review.md");
+    const workstreamDir = path.join(roundDir, "workstreams");
+    const workstreamEventsFsPath = path.join(workstreamDir, "events.json");
+    const workstreamFsPaths = {
+      search: path.join(workstreamDir, "search.md"),
+      reading: path.join(workstreamDir, "reading.md"),
+      synthesis: path.join(workstreamDir, "synthesis.md"),
+    } satisfies Record<ResearchTaskWorkstreamId, string>;
+    const workstreamPaths = {
+      search: toPosixPath(path.relative(this.workspaceDir, workstreamFsPaths.search)),
+      reading: toPosixPath(path.relative(this.workspaceDir, workstreamFsPaths.reading)),
+      synthesis: toPosixPath(path.relative(this.workspaceDir, workstreamFsPaths.synthesis)),
+    } satisfies Record<ResearchTaskWorkstreamId, string>;
 
     return {
       roundDir,
@@ -338,6 +567,11 @@ export class ResearchRoundService {
       reportPath: toPosixPath(path.relative(this.workspaceDir, reportFsPath)),
       reviewFsPath,
       reviewPath: toPosixPath(path.relative(this.workspaceDir, reviewFsPath)),
+      workstreamDir,
+      workstreamEventsFsPath,
+      workstreamEventsPath: toPosixPath(path.relative(this.workspaceDir, workstreamEventsFsPath)),
+      workstreamPaths,
+      workstreamFsPaths,
     };
   }
 
@@ -375,6 +609,7 @@ export class ResearchRoundService {
   }
 
   private buildHandoff(manifest: ResearchRoundManifest): ResearchTaskHandoff {
+    const paths = this.buildPaths(manifest.taskId);
     const blockers =
       manifest.state === "failed" && manifest.currentMessage?.trim()
         ? [manifest.currentMessage.trim()]
@@ -391,6 +626,11 @@ export class ResearchRoundService {
       reviewStatus: manifest.reviewStatus,
       nextRecommendedAction: nextRecommendedAction(manifest.state, manifest.reviewStatus),
       blockers,
+      ...(deriveActiveWorkstreamId(manifest.state, manifest.progress)
+        ? { activeWorkstreamId: deriveActiveWorkstreamId(manifest.state, manifest.progress) }
+        : {}),
+      workstreams: buildWorkstreams(manifest.state, manifest.progress, manifest.reviewStatus),
+      workstreamPaths: paths.workstreamPaths,
       artifacts: manifest.artifacts,
       roundPath: manifest.roundPath,
       briefPath: manifest.briefPath,
@@ -399,6 +639,122 @@ export class ResearchRoundService {
       artifactsPath: manifest.artifactsPath,
       ...(manifest.reportPath ? { reportPath: manifest.reportPath } : {}),
       ...(manifest.reviewPath ? { reviewPath: manifest.reviewPath } : {}),
+    };
+  }
+
+  private buildWorkstreamMarkdown(input: {
+    manifest: ResearchRoundManifest;
+    handoff: ResearchTaskHandoff;
+    workstream: ResearchTaskWorkstream;
+    events: ResearchRoundWorkstreamEvent[];
+    report?: ResearchReport | null;
+  }): string {
+    const { manifest, handoff, workstream, events, report } = input;
+    const reportContext =
+      workstream.id === "search" && report
+        ? [
+            "",
+            "## Search Context",
+            ...(report.plan.searchQueries.length > 0
+              ? [`- Queries: ${report.plan.searchQueries.join(", ")}`]
+              : ["- Queries: none recorded."]),
+            ...(report.papers.length > 0
+              ? [
+                  "- Top candidates:",
+                  ...report.papers.slice(0, 5).map((paper) => `  - ${paper.title}`),
+                ]
+              : ["- Top candidates: none recorded."]),
+          ]
+        : workstream.id === "reading" && report
+          ? [
+              "",
+              "## Reading Context",
+              `- Paper candidates: ${report.papers.length}`,
+              `- Evidence items: ${report.evidence.length}`,
+              ...(report.findings.length > 0
+                ? [
+                    "- Early findings:",
+                    ...report.findings.slice(0, 3).map((finding) => `  - ${finding}`),
+                  ]
+                : ["- Early findings: none recorded."]),
+            ]
+          : workstream.id === "synthesis" && report
+            ? [
+                "",
+                "## Synthesis Context",
+                `- Summary: ${clipText(report.summary, 220)}`,
+                ...(report.nextActions.length > 0
+                  ? [
+                      "- Next actions:",
+                      ...report.nextActions.slice(0, 4).map((action) => `  - ${action}`),
+                    ]
+                  : ["- Next actions: none recorded."]),
+                `- Critique verdict: ${report.critique.verdict}`,
+              ]
+            : [];
+    const lines = [
+      `# ${workstream.label} Workstream`,
+      "",
+      "## Round",
+      `- Task ID: ${manifest.taskId}`,
+      `- Topic: ${manifest.topic}`,
+      ...(manifest.question?.trim() ? [`- Question: ${manifest.question.trim()}`] : []),
+      `- Updated At: ${manifest.updatedAt}`,
+      `- Round State: ${manifest.state}`,
+      `- Workstream Status: ${workstream.status}`,
+      ...(handoff.activeWorkstreamId === workstream.id ? ["- Active: yes"] : ["- Active: no"]),
+      "",
+      "## Summary",
+      workstream.summary,
+      "",
+      "## Next Step",
+      workstream.nextStep,
+      "",
+      "## Coordination",
+      `- Recommended action: ${handoff.nextRecommendedAction}`,
+      ...(handoff.blockers.length > 0 ? handoff.blockers.map((blocker) => `- Blocker: ${blocker}`) : ["- Blocker: none"]),
+      ...reportContext,
+      "",
+      "## Recent Events",
+      ...(events.length > 0
+        ? events
+            .slice(-6)
+            .map((event) => `- [${formatTimestamp(event.at)}] \`${event.state}\` (${event.progress}%) ${event.message}`)
+        : ["- No workstream events recorded yet."]),
+      "",
+      "## Round Artifacts",
+      ...(handoff.artifacts.length > 0
+        ? handoff.artifacts
+            .filter((artifact) => artifact.kind !== "workstream")
+            .map((artifact) => `- ${artifact.kind}: ${artifact.title} (${artifact.path})`)
+        : ["- No saved artifacts yet."]),
+    ];
+
+    return `${lines.join("\n").trim()}\n`;
+  }
+
+  private withWorkstreamArtifacts(
+    manifest: ResearchRoundManifest,
+    handoff: ResearchTaskHandoff,
+  ): ResearchRoundManifest {
+    const paths = this.buildPaths(manifest.taskId);
+    const nextArtifacts = handoff.workstreams.reduce((artifacts, workstream) =>
+      upsertArtifact(artifacts, {
+        kind: "workstream",
+        id: workstream.id,
+        title: workstreamTitle(workstream),
+        path: paths.workstreamPaths[workstream.id],
+        createdAt: manifest.updatedAt,
+        notes: [
+          `Status: ${workstream.status}`,
+          `Summary: ${clipText(workstream.summary, 140)}`,
+          `Next: ${clipText(workstream.nextStep, 140)}`,
+        ],
+      }), manifest.artifacts);
+
+    return {
+      ...manifest,
+      artifacts: nextArtifacts,
     };
   }
 
@@ -430,14 +786,77 @@ export class ResearchRoundService {
     }
   }
 
+  private async readReport(taskId: string): Promise<ResearchReport | null> {
+    try {
+      const raw = await readFile(this.buildPaths(taskId).reportFsPath, "utf8");
+      return JSON.parse(raw) as ResearchReport;
+    } catch {
+      return null;
+    }
+  }
+
+  private async readWorkstreamEventStore(taskId: string): Promise<ResearchRoundWorkstreamEventStore> {
+    try {
+      const raw = await readFile(this.buildPaths(taskId).workstreamEventsFsPath, "utf8");
+      const parsed = JSON.parse(raw) as Partial<ResearchRoundWorkstreamEventStore>;
+      return {
+        updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : nowIso(),
+        items: Array.isArray(parsed.items)
+          ? parsed.items.filter(
+              (item): item is ResearchRoundWorkstreamEvent =>
+                Boolean(item) &&
+                typeof item === "object" &&
+                (item.workstreamId === "search" || item.workstreamId === "reading" || item.workstreamId === "synthesis") &&
+                typeof item.state === "string" &&
+                typeof item.progress === "number" &&
+                typeof item.at === "string" &&
+                typeof item.message === "string",
+            )
+          : [],
+      };
+    } catch {
+      return defaultWorkstreamEventStore();
+    }
+  }
+
+  private async appendWorkstreamEvent(taskId: string, event: ResearchRoundWorkstreamEvent): Promise<void> {
+    const paths = this.buildPaths(taskId);
+    const current = await this.readWorkstreamEventStore(taskId);
+    await this.writeJson(paths.workstreamEventsFsPath, {
+      updatedAt: event.at,
+      items: [...current.items, event].slice(-60),
+    } satisfies ResearchRoundWorkstreamEventStore);
+  }
+
   private async writeManifestArtifactsAndHandoff(manifest: ResearchRoundManifest): Promise<void> {
     const paths = this.buildPaths(manifest.taskId);
-    await this.writeJson(paths.manifestFsPath, manifest);
+    const initialHandoff = this.buildHandoff(manifest);
+    const nextManifest = this.withWorkstreamArtifacts(manifest, initialHandoff);
+    const nextHandoff = this.buildHandoff(nextManifest);
+    const workstreamEventStore = await this.readWorkstreamEventStore(manifest.taskId);
+    const report = await this.readReport(manifest.taskId);
+
+    await mkdir(paths.workstreamDir, { recursive: true });
+    for (const workstream of nextHandoff.workstreams) {
+      await writeFile(
+        paths.workstreamFsPaths[workstream.id],
+        this.buildWorkstreamMarkdown({
+          manifest: nextManifest,
+          handoff: nextHandoff,
+          workstream,
+          events: workstreamEventStore.items.filter((event) => event.workstreamId === workstream.id),
+          report,
+        }),
+        "utf8",
+      );
+    }
+
+    await this.writeJson(paths.manifestFsPath, nextManifest);
     await this.writeJson(paths.artifactsFsPath, {
-      updatedAt: manifest.updatedAt,
-      items: manifest.artifacts,
+      updatedAt: nextManifest.updatedAt,
+      items: nextManifest.artifacts,
     } satisfies ResearchRoundArtifactStore);
-    await this.writeJson(paths.handoffFsPath, this.buildHandoff(manifest));
+    await this.writeJson(paths.handoffFsPath, nextHandoff);
   }
 
   private async writeJson(filePath: string, value: unknown): Promise<void> {

@@ -5847,3 +5847,53 @@ body::before {
     padding: 0 12px 12px;
   }
 }
+
+/* A11y: skip link, focus rings, reduced motion */
+.skip-link {
+  position: fixed;
+  left: 14px;
+  top: 14px;
+  z-index: 200;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--accent-foreground);
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-160%);
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: none;
+}
+
+.skip-link:focus-visible {
+  outline: 2px solid var(--accent-foreground);
+  outline-offset: 3px;
+}
+
+.btn:focus-visible,
+.nav-item:focus-visible,
+.lang-switch__btn:focus-visible,
+.topbar-nav-toggle:focus-visible,
+.nav-collapse-toggle:focus-visible,
+.agent-panel-tab:focus-visible,
+.topbar-search:focus-visible,
+.quick-command:focus-visible,
+.cmd-palette__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .nav-item,
+  .btn,
+  .skip-link {
+    transition-duration: 0.01ms !important;
+  }
+}

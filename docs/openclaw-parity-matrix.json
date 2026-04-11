@@ -1,0 +1,345 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-04-09",
+  "upstream": {
+    "snapshotPath": "upstream/openclaw/",
+    "commit": "21403a3898f6ad8b042e5812caf7848bdf72199c",
+    "entryLauncher": "upstream/openclaw/openclaw.mjs"
+  },
+  "statusValues": ["none", "partial", "complete"],
+  "surfaces": [
+    {
+      "category": "cli-family",
+      "id": "system",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/system-cli.ts",
+      "reagentCommand": "reagent system",
+      "notes": [
+        "Delegates to root runtime and service surfaces.",
+        "Help, status, health, home, doctor, logs, runtime, and service entrypoints exist.",
+        "Output and behavior are not yet a byte-for-byte upstream match."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "channels",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/channels-cli.ts",
+      "reagentCommand": "reagent channels",
+      "notes": [
+        "Root CLI exposes chat, inbound, push/send, login, wait, logout, sessions, and agent controls.",
+        "Bridge and session semantics still differ from upstream in places."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "config",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/config-cli.ts",
+      "reagentCommand": "reagent config",
+      "notes": [
+        "Managed workspace config surface exists for llm, mcp, skills, and commands.",
+        "Config behavior is ReAgent-oriented rather than full upstream parity."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "commands",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/commands/",
+      "reagentCommand": "reagent commands",
+      "notes": [
+        "A first-class root CLI family now exposes inbound command registry, policy, and authorization inspection.",
+        "This is ReAgent-owned operator tooling rather than direct upstream CLI parity."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "models",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/models-cli.ts",
+      "reagentCommand": "reagent models",
+      "notes": [
+        "First-class compatibility family exists over the managed llm registry.",
+        "List/routes plus config delegation are available.",
+        "Model-management semantics are not yet fully aligned with upstream."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "mcp",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/mcp-cli.ts",
+      "reagentCommand": "reagent mcp",
+      "notes": [
+        "First-class compatibility family exists over the managed MCP registry.",
+        "List plus config delegation are available.",
+        "Connector/runtime parity is still incomplete."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "skills",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/skills-cli.ts",
+      "reagentCommand": "reagent skills",
+      "notes": [
+        "First-class compatibility family exists over workspace skill state.",
+        "List plus config delegation are available.",
+        "Skill lifecycle and allowlist semantics still differ from upstream."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "plugins",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/plugins-cli.ts",
+      "reagentCommand": "reagent plugins",
+      "notes": [
+        "Bundled, foundation, and imported upstream extension inventory is exposed.",
+        "Lifecycle delegation exists for install, uninstall, enable, disable, and update.",
+        "Extension-host parity remains incomplete."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "logs",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/logs-cli.ts",
+      "reagentCommand": "reagent logs",
+      "notes": [
+        "Runtime log snapshot and follow mode exist.",
+        "Host-oriented logging parity is not complete."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "gateway",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/gateway-cli.ts",
+      "reagentCommand": "reagent gateway",
+      "notes": [
+        "Compatibility alias exists over the service surface.",
+        "Operator behavior is aligned at a high level, not full parity."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "daemon",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/daemon-cli.ts",
+      "reagentCommand": "reagent daemon",
+      "notes": [
+        "Compatibility alias exists over the service surface.",
+        "Daemon-specific lifecycle behavior is still ReAgent-shaped."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "update",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/update-cli.ts",
+      "reagentCommand": "reagent update",
+      "notes": [
+        "Top-level plugin update delegation exists.",
+        "Broader host update semantics are not yet implemented."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "pairing",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/pairing-cli.ts",
+      "reagentCommand": "reagent pairing",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "Native ReAgent pairing-store semantics are not implemented yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "qr",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/qr-cli.ts",
+      "reagentCommand": "reagent qr",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "ReAgent also has its own channel-login QR flow under reagent channels login."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "acp",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/acp-cli.ts",
+      "reagentCommand": "reagent acp",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native ACP implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "devices",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/devices-cli.ts",
+      "reagentCommand": "reagent devices",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "Native device-pair management is not implemented inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "dns",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/dns-cli.ts",
+      "reagentCommand": "reagent dns",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native dns implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "exec-approvals",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/exec-approvals-cli.ts",
+      "reagentCommand": "reagent exec-approvals",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native exec-approvals implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "hooks",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/hooks-cli.ts",
+      "reagentCommand": "reagent hooks",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native hooks implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "nodes",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/nodes-cli.ts",
+      "reagentCommand": "reagent nodes",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native nodes implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "sandbox",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/sandbox-cli.ts",
+      "reagentCommand": "reagent sandbox",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native sandbox implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "secrets",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/secrets-cli.ts",
+      "reagentCommand": "reagent secrets",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native secrets implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "security",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/security-cli.ts",
+      "reagentCommand": "reagent security",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native security implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "tui",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/tui-cli.ts",
+      "reagentCommand": "reagent tui",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native tui implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "cli-family",
+      "id": "webhooks",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/cli/webhooks-cli.ts",
+      "reagentCommand": "reagent webhooks",
+      "notes": [
+        "First-class root passthrough exists through the configured OpenClaw CLI.",
+        "No native webhooks implementation exists inside ReAgent yet."
+      ]
+    },
+    {
+      "category": "runtime-surface",
+      "id": "host-session-model",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/sessions/",
+      "reagentCommand": "reagent sessions|history|watch",
+      "notes": [
+        "Live and cached host-session surfaces are exposed.",
+        "Sender-based OpenClaw delivery can now reuse cached host session context.",
+        "OpenClaw channel and UI chat message lists now surface cached host session transcripts instead of relying only on local transcript state.",
+        "The host session model is not yet canonical everywhere in the app."
+      ]
+    },
+    {
+      "category": "runtime-surface",
+      "id": "bridge-reply-pipeline",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/routing/",
+      "reagentCommand": "reagent send|channels push|channels inbound",
+      "notes": [
+        "Push/send parity has improved, including accountId, threadId, and mediaUrl support.",
+        "Inbound OpenClaw replies can now reuse cached/live sender session context before falling back to direct send.",
+        "Broader reply-pipeline parity is still incomplete."
+      ]
+    },
+    {
+      "category": "runtime-surface",
+      "id": "inbound-command-surface",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/commands/",
+      "reagentCommand": "slash commands through ChannelService",
+      "notes": [
+        "Inbound slash commands now route through a registry-backed dispatcher instead of a pure hard-coded chain.",
+        "Command execution now also flows through a dedicated handler map instead of one monolithic switch in ChannelService.",
+        "Explicit /help, /commands, /?, and /status replies now exist in the inbound channel surface.",
+        "Registry metadata now supports command risk tiers plus source-aware policy, and local-only maintenance commands can be blocked from remote channel entries.",
+        "Higher-risk remote command tiers can now be gated by workspace sender allowlists.",
+        "A first-class `reagent commands` operator surface now exposes registry, policy, and authorization inspection from the root CLI.",
+        "Unknown slash commands now report the unknown command before showing help.",
+        "OpenClaw-grade command authorization and command registry parity are still incomplete."
+      ]
+    },
+    {
+      "category": "sdk-surface",
+      "id": "plugin-sdk-contract",
+      "status": "partial",
+      "upstreamPath": "upstream/openclaw/src/plugin-sdk/",
+      "reagentCommand": "package/src/sdk/",
+      "notes": [
+        "Local facades exist for a small subset of the SDK.",
+        "Root-app and host-contract parity remain incomplete."
+      ]
+    }
+  ]
+}

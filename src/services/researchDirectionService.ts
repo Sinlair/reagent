@@ -494,6 +494,28 @@ export class ResearchDirectionService {
     return this.upsertProfile(input);
   }
 
+  async replaceProfile(profile: ResearchDirectionProfile): Promise<ResearchDirectionProfile> {
+    const normalized = normalizeLoadedProfile(profile);
+    if (!normalized) {
+      throw new Error("Research direction profile label is required.");
+    }
+
+    const store = await this.readStore();
+    const nextProfiles = store.profiles.filter((item) => item.id !== normalized.id);
+    nextProfiles.push({
+      ...normalized,
+      createdAt: profile.createdAt?.trim() || normalized.createdAt,
+      updatedAt: nowIso(),
+    });
+    nextProfiles.sort((left, right) => left.label.localeCompare(right.label));
+    await this.writeStore({
+      ...store,
+      profiles: nextProfiles,
+    });
+
+    return nextProfiles.find((item) => item.id === normalized.id)!;
+  }
+
   async deleteProfile(directionId: string): Promise<boolean> {
     const id = directionId.trim();
     if (!id) {

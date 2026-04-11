@@ -4,8 +4,13 @@ import { env } from "../config/env.js";
 import { DEFAULT_GATEWAY_PORT, getGatewayServiceStatus } from "../gatewayService.js";
 import { LlmRegistryService } from "../services/llmRegistryService.js";
 import { McpRegistryService } from "../services/mcpRegistryService.js";
+import type { RuntimeJobsService } from "../services/runtimeJobsService.js";
 
-export async function registerHealthRoutes(app: FastifyInstance, workspaceDir?: string): Promise<void> {
+export async function registerHealthRoutes(
+  app: FastifyInstance,
+  workspaceDir?: string,
+  runtimeJobsService?: RuntimeJobsService,
+): Promise<void> {
   app.get("/health", async () => ({
     status: "ok",
     agent: env.RESEARCH_AGENT_NAME,
@@ -140,16 +145,27 @@ export async function registerHealthRoutes(app: FastifyInstance, workspaceDir?: 
           ]
         },
         openclawPlugin: {
-          packageName: "@sinlair/reagent-openclaw",
-          installCommand: "openclaw plugins install @sinlair/reagent-openclaw --yes",
-          sampleCommands: [
-            "/reagent-status",
-            "/reagent-discover [directionId]",
-            "/reagent-direction-report <directionId-or-topic>",
-            "/reagent-presentation-generate [topic]"
-          ]
+          packageName: "@tencent-weixin/openclaw-weixin",
+          installCommand: "openclaw plugins install @tencent-weixin/openclaw-weixin@2.1.1 --yes",
+          sampleCommands: ["See plugin docs"]
         }
       }
     };
   });
+
+  if (runtimeJobsService) {
+    app.get("/api/runtime/jobs", async (request) => {
+      const limit =
+        request.query &&
+        typeof request.query === "object" &&
+        "limit" in request.query &&
+        typeof request.query.limit === "string"
+          ? Number.parseInt(request.query.limit, 10)
+          : 5;
+
+      return {
+        items: await runtimeJobsService.listJobs(Number.isFinite(limit) ? limit : 5),
+      };
+    });
+  }
 }

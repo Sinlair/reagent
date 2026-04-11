@@ -1,11 +1,12 @@
 import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { InboundCommandPolicyService } from "./inboundCommandPolicyService.js";
 import { LlmRegistryService } from "./llmRegistryService.js";
 import { McpRegistryService } from "./mcpRegistryService.js";
 import { SkillRegistryService, type SkillStatusReport } from "./skillRegistryService.js";
 
-export type ManagedConfigAlias = "llm" | "mcp" | "skills";
+export type ManagedConfigAlias = "llm" | "mcp" | "skills" | "commands";
 
 type ConfigPathSegment = string | number;
 
@@ -117,8 +118,8 @@ function parseConfigPath(input: string): { alias: ManagedConfigAlias; segments: 
   }
 
   const [alias, ...rest] = segments;
-  if (alias !== "llm" && alias !== "mcp" && alias !== "skills") {
-    throw new Error(`Unsupported config namespace: ${String(alias)}. Use llm, mcp, or skills.`);
+  if (alias !== "llm" && alias !== "mcp" && alias !== "skills" && alias !== "commands") {
+    throw new Error(`Unsupported config namespace: ${String(alias)}. Use llm, mcp, skills, or commands.`);
   }
 
   return {
@@ -264,12 +265,14 @@ export class WorkspaceConfigService {
   private readonly llmRegistry: LlmRegistryService;
   private readonly mcpRegistry: McpRegistryService;
   private readonly skillRegistry: SkillRegistryService;
+  private readonly inboundCommandPolicyService: InboundCommandPolicyService;
   private readonly configDir: string;
 
   constructor(private readonly workspaceDir: string) {
     this.llmRegistry = new LlmRegistryService(workspaceDir);
     this.mcpRegistry = new McpRegistryService(workspaceDir);
     this.skillRegistry = new SkillRegistryService(workspaceDir);
+    this.inboundCommandPolicyService = new InboundCommandPolicyService(workspaceDir);
     this.configDir = path.join(this.workspaceDir, "channels");
   }
 
@@ -289,6 +292,11 @@ export class WorkspaceConfigService {
         alias: "skills",
         path: path.join(this.workspaceDir, "channels", "skills-config.json"),
         description: "Workspace skill enablement and stored environment overrides.",
+      },
+      {
+        alias: "commands",
+        path: path.join(this.workspaceDir, "channels", "inbound-command-policy.json"),
+        description: "Inbound slash-command policy, including remote tier allowlists.",
       },
     ];
   }
@@ -493,6 +501,41 @@ export class WorkspaceConfigService {
             },
           },
         },
+        commands: {
+          type: "object",
+          description: "Stored in workspace/channels/inbound-command-policy.json",
+          properties: {
+            remote: {
+              type: "object",
+              properties: {
+                "workspace-mutation": {
+                  type: "object",
+                  properties: {
+                    mode: { enum: ["allow", "allowlist"] },
+                    senderIds: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                  },
+                  additionalProperties: false,
+                },
+                "session-control": {
+                  type: "object",
+                  properties: {
+                    mode: { enum: ["allow", "allowlist"] },
+                    senderIds: {
+                      type: "array",
+                      items: { type: "string" },
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              additionalProperties: false,
+            },
+          },
+          additionalProperties: false,
+        },
       },
     };
   }
@@ -575,6 +618,10 @@ export class WorkspaceConfigService {
     }
     if (alias === "mcp") {
       await this.mcpRegistry.ensureConfigFile();
+      return;
+    }
+    if (alias === "commands") {
+      await this.inboundCommandPolicyService.ensurePolicyFile();
       return;
     }
 

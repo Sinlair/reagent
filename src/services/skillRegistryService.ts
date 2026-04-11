@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface WorkspaceSkillDefinition {
@@ -10,6 +10,7 @@ export interface WorkspaceSkillDefinition {
   status: "ready" | "needs-setup" | "disabled";
   notes: string[];
   relatedTools: string[];
+  referencePaths: string[];
   filePath: string;
   baseDir: string;
   primaryEnv?: string | undefined;
@@ -69,6 +70,27 @@ export interface SkillStatusReport {
   skills: SkillStatusEntry[];
 }
 
+export interface WorkspaceSkillMaterializationInput {
+  directoryName: string;
+  label: string;
+  description: string;
+  prompt: string;
+  relatedTools: string[];
+  referenceFileName?: string | undefined;
+  referenceContent?: string | undefined;
+  homepage?: string | undefined;
+  enabled?: boolean | undefined;
+}
+
+export interface WorkspaceSkillMaterializationTarget {
+  skillKey: string;
+  directoryName: string;
+  skillDirPath: string;
+  skillFilePath: string;
+  referenceFilePath?: string | undefined;
+  configPath: string;
+}
+
 interface ParsedFrontmatter {
   [key: string]: string;
 }
@@ -119,6 +141,29 @@ function stripHeading(value: string): string {
   return value.replace(/^#+\s*/u, "").trim();
 }
 
+function slugifySkillDirectoryName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 80);
+}
+
+function validateRelativeFileName(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const normalized = trimmed.replace(/[\\]+/gu, "/");
+  if (normalized.includes("/") || normalized === "." || normalized === "..") {
+    throw new Error("Reference file name must stay within the generated skill directory.");
+  }
+
+  return normalized;
+}
+
 function deriveInstruction(prompt: string, fallback: string): string {
   const lines = prompt
     .split(/\r?\n/u)
@@ -166,6 +211,33 @@ function parseSkillFile(raw: string): { frontmatter: ParsedFrontmatter; body: st
     frontmatter,
     body: lines.slice(index).join("\n").trim(),
   };
+}
+
+function renderWorkspaceSkillMarkdown(input: {
+  label: string;
+  description: string;
+  prompt: string;
+  relatedTools: string[];
+  referenceFileName?: string | undefined;
+  homepage?: string | undefined;
+  enabled: boolean;
+}): string {
+  const lines = [
+    "---",
+    `name: ${input.label.trim()}`,
+    `description: ${input.description.trim()}`,
+    `enabled: ${String(input.enabled)}`,
+    ...(input.relatedTools.length > 0 ? [`tools: ${input.relatedTools.join(", ")}`] : []),
+    ...(input.referenceFileName ? [`references: ${input.referenceFileName}`] : []),
+    ...(input.homepage?.trim() ? [`homepage: ${input.homepage.trim()}`] : []),
+    "---",
+    `# ${input.label.trim()}`,
+    "",
+    input.prompt.trim(),
+    "",
+  ];
+
+  return `${lines.join("\n")}\n`;
 }
 
 function sanitizeConfigStore(value: unknown): SkillConfigStore {
@@ -242,6 +314,101 @@ export class SkillRegistryService {
     return this.listWorkspaceSkillDefinitions();
   }
 
+  async getSkill(skillKey: string): Promise<WorkspaceSkillDefinition | null> {
+    const normalized = skillKey.trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const skills = await this.listWorkspaceSkillDefinitions();
+    return skills.find((skill) => skill.id === normalized) ?? null;
+  }
+
+  resolveMaterializationTarget(
+    directoryName: string,
+    referenceFileName?: string | undefined,
+  ): WorkspaceSkillMaterializationTarget {
+    const safeDirectoryName = slugifySkillDirectoryName(directoryName);
+    if (!safeDirectoryName) {
+      throw new Error("Skill directory name could not be resolved safely.");
+    }
+
+    const skillDirPath = path.join(this.skillsDir, safeDirectoryName);
+    const relativeSkillPath = path.relative(this.skillsDir, skillDirPath);
+    if (!relativeSkillPath || relativeSkillPath.startsWith("..") || path.isAbsolute(relativeSkillPath)) {
+      throw new Error("Resolved skill directory escaped the workspace skills directory.");
+    }
+
+    const safeReferenceFileName = validateRelativeFileName(referenceFileName);
+    return {
+      skillKey: `workspace:${safeDirectoryName}`,
+      directoryName: safeDirectoryName,
+      skillDirPath,
+      skillFilePath: path.join(skillDirPath, "SKILL.md"),
+      ...(safeReferenceFileName ? { referenceFilePath: path.join(skillDirPath, safeReferenceFileName) } : {}),
+      configPath: this.configPath,
+    };
+  }
+
+  async materializeSkill(input: WorkspaceSkillMaterializationInput): Promise<WorkspaceSkillMaterializationTarget> {
+    const enabled = input.enabled ?? false;
+    const target = this.resolveMaterializationTarget(input.directoryName, input.referenceFileName);
+    const existing = await this.getSkill(target.skillKey);
+    if (existing) {
+      throw new Error(`Workspace skill ${target.skillKey} already exists.`);
+    }
+
+    await this.ensureSkillsDir();
+    await mkdir(target.skillDirPath, { recursive: true });
+    await writeFile(
+      target.skillFilePath,
+      renderWorkspaceSkillMarkdown({
+        label: input.label,
+        description: input.description,
+        prompt: input.prompt,
+        relatedTools: input.relatedTools,
+        ...(input.referenceFileName ? { referenceFileName: validateRelativeFileName(input.referenceFileName) } : {}),
+        ...(input.homepage?.trim() ? { homepage: input.homepage.trim() } : {}),
+        enabled,
+      }),
+      "utf8",
+    );
+
+    if (target.referenceFilePath && input.referenceContent?.trim()) {
+      await writeFile(target.referenceFilePath, `${input.referenceContent.trim()}\n`, "utf8");
+    }
+
+    await this.updateSkill({
+      skillKey: target.skillKey,
+      enabled,
+    });
+
+    return target;
+  }
+
+  async deleteSkill(skillKey: string): Promise<boolean> {
+    const normalized = skillKey.trim();
+    if (!normalized.startsWith("workspace:")) {
+      return false;
+    }
+
+    const directoryName = normalized.slice("workspace:".length).trim();
+    if (!directoryName) {
+      return false;
+    }
+
+    const target = this.resolveMaterializationTarget(directoryName);
+    await rm(target.skillDirPath, { recursive: true, force: true });
+
+    const store = await this.readConfigStore();
+    if (normalized in store.entries) {
+      delete store.entries[normalized];
+      await this.writeConfigStore(store);
+    }
+
+    return true;
+  }
+
   async listWorkspaceSkillDefinitions(): Promise<WorkspaceSkillDefinition[]> {
     await this.applyStoredEnvOverrides();
     const store = await this.readConfigStore();
@@ -286,6 +453,7 @@ export class SkillRegistryService {
         status: !globallyEnabled ? "disabled" : missingEnv.length > 0 ? "needs-setup" : "ready",
         notes,
         relatedTools: skill.relatedTools,
+        referencePaths: skill.referencePaths,
         filePath: skill.filePath,
         baseDir: skill.baseDir,
         ...(primaryEnv ? { primaryEnv } : {}),
@@ -440,6 +608,7 @@ export class SkillRegistryService {
       prompt: string;
       frontmatter: ParsedFrontmatter;
       relatedTools: string[];
+      referencePaths: string[];
       filePath: string;
       baseDir: string;
       homepage?: string | undefined;
@@ -489,6 +658,17 @@ export class SkillRegistryService {
                 parsed.frontmatter.related_tools ??
                 parsed.frontmatter.relatedTools,
             ),
+            referencePaths: parseList(
+              parsed.frontmatter.references ??
+                parsed.frontmatter.reference_files ??
+                parsed.frontmatter.referenceFiles ??
+                parsed.frontmatter.refs,
+            )
+              .map((value) => path.resolve(entry.fullPath, value))
+              .filter((resolvedPath) => {
+                const relative = path.relative(entry.fullPath, resolvedPath);
+                return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+              }),
             filePath: skillPath,
             baseDir: entry.fullPath,
             ...(parsed.frontmatter.homepage?.trim() ? { homepage: parsed.frontmatter.homepage.trim() } : {}),
@@ -500,6 +680,7 @@ export class SkillRegistryService {
             prompt: string;
             frontmatter: ParsedFrontmatter;
             relatedTools: string[];
+            referencePaths: string[];
             filePath: string;
             baseDir: string;
             homepage?: string | undefined;

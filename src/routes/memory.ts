@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
+import type { MemoryCompactionSchedulerService } from "../services/memoryCompactionSchedulerService.js";
 import type { MemoryCompactionService } from "../services/memoryCompactionService.js";
 import type { MemoryRecallService } from "../services/memoryRecallService.js";
 import type { MemoryService } from "../services/memoryService.js";
@@ -48,15 +49,41 @@ const PolicyPatchSchema = z.object({
   highConfidenceLongTermOnly: z.coerce.boolean().optional()
 });
 
+const SchedulerRunsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20)
+});
+
 export async function registerMemoryRoutes(
   app: FastifyInstance,
   memoryService: MemoryService,
   memoryRecallService: MemoryRecallService,
   memoryCompactionService: MemoryCompactionService,
+  memoryCompactionSchedulerService?: MemoryCompactionSchedulerService | undefined,
   onPolicyUpdated?: (() => Promise<void>) | undefined
 ): Promise<void> {
   app.get("/api/memory/status", async () => memoryService.getStatus());
   app.get("/api/memory/policy", async () => memoryCompactionService.getPolicy());
+
+  if (memoryCompactionSchedulerService) {
+    app.get("/api/memory/compaction-scheduler/runtime", async () =>
+      memoryCompactionSchedulerService.getRuntimeSnapshot()
+    );
+
+    app.get("/api/memory/compaction-scheduler/runs", async (request, reply) => {
+      const parsed = SchedulerRunsQuerySchema.safeParse(request.query ?? {});
+
+      if (!parsed.success) {
+        return reply.code(400).send({
+          message: "Invalid memory compaction scheduler runs query",
+          issues: parsed.error.flatten()
+        });
+      }
+
+      return reply.send({
+        items: await memoryCompactionSchedulerService.listRecentRuns(parsed.data.limit)
+      });
+    });
+  }
 
   app.get("/api/memory/files", async () => ({
     files: await memoryService.listFiles()

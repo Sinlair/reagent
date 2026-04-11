@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -99,6 +99,56 @@ async function createFixtureServer() {
     maxPapersPerQuery: 4,
     lastRunDateByDirection: {},
     updatedAt: "2026-04-08T08:35:00.000Z",
+  };
+  const runtimeJobs = {
+    items: [
+      {
+        id: "research-discovery-scheduler",
+        label: "Research Discovery Scheduler",
+        snapshot: {
+          jobName: "research-discovery-scheduler",
+          running: true,
+          lastState: "completed",
+          lastSummary: "Ran discovery for 1 direction.",
+          updatedAt: "2026-04-08T08:52:00.000Z",
+        },
+        recentRuns: [
+          {
+            ts: "2026-04-08T08:52:00.000Z",
+            event: "finished",
+            jobName: "research-discovery-scheduler",
+            trigger: "scheduled",
+            startedAt: "2026-04-08T08:51:00.000Z",
+            finishedAt: "2026-04-08T08:52:00.000Z",
+            state: "completed",
+            summary: "Ran discovery for 1 direction.",
+          },
+        ],
+      },
+      {
+        id: "memory-auto-compaction",
+        label: "Memory Auto-Compaction",
+        snapshot: {
+          jobName: "memory-auto-compaction",
+          running: false,
+          lastState: "skipped",
+          lastSummary: "No memory entries required compaction.",
+          updatedAt: "2026-04-08T08:55:00.000Z",
+        },
+        recentRuns: [
+          {
+            ts: "2026-04-08T08:55:00.000Z",
+            event: "finished",
+            jobName: "memory-auto-compaction",
+            trigger: "scheduled",
+            startedAt: "2026-04-08T08:54:50.000Z",
+            finishedAt: "2026-04-08T08:55:00.000Z",
+            state: "skipped",
+            summary: "No memory entries required compaction.",
+          },
+        ],
+      },
+    ],
   };
   const researchDirection = {
     id: "dir-web-agents",
@@ -225,6 +275,35 @@ async function createFixtureServer() {
     reviewStatus: researchTask.reviewStatus,
     nextRecommendedAction: "Continue with BrowserGym-focused validation.",
     blockers: [],
+    activeWorkstreamId: "synthesis",
+    workstreams: [
+      {
+        id: "search",
+        label: "Search",
+        status: "completed",
+        summary: "Candidate retrieval and ranking have been completed for this round.",
+        nextStep: "Reuse the saved candidate set and move into deeper paper/repo reading.",
+      },
+      {
+        id: "reading",
+        label: "Reading",
+        status: "completed",
+        summary: "Paper content, repo evidence, and reusable module signals are captured.",
+        nextStep: "Review evidence coverage and then hand off to synthesis.",
+      },
+      {
+        id: "synthesis",
+        label: "Synthesis",
+        status: "in_progress",
+        summary: "The round is generating the final synthesis, review, or delivery artifacts.",
+        nextStep: "Review the brief, evidence, and current draft before finalizing delivery.",
+      },
+    ],
+    workstreamPaths: {
+      search: `research/rounds/${researchTaskId}/workstreams/search.md`,
+      reading: `research/rounds/${researchTaskId}/workstreams/reading.md`,
+      synthesis: `research/rounds/${researchTaskId}/workstreams/synthesis.md`,
+    },
     artifacts: [
       {
         kind: "report",
@@ -250,6 +329,11 @@ async function createFixtureServer() {
     artifactsPath: `research/rounds/${researchTaskId}/artifacts.json`,
     reportPath: `research/rounds/${researchTaskId}/report.json`,
     reviewPath: `research/rounds/${researchTaskId}/review.md`,
+  };
+  const workstreamMemo = {
+    workstreamId: "search",
+    path: handoff.workstreamPaths.search,
+    content: "# Search Workstream\n\n## Search Context\n- Queries: browsergym baseline\n",
   };
   const discoveryRun = {
     runId: "discovery-run-1",
@@ -421,6 +505,76 @@ async function createFixtureServer() {
     createdAt: "2026-04-08T09:10:00.000Z",
     updatedAt: "2026-04-08T09:10:00.000Z",
   };
+  const evolutionCandidateBasePayload = {
+    directionId: researchDirection.id,
+    label: researchDirection.label,
+    summary: "Browser-agent preset candidate distilled from the direction report.",
+    queryHints: ["browser agent", "browser agent BrowserGym baseline"],
+    knownBaselines: ["BrowserGym baseline"],
+    evaluationPriorities: ["task success rate"],
+    currentGoals: ["Compare BrowserGym with lightweight open-source alternatives"],
+    shortTermValidationTargets: ["navigation robustness"],
+    suggestedRoutes: ["Compare BrowserGym with lightweight open-source alternatives"],
+    supportingSignals: ["Recent ICLR paper coverage"],
+  };
+  const evolutionSkillCandidateBasePayload = {
+    skillKey: "workspace:web-agents",
+    directoryName: "web-agents",
+    label: "Web Agents",
+    description: "Repo-grounded guidance for example/web-agents.",
+    prompt: "Use this skill for repo-grounded web-agent implementation questions.",
+    relatedTools: ["repo_analyze", "module_extract", "research_run"],
+    sourceRepoUrl: repoReport.url,
+    selectedPaths: moduleAsset.selectedPaths,
+    notes: moduleAsset.notes,
+    referenceFiles: ["SOURCE.md"],
+    homepage: repoReport.url,
+    enabled: false,
+  };
+  let evolutionCandidates = [
+    {
+      id: "evolution-candidate-1",
+      candidateType: "direction-preset",
+      sourceType: "direction-report",
+      sourceId: directionReport.id,
+      title: "Web Agents direction preset candidate",
+      status: "draft",
+      payload: { ...evolutionCandidateBasePayload },
+      evidence: [
+        {
+          kind: "paper",
+          summary: `${researchReport.papers[0].title}: Covers open-source baselines`,
+          sourceUrl: researchReport.papers[0].url,
+        },
+      ],
+      reviews: [],
+      applyHistory: [],
+      rollbackHistory: [],
+      createdAt: "2026-04-08T09:11:00.000Z",
+      updatedAt: "2026-04-08T09:11:00.000Z",
+    },
+    {
+      id: "evolution-candidate-skill-1",
+      candidateType: "workspace-skill",
+      sourceType: "module-asset",
+      sourceId: moduleAsset.id,
+      title: "Web Agents workspace skill candidate",
+      status: "draft",
+      payload: { ...evolutionSkillCandidateBasePayload },
+      evidence: [
+        {
+          kind: "repo",
+          summary: `${repoReport.owner}/${repoReport.repo}`,
+          sourceUrl: repoReport.url,
+        },
+      ],
+      reviews: [],
+      applyHistory: [],
+      rollbackHistory: [],
+      createdAt: "2026-04-08T09:11:30.000Z",
+      updatedAt: "2026-04-08T09:11:30.000Z",
+    },
+  ];
   const graph = {
     generatedAt: "2026-04-08T09:15:00.000Z",
     stats: {
@@ -592,6 +746,10 @@ async function createFixtureServer() {
       });
       return;
     }
+    if (req.method === "GET" && url.pathname === "/api/runtime/jobs") {
+      sendJson(200, runtimeJobs);
+      return;
+    }
 
     if (req.method === "GET" && url.pathname === "/api/channels/status") {
       sendJson(200, {
@@ -609,6 +767,20 @@ async function createFixtureServer() {
             connected: true,
             accountId: "wx-test-1",
             accountName: "Fixture User",
+            accounts: [
+              {
+                accountId: "wx-test-1",
+                accountName: "Fixture User",
+                connected: true,
+                running: true,
+              },
+              {
+                accountId: "wx-ops-2",
+                accountName: "Ops User",
+                connected: false,
+                running: true,
+              },
+            ],
             updatedAt: "2026-04-08T08:30:00.000Z",
             notes: ["Mock transport is ready."],
           },
@@ -625,6 +797,46 @@ async function createFixtureServer() {
             providerMode: "mock",
             event: "service-started",
             state: "running",
+          },
+        ],
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/channels/wechat/openclaw-events") {
+      sendJson(200, {
+        items: [
+          {
+            ts: "2026-04-08T08:26:00.000Z",
+            event: "sessions.changed",
+            sessionKey: "agent:main:thread:wx-user-1",
+            text: "patch",
+          },
+          {
+            ts: "2026-04-08T08:26:05.000Z",
+            event: "session.message",
+            sessionKey: "agent:main:thread:wx-user-1",
+            messageId: "evt-1",
+            role: "assistant",
+            text: "host event reply",
+          },
+        ],
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/channels/wechat/openclaw-sessions") {
+      sendJson(200, {
+        items: [
+          {
+            sessionKey: "agent:main:thread:wx-user-host-1",
+            channel: "openclaw-weixin",
+            to: "wx-user-host-1",
+            accountId: "wx-test-1",
+            threadId: "thread-host-1",
+            displayName: "Host Session",
+            lastMessagePreview: "host preview",
+            lastSyncedAt: "2026-04-08T08:29:00.000Z",
           },
         ],
       });
@@ -825,7 +1037,13 @@ async function createFixtureServer() {
       const body = raw ? JSON.parse(raw) : {};
       sendJson(200, {
         accepted: true,
-        reply: `push:${body.senderId}:${body.text}`,
+        reply: body.mediaUrl
+          ? `push:${body.senderId ?? body.sessionKey}:[media]${body.mediaUrl}`
+          : `push:${body.senderId ?? body.sessionKey}:${body.text}`,
+        ...(body.mediaUrl ? { mediaUrl: body.mediaUrl } : {}),
+        ...(body.accountId ? { accountId: body.accountId } : {}),
+        ...(body.threadId ? { threadId: body.threadId } : {}),
+        ...(body.sessionKey ? { sessionKey: body.sessionKey } : {}),
       });
       return;
     }
@@ -1026,6 +1244,10 @@ async function createFixtureServer() {
 
     if (req.method === "GET" && url.pathname === `/api/research/tasks/${researchTaskId}/handoff`) {
       sendJson(200, handoff);
+      return;
+    }
+    if (req.method === "GET" && url.pathname === `/api/research/tasks/${researchTaskId}/workstreams/search`) {
+      sendJson(200, workstreamMemo);
       return;
     }
 
@@ -1447,6 +1669,245 @@ async function createFixtureServer() {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/research/candidates") {
+      const status = url.searchParams.get("status");
+      const type = url.searchParams.get("type");
+      sendJson(200, {
+        candidates: evolutionCandidates.filter((candidate) => {
+          if (status && candidate.status !== status) {
+            return false;
+          }
+          if (type && candidate.candidateType !== type) {
+            return false;
+          }
+          return true;
+        }),
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/research/candidates/")) {
+      const candidateId = decodeURIComponent(url.pathname.split("/")[4] ?? "");
+      const candidate = evolutionCandidates.find((item) => item.id === candidateId);
+      if (!candidate) {
+        sendJson(404, { message: "Evolution candidate not found" });
+        return;
+      }
+      sendJson(200, candidate);
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/research/candidates/direction-preset") {
+      const raw = await readRequestBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const candidate = {
+        ...evolutionCandidates.find((item) => item.candidateType === "direction-preset"),
+        id: "evolution-candidate-2",
+        sourceId: body.reportId ?? directionReport.id,
+        status: "draft",
+        reviews: [],
+        applyHistory: [],
+        updatedAt: "2026-04-08T09:12:00.000Z",
+      };
+      evolutionCandidates = [candidate, ...evolutionCandidates];
+      sendJson(201, candidate);
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/research/candidates/workspace-skill") {
+      const raw = await readRequestBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const candidate = {
+        ...evolutionCandidates.find((item) => item.candidateType === "workspace-skill"),
+        id: "evolution-candidate-skill-2",
+        sourceId: body.assetId ?? moduleAsset.id,
+        status: "draft",
+        reviews: [],
+        applyHistory: [],
+        updatedAt: "2026-04-08T09:12:30.000Z",
+      };
+      evolutionCandidates = [candidate, ...evolutionCandidates];
+      sendJson(201, candidate);
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname.endsWith("/review")) {
+      const candidateId = decodeURIComponent(url.pathname.split("/")[4] ?? "");
+      const raw = await readRequestBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      evolutionCandidates = evolutionCandidates.map((candidate) =>
+        candidate.id === candidateId
+          ? {
+              ...candidate,
+              status: body.decision ?? candidate.status,
+              reviews: [
+                {
+                  decision: body.decision ?? "reviewed",
+                  reviewer: body.reviewer,
+                  notes: body.notes,
+                  createdAt: "2026-04-08T09:13:00.000Z",
+                },
+                ...candidate.reviews,
+              ],
+              updatedAt: "2026-04-08T09:13:00.000Z",
+            }
+          : candidate,
+      );
+      sendJson(200, evolutionCandidates.find((candidate) => candidate.id === candidateId));
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname.endsWith("/apply")) {
+      const candidateId = decodeURIComponent(url.pathname.split("/")[4] ?? "");
+      const raw = await readRequestBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const candidate = evolutionCandidates.find((item) => item.id === candidateId);
+      if (!candidate) {
+        sendJson(404, { message: "Evolution candidate not found" });
+        return;
+      }
+
+      const result =
+        candidate.candidateType === "workspace-skill"
+          ? {
+              dryRun: body.dryRun === true,
+              targetType: "workspace-skill",
+              targetId: candidate.payload.skillKey,
+              changedFields: ["skillFilePath", "referencePaths"],
+              before: null,
+              after: {
+                skillKey: candidate.payload.skillKey,
+                directoryName: candidate.payload.directoryName,
+                label: candidate.payload.label,
+                description: candidate.payload.description,
+                relatedTools: candidate.payload.relatedTools,
+                referencePaths: [`E:/fixture/workspace/skills/${candidate.payload.directoryName}/SOURCE.md`],
+                homepage: candidate.payload.homepage,
+                enabled: candidate.payload.enabled,
+                skillFilePath: `E:/fixture/workspace/skills/${candidate.payload.directoryName}/SKILL.md`,
+                configPath: "E:/fixture/workspace/channels/skills-config.json",
+              },
+              reviewer: body.reviewer,
+              notes: body.notes,
+              appliedAt: "2026-04-08T09:14:30.000Z",
+            }
+          : {
+              dryRun: body.dryRun === true,
+              targetType: "research-direction",
+              targetId: researchDirection.id,
+              changedFields: ["currentGoals", "knownBaselines"],
+              before: {
+                directionId: researchDirection.id,
+                label: researchDirection.label,
+                summary: researchDirection.summary,
+                queryHints: researchDirection.queryHints,
+                knownBaselines: researchDirection.knownBaselines,
+                evaluationPriorities: researchDirection.evaluationPriorities,
+                currentGoals: researchDirection.currentGoals,
+                shortTermValidationTargets: researchDirection.shortTermValidationTargets,
+              },
+              after: {
+                directionId: researchDirection.id,
+                label: researchDirection.label,
+                summary: researchDirection.summary,
+                queryHints: researchDirection.queryHints,
+                knownBaselines: [...new Set([...researchDirection.knownBaselines, ...candidate.payload.knownBaselines])],
+                evaluationPriorities: [
+                  ...new Set([...researchDirection.evaluationPriorities, ...candidate.payload.evaluationPriorities]),
+                ],
+                currentGoals: [...new Set([...researchDirection.currentGoals, ...candidate.payload.currentGoals])],
+                shortTermValidationTargets: [
+                  ...new Set([...researchDirection.shortTermValidationTargets, ...candidate.payload.shortTermValidationTargets]),
+                ],
+              },
+              reviewer: body.reviewer,
+              notes: body.notes,
+              appliedAt: "2026-04-08T09:14:00.000Z",
+            };
+
+      if (body.dryRun === true) {
+        sendJson(200, {
+          candidate,
+          result,
+        });
+        return;
+      }
+
+      if (candidate.candidateType !== "workspace-skill") {
+        researchDirection.knownBaselines = result.after.knownBaselines;
+        researchDirection.evaluationPriorities = result.after.evaluationPriorities;
+        researchDirection.currentGoals = result.after.currentGoals;
+        researchDirection.shortTermValidationTargets = result.after.shortTermValidationTargets;
+      }
+      evolutionCandidates = evolutionCandidates.map((item) =>
+        item.id === candidateId
+          ? {
+              ...item,
+              status: "applied",
+              applyHistory: [result, ...item.applyHistory],
+              updatedAt: "2026-04-08T09:14:00.000Z",
+            }
+          : item,
+      );
+      sendJson(200, {
+        candidate: evolutionCandidates.find((item) => item.id === candidateId),
+        result,
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname.endsWith("/rollback")) {
+      const candidateId = decodeURIComponent(url.pathname.split("/")[4] ?? "");
+      const raw = await readRequestBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const candidate = evolutionCandidates.find((item) => item.id === candidateId);
+      if (!candidate) {
+        sendJson(404, { message: "Evolution candidate not found" });
+        return;
+      }
+
+      const latestApply = candidate.applyHistory[0];
+      const result = {
+        targetType:
+          latestApply?.targetType ??
+          (candidate.candidateType === "workspace-skill" ? "workspace-skill" : "research-direction"),
+        targetId:
+          latestApply?.targetId ??
+          (candidate.candidateType === "workspace-skill" ? candidate.payload.skillKey : researchDirection.id),
+        changedFields: latestApply?.changedFields ?? [],
+        before: latestApply?.after ?? null,
+        after: latestApply?.before ?? null,
+        revertedApplyAppliedAt: latestApply?.appliedAt ?? "2026-04-08T09:14:00.000Z",
+        reviewer: body.reviewer,
+        notes: body.notes,
+        rolledBackAt: "2026-04-08T09:15:00.000Z",
+      };
+
+      if (candidate.candidateType !== "workspace-skill" && latestApply?.before) {
+        researchDirection.knownBaselines = latestApply.before.knownBaselines;
+        researchDirection.evaluationPriorities = latestApply.before.evaluationPriorities;
+        researchDirection.currentGoals = latestApply.before.currentGoals;
+        researchDirection.shortTermValidationTargets = latestApply.before.shortTermValidationTargets;
+      }
+
+      evolutionCandidates = evolutionCandidates.map((item) =>
+        item.id === candidateId
+          ? {
+              ...item,
+              status: item.reviews[0]?.decision ?? "draft",
+              rollbackHistory: [result, ...item.rollbackHistory],
+              updatedAt: "2026-04-08T09:15:00.000Z",
+            }
+          : item,
+      );
+
+      sendJson(200, {
+        candidate: evolutionCandidates.find((item) => item.id === candidateId),
+        result,
+      });
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/api/ui/runtime-log") {
       runtimeLogCallCount += 1;
       const stdoutLines = ["line-one", "line-two"];
@@ -1510,7 +1971,7 @@ await writeLog();
 if (args[0] === "plugins" && args[1] === "list" && args.includes("--json")) {
   process.stdout.write(JSON.stringify({
     plugins: [
-      { id: "reagent-openclaw", name: "@sinlair/reagent-openclaw", version: "0.1.0", enabled: true, status: "loaded", channelIds: [] }
+      { id: "openclaw-weixin", name: "@tencent-weixin/openclaw-weixin", version: "2.1.1", enabled: true, status: "loaded", channelIds: ["openclaw-weixin"] }
     ]
   }));
   process.exit(0);
@@ -1565,13 +2026,13 @@ await writeFile(target, JSON.stringify({ entries: { "workspace:research-brief": 
   return { commandPath };
 }
 
-async function runCli(args, cwd, envOverrides = {}) {
+async function runCli(args, cwd, envOverrides = {}, workdir = cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
       ["--import", "tsx/esm", path.join(cwd, "src", "cli.ts"), ...args],
       {
-        cwd,
+        cwd: workdir,
         env: {
           ...process.env,
           NODE_ENV: "test",
@@ -1744,7 +2205,36 @@ async function main() {
     assert.equal(result.code, 0, result.stderr);
     assert.equal(result.stdout.includes("ReAgent CLI"), true);
     assert.equal(result.stdout.includes("reagent runtime"), true);
+    assert.equal(result.stdout.includes("reagent system"), true);
+    assert.equal(result.stdout.includes("reagent commands"), true);
+    assert.equal(result.stdout.includes("reagent models"), true);
+    assert.equal(result.stdout.includes("reagent mcp"), true);
+    assert.equal(result.stdout.includes("reagent skills"), true);
+    assert.equal(result.stdout.includes("reagent qr"), true);
+    assert.equal(result.stdout.includes("reagent devices"), true);
+    assert.equal(result.stdout.includes("reagent pairing"), true);
+    assert.equal(result.stdout.includes("reagent acp / dns / hooks / nodes / sandbox / secrets / security / webhooks / exec-approvals / tui"), true);
+    assert.equal(result.stdout.includes("reagent watch"), true);
+    assert.equal(result.stdout.includes("reagent sessions"), true);
     assert.equal(result.stdout.includes("reagent daemon"), true);
+  });
+
+  await runTest("OpenClaw parity matrix is machine-readable and pinned to the imported upstream baseline", async () => {
+    const raw = await readFile(path.join(cwd, "docs", "openclaw-parity-matrix.json"), "utf8");
+    const payload = JSON.parse(raw);
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.upstream.commit, "21403a3898f6ad8b042e5812caf7848bdf72199c");
+    assert.equal(Array.isArray(payload.surfaces), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "models"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "mcp"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "skills"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "system"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "qr"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "devices"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "pairing"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "acp"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "secrets"), true);
+    assert.equal(payload.surfaces.some((entry) => entry.id === "webhooks"), true);
   });
 
   await runTest("Built CLI gateway help exposes OpenClaw-style compatibility commands", async () => {
@@ -1802,6 +2292,103 @@ async function main() {
         assert.equal(payload.channels.channels.wechat.connected, true);
         assert.equal(payload.memory.files, 2);
         assert.equal(payload.gateway.healthReachable, true);
+        assert.equal(payload.openclaw.snapshotAvailable, true);
+        assert.equal(payload.openclaw.importedExtensionCount > 0, true);
+      });
+
+      await runTest("CLI home aggregates runtime, research, memory, and next steps", async () => {
+        const result = await runCli(["home", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.version.length > 0, true);
+        assert.equal(payload.mode, "report-ready");
+        assert.equal(payload.headline.length > 0, true);
+        assert.equal(payload.summary.length > 0, true);
+        assert.equal(payload.runtime.agent, "ReAgent");
+        assert.equal(payload.channels.channels.wechat.connected, true);
+        assert.equal(payload.memory.files, 2);
+        assert.equal(payload.research.recentReports[0].taskId, payload.research.recentTasks[0].taskId);
+        assert.equal(Array.isArray(payload.nextSteps), true);
+        assert.equal(payload.nextSteps.length > 0, true);
+      });
+
+      await runTest("CLI home prints dashboard-style sections in text mode", async () => {
+        const result = await runCli(["home", "--url", fixture.baseUrl], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(result.stdout.includes("ReAgent Home"), true);
+        assert.equal(result.stdout.includes("Mode:"), true);
+        assert.equal(result.stdout.includes("Headline:"), true);
+        assert.equal(result.stdout.includes("Overview:"), true);
+        assert.equal(result.stdout.includes("Runtime:"), true);
+        assert.equal(result.stdout.includes("OpenClaw:"), true);
+        assert.equal(result.stdout.includes("Research:"), true);
+        assert.equal(result.stdout.includes("Memory:"), true);
+        assert.equal(result.stdout.includes("Next Steps:"), true);
+      });
+
+      await runTest("CLI system status reuses the root runtime status surface", async () => {
+        const result = await runCli(["system", "status", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.runtime.agent, "ReAgent");
+        assert.equal(payload.gateway.healthReachable, true);
+        assert.equal(payload.openclaw.snapshotAvailable, true);
+      });
+
+      await runTest("CLI top-level inspect surfaces imported upstream plugin details", async () => {
+        await withTempDir(async (tempDir) => {
+          const fakeOpenClaw = await createFakeOpenClaw(tempDir);
+          const result = await runCli(
+            ["inspect", "openai", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+            cwd,
+            { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+          );
+          assert.equal(result.code, 0, result.stderr);
+          const payload = JSON.parse(result.stdout);
+          assert.equal(payload.snapshot.available, true);
+          assert.equal(payload.target, "openai");
+          assert.equal(payload.plugin.id, "openai");
+          assert.equal(payload.plugin.source, "upstream");
+          assert.equal(payload.plugin.packageRoot.includes(path.join("upstream", "openclaw", "extensions", "openai")), true);
+          assert.equal(typeof payload.host.available, "boolean");
+        });
+      });
+
+      await runTest("CLI onboard inspects first-run setup without mutating the workspace by default", async () => {
+        const result = await runCli(["onboard", "--url", fixture.baseUrl, "--json", "--skip-db"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.version.length > 0, true);
+        assert.equal(typeof payload.envFile.exists, "boolean");
+        assert.equal(typeof payload.workspace.exists, "boolean");
+        assert.equal(payload.runtime.gatewayUrl, fixture.baseUrl);
+        assert.equal(payload.actions.apply, false);
+        assert.equal(payload.actions.skipDb, true);
+        assert.equal(Array.isArray(payload.nextSteps), true);
+        assert.equal(payload.nextSteps.length > 0, true);
+      });
+
+      await runTest("CLI doctor --fix applies safe local repairs in an isolated workspace", async () => {
+        const tempDir = await mkdtemp(path.join(cwd, ".tmp-reagent-cli-"));
+        try {
+          const result = await runCli(
+            ["doctor", "--url", fixture.baseUrl, "--json", "--fix", "--skip-db", "--workspace", ".reagent/workspace"],
+            cwd,
+            {},
+            tempDir,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          const payload = JSON.parse(result.stdout);
+          assert.equal(payload.actions.fix, true);
+          assert.equal(payload.actions.skipDb, true);
+          assert.equal(payload.envFile.exists, true);
+          assert.equal(payload.workspaceReady, true);
+          assert.equal(payload.actions.fixesApplied.length > 0, true);
+          await access(path.join(tempDir, ".env"));
+          await access(path.join(tempDir, ".reagent", "workspace"));
+        } finally {
+          await rm(tempDir, { recursive: true, force: true });
+        }
       });
 
       await runTest("CLI status --all prints detailed status sections", async () => {
@@ -1809,6 +2396,10 @@ async function main() {
         assert.equal(result.code, 0, result.stderr);
         assert.equal(result.stdout.includes("WeChat:"), true);
         assert.equal(result.stdout.includes("Account ID:"), true);
+        assert.equal(result.stdout.includes("Accounts:"), true);
+        assert.equal(result.stdout.includes("wx-ops-2"), true);
+        assert.equal(result.stdout.includes("OpenClaw:"), true);
+        assert.equal(result.stdout.includes("Imported upstream extensions:"), true);
         assert.equal(result.stdout.includes("Memory:"), true);
         assert.equal(result.stdout.includes("Search mode:"), true);
       });
@@ -1833,11 +2424,84 @@ async function main() {
         assert.equal(payload.memory.files, 2);
       });
 
+      await runTest("CLI runtime jobs shows aggregated scheduler observability", async () => {
+        const result = await runCli(["runtime", "jobs", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.items.length, 2);
+        assert.equal(payload.items[0].id, "research-discovery-scheduler");
+        assert.equal(payload.items[1].id, "memory-auto-compaction");
+      });
+
       await runTest("CLI channels status prints WeChat provider details", async () => {
         const result = await runCli(["channels", "status", "--url", fixture.baseUrl], cwd);
         assert.equal(result.code, 0, result.stderr);
         assert.ok(result.stdout.includes("Provider: mock"));
         assert.ok(result.stdout.includes("Connected: yes"));
+      });
+
+      await runTest("CLI channels logs --host prints persisted OpenClaw host event records", async () => {
+        const result = await runCli(["channels", "logs", "--host", "--url", fixture.baseUrl], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        assert.ok(result.stdout.includes("sessions.changed"));
+        assert.ok(result.stdout.includes("session.message"));
+        assert.ok(result.stdout.includes("host event reply"));
+      });
+
+      await runTest("CLI channels sessions --host reads the cached OpenClaw host session registry", async () => {
+        const result = await runCli(["channels", "sessions", "--host", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.source, "host-registry");
+        assert.equal(payload.sessions.length, 1);
+        assert.equal(payload.sessions[0].sessionKey, "agent:main:thread:wx-user-host-1");
+        assert.equal(payload.sessions[0].accountId, "wx-test-1");
+      });
+
+      await runTest("CLI top-level login, wait, and logout reuse the channel control path", async () => {
+        let result = await runCli(["login", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        let payload = JSON.parse(result.stdout);
+        assert.equal(payload.providerMode, "mock");
+        assert.equal(payload.connected, false);
+
+        result = await runCli(["wait", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.connected, true);
+        assert.equal(payload.accountId, "wx-test-1");
+
+        result = await runCli(["logout", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.connected, false);
+      });
+
+      await runTest("CLI top-level send reuses the WeChat push path", async () => {
+        const result = await runCli(
+          [
+            "send",
+            "wx-user-11",
+            "--text",
+            "hello-openclaw",
+            "--account-id",
+            "wx_override_11",
+            "--thread-id",
+            "thread-11",
+            "--media-url",
+            "https://example.com/openclaw.png",
+            "--url",
+            fixture.baseUrl,
+            "--json",
+          ],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+        assert.equal(payload.reply, "push:wx-user-11:[media]https://example.com/openclaw.png");
+        assert.equal(payload.accountId, "wx_override_11");
+        assert.equal(payload.threadId, "thread-11");
+        assert.equal(payload.mediaUrl, "https://example.com/openclaw.png");
       });
 
       await runTest("CLI channels status falls back to local summary when the gateway is unreachable", async () => {
@@ -1953,6 +2617,65 @@ async function main() {
         assert.equal(result.code, 0, result.stderr);
         payload = JSON.parse(result.stdout);
         assert.equal(payload.reply, "push:wx-user-1:hello-send");
+
+        result = await runCli(
+          [
+            "channels",
+            "push",
+            "wx-user-9",
+            "--text",
+            "hello-account",
+            "--account-id",
+            "wx_override_9",
+            "--thread-id",
+            "thread-42",
+            "--url",
+            fixture.baseUrl,
+            "--json",
+          ],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.reply, "push:wx-user-9:hello-account");
+        assert.equal(payload.accountId, "wx_override_9");
+        assert.equal(payload.threadId, "thread-42");
+
+        result = await runCli(
+          [
+            "channels",
+            "push",
+            "wx-user-10",
+            "--media-url",
+            "https://example.com/demo.png",
+            "--url",
+            fixture.baseUrl,
+            "--json",
+          ],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.reply, "push:wx-user-10:[media]https://example.com/demo.png");
+        assert.equal(payload.mediaUrl, "https://example.com/demo.png");
+
+        result = await runCli(
+          [
+            "send",
+            "--session-key",
+            "agent:main:thread:wx-user-11",
+            "--text",
+            "hello-session",
+            "--url",
+            fixture.baseUrl,
+            "--json",
+          ],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.reply, "push:agent:main:thread:wx-user-11:hello-session");
+        assert.equal(payload.sessionKey, "agent:main:thread:wx-user-11");
       });
 
       await runTest("CLI memory search returns JSON hits", async () => {
@@ -2057,6 +2780,12 @@ async function main() {
         payload = JSON.parse(result.stdout);
         assert.equal(payload.nextRecommendedAction.includes("BrowserGym"), true);
         assert.equal(payload.reportPath.endsWith("/report.json"), true);
+
+        result = await runCli(["research", "workstream", taskId, "search", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.workstreamId, "search");
+        assert.equal(payload.path.endsWith("/workstreams/search.md"), true);
       });
 
       await runTest("CLI research direction and discovery commands manage profiles and scheduler", async () => {
@@ -2264,6 +2993,101 @@ async function main() {
           assert.equal(result.code, 0, result.stderr);
           payload = JSON.parse(result.stdout);
           assert.equal(payload.topic, "browser agents");
+
+          result = await runCli(["research", "candidates", "--url", fixture.baseUrl, "--json"], cwd);
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.candidates[0].id, "evolution-candidate-1");
+
+          result = await runCli(["research", "candidates", "--type", "workspace-skill", "--url", fixture.baseUrl, "--json"], cwd);
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.candidates[0].candidateType, "workspace-skill");
+
+          result = await runCli(["research", "candidate", "evolution-candidate-1", "--url", fixture.baseUrl, "--json"], cwd);
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.id, "evolution-candidate-1");
+
+          result = await runCli(
+            ["research", "candidate", "generate", "--report", "direction-report-1", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.sourceId, "direction-report-1");
+
+          result = await runCli(
+            ["research", "candidate", "generate", "--asset", "module-asset-1", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.candidateType, "workspace-skill");
+
+          result = await runCli(
+            ["research", "candidate", "approve", "evolution-candidate-1", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.status, "approved");
+
+          result = await runCli(
+            ["research", "candidate", "apply", "evolution-candidate-1", "--dry-run", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.result.dryRun, true);
+
+          result = await runCli(
+            ["research", "candidate", "apply", "evolution-candidate-1", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.candidate.status, "applied");
+
+          result = await runCli(
+            ["research", "candidate", "rollback", "evolution-candidate-1", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.candidate.status, "approved");
+
+          result = await runCli(
+            ["research", "candidate", "approve", "evolution-candidate-skill-1", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.status, "approved");
+
+          result = await runCli(
+            ["research", "candidate", "apply", "evolution-candidate-skill-1", "--dry-run", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.result.targetType, "workspace-skill");
+
+          result = await runCli(
+            ["research", "candidate", "apply", "evolution-candidate-skill-1", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.candidate.status, "applied");
+
+          result = await runCli(
+            ["research", "candidate", "rollback", "evolution-candidate-skill-1", "--url", fixture.baseUrl, "--json"],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.candidate.status, "approved");
         });
       });
     } finally {
@@ -2331,6 +3155,7 @@ async function main() {
       payload = JSON.parse(result.stdout);
       assert.equal(payload.properties.llm.description.includes("llm-providers.json"), true);
       assert.equal(payload.properties.mcp.description.includes("mcp-servers.json"), true);
+      assert.equal(payload.properties.commands.description.includes("inbound-command-policy.json"), true);
     });
 
     await runTest("CLI config set can persist structured JSON values", async () => {
@@ -2353,6 +3178,112 @@ async function main() {
       const filePayload = JSON.parse(fileRaw);
       assert.equal(filePayload.servers[0].serverLabel, "maps");
       assert.equal(filePayload.servers[0].enabled, true);
+    });
+
+    await runTest("CLI config manages inbound command policy files", async () => {
+      let result = await runCli(
+        ["config", "set", "commands.remote.workspace-mutation.mode", "allowlist", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      let payload = JSON.parse(result.stdout);
+      assert.equal(payload.keyPath, "commands.remote.workspace-mutation.mode");
+      assert.equal(payload.nextValue, "allowlist");
+
+      result = await runCli(
+        [
+          "config",
+          "set",
+          "commands.remote.session-control.senderIds",
+          "[\"wx-1\",\"wx-2\"]",
+          "--workspace",
+          workspaceDir,
+          "--strict-json",
+          "--json",
+        ],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.keyPath, "commands.remote.session-control.senderIds");
+
+      result = await runCli(
+        ["config", "get", "commands.remote.session-control.senderIds", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.deepEqual(payload.value, ["wx-1", "wx-2"]);
+
+      result = await runCli(
+        ["config", "file", "commands", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.alias, "commands");
+
+      const commandsRaw = await readFile(path.join(workspaceDir, "channels", "inbound-command-policy.json"), "utf8");
+      const commandsPayload = JSON.parse(commandsRaw);
+      assert.equal(commandsPayload.remote["workspace-mutation"].mode, "allowlist");
+      assert.deepEqual(commandsPayload.remote["session-control"].senderIds, ["wx-1", "wx-2"]);
+    });
+
+    await runTest("CLI commands surface lists registry, policy, and authorization decisions", async () => {
+      let result = await runCli(["commands", "list", "--workspace", workspaceDir, "--json"], cwd);
+      assert.equal(result.code, 0, result.stderr);
+      let payload = JSON.parse(result.stdout);
+      assert.equal(Array.isArray(payload.commands), true);
+      assert.equal(payload.commands.some((entry) => entry.id === "remember" && entry.tier === "workspace-mutation"), true);
+      assert.equal(payload.commands.some((entry) => entry.id === "memory-compact" && entry.allowedSources.includes("ui")), true);
+
+      result = await runCli(["commands", "policy", "--workspace", workspaceDir, "--json"], cwd);
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.path.endsWith(path.join("channels", "inbound-command-policy.json")), true);
+      assert.equal(payload.policy.remote["workspace-mutation"].mode, "allowlist");
+
+      result = await runCli(
+        ["commands", "authorize", "wechat", "wx-blocked", "remember", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.allowed, false);
+      assert.equal(payload.reason, "sender-not-allowlisted");
+
+      result = await runCli(
+        [
+          "commands",
+          "set",
+          "remote.workspace-mutation.senderIds",
+          "[\"wx-allowed\"]",
+          "--workspace",
+          workspaceDir,
+          "--strict-json",
+          "--json",
+        ],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+
+      result = await runCli(
+        ["commands", "authorize", "wechat", "wx-allowed", "/remember", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.allowed, true);
+      assert.equal(payload.spec.tier, "workspace-mutation");
+
+      result = await runCli(
+        ["commands", "authorize", "wechat", "wx-allowed", "/memory-compact", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.allowed, false);
+      assert.equal(payload.reason, "source-blocked");
     });
 
     await runTest("CLI config export, import, and edit operate on managed config files", async () => {
@@ -2393,6 +3324,94 @@ async function main() {
       imported = JSON.parse(await readFile(path.join(workspaceDir, "channels", "skills-config.json"), "utf8"));
       assert.equal(imported.entries["workspace:research-brief"].enabled, false);
     });
+
+    await runTest("CLI models exposes a first-class compatibility family over managed llm config", async () => {
+      let result = await runCli(
+        ["models", "set", "defaults.agent.providerId", "proxy-a", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      let payload = JSON.parse(result.stdout);
+      assert.equal(payload.keyPath, "llm.defaults.agent.providerId");
+      assert.equal(payload.nextValue, "proxy-a");
+
+      result = await runCli(
+        ["models", "get", "defaults.agent.providerId", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.value, "proxy-a");
+
+      result = await runCli(["models", "--workspace", workspaceDir, "--json"], cwd);
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.routes.agent.providerId.length > 0, true);
+      assert.equal(Array.isArray(payload.providers), true);
+    });
+
+    await runTest("CLI mcp exposes a first-class compatibility family over managed MCP config", async () => {
+      let result = await runCli(
+        [
+          "mcp",
+          "set",
+          "servers",
+          "[{\"serverLabel\":\"maps\",\"serverUrl\":\"https://example.com/sse\",\"enabled\":true}]",
+          "--workspace",
+          workspaceDir,
+          "--strict-json",
+          "--json"
+        ],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      let payload = JSON.parse(result.stdout);
+      assert.equal(payload.keyPath, "mcp.servers");
+
+      result = await runCli(["mcp", "list", "--workspace", workspaceDir, "--json"], cwd);
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.servers[0].serverLabel, "maps");
+      assert.equal(payload.servers[0].status, "ready");
+    });
+
+    await runTest("CLI skills exposes a first-class compatibility family over workspace skill state", async () => {
+      const skillDir = path.join(workspaceDir, "skills", "demo");
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        path.join(skillDir, "SKILL.md"),
+        `---
+name: Demo Skill
+description: Demo workspace skill.
+---
+# Demo Skill
+
+Use this skill for demo compatibility testing.
+`,
+        "utf8",
+      );
+
+      let result = await runCli(["skills", "list", "--workspace", workspaceDir, "--json"], cwd);
+      assert.equal(result.code, 0, result.stderr);
+      let payload = JSON.parse(result.stdout);
+      assert.equal(payload.skills[0].skillKey, "workspace:demo");
+
+      result = await runCli(
+        ["skills", "set", "entries.workspace:demo.enabled", "false", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.keyPath, "skills.entries.workspace:demo.enabled");
+
+      result = await runCli(
+        ["skills", "get", "entries.workspace:demo.enabled", "--workspace", workspaceDir, "--json"],
+        cwd,
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.value, false);
+    });
   });
 
   await withTempDir(async (tempDir) => {
@@ -2408,7 +3427,7 @@ async function main() {
       const payload = JSON.parse(result.stdout);
       assert.equal(payload.host.available, true);
       assert.equal(payload.host.plugins.length >= 1, true);
-      assert.equal(payload.bundled.some((entry) => entry.plugin.id === "reagent-openclaw"), true);
+      assert.equal(payload.bundled.some((entry) => entry.plugin.id === "openclaw-weixin"), true);
     });
 
     await runTest("CLI plugins marketplace list surfaces bundled repo plugins", async () => {
@@ -2417,7 +3436,25 @@ async function main() {
       const payload = JSON.parse(result.stdout);
       assert.equal(payload.marketplace.resolvedSource, "reagent");
       assert.equal(Array.isArray(payload.plugins), true);
-      assert.equal(payload.plugins.some((entry) => entry.id === "reagent-openclaw"), true);
+      assert.equal(payload.plugins.some((entry) => entry.id === "openclaw-weixin"), true);
+    });
+
+    await runTest("CLI plugins marketplace foundation alias resolves to the OpenClaw foundation package", async () => {
+      const result = await runCli(["plugins", "marketplace", "list", "foundation", "--json"], cwd);
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.marketplace.resolvedSource, "reference");
+      assert.equal(payload.plugins.some((entry) => entry.source === "reference"), true);
+      assert.equal(payload.plugins.some((entry) => entry.id === "openclaw-weixin"), true);
+    });
+
+    await runTest("CLI plugins marketplace upstream alias resolves to imported OpenClaw extensions", async () => {
+      const result = await runCli(["plugins", "marketplace", "list", "openclaw", "--json"], cwd);
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.marketplace.resolvedSource, "upstream");
+      assert.equal(payload.plugins.some((entry) => entry.source === "upstream"), true);
+      assert.equal(payload.plugins.some((entry) => entry.id === "openai"), true);
     });
 
     await runTest("CLI plugins inspect --all aliases to the bundled plugin list", async () => {
@@ -2429,12 +3466,12 @@ async function main() {
       assert.equal(result.code, 0, result.stderr);
       const payload = JSON.parse(result.stdout);
       assert.equal(Array.isArray(payload.bundled), true);
-      assert.equal(payload.bundled.some((entry) => entry.plugin.id === "reagent-openclaw"), true);
+      assert.equal(payload.bundled.some((entry) => entry.plugin.id === "openclaw-weixin"), true);
     });
 
     await runTest("CLI plugins install delegates to OpenClaw CLI with bundled install spec", async () => {
       const result = await runCli(
-        ["plugins", "install", "reagent-openclaw", "--openclaw-cli", fakeOpenClaw.commandPath, "--yes", "--json"],
+        ["plugins", "install", "openclaw-weixin", "--openclaw-cli", fakeOpenClaw.commandPath, "--yes", "--json"],
         cwd,
         { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
       );
@@ -2442,16 +3479,16 @@ async function main() {
       const payload = JSON.parse(result.stdout);
       assert.equal(payload.ok, true);
       assert.equal(payload.action, "install");
-      assert.equal(payload.args.includes("@sinlair/reagent-openclaw"), true);
+      assert.equal(payload.args.includes("@tencent-weixin/openclaw-weixin"), true);
       assert.equal(payload.args.includes("--yes"), true);
 
       const logRaw = await readFile(fakeOpenClaw.logPath, "utf8");
-      assert.equal(logRaw.includes("@sinlair/reagent-openclaw"), true);
+      assert.equal(logRaw.includes("@tencent-weixin/openclaw-weixin"), true);
     });
 
     await runTest("CLI plugins update delegates to OpenClaw CLI", async () => {
       const result = await runCli(
-        ["plugins", "update", "reagent-openclaw", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        ["plugins", "update", "openclaw-weixin", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
         cwd,
         { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
       );
@@ -2459,7 +3496,158 @@ async function main() {
       const payload = JSON.parse(result.stdout);
       assert.equal(payload.ok, true);
       assert.equal(payload.action, "update");
-      assert.equal(payload.args.includes("reagent-openclaw"), true);
+      assert.equal(payload.args.includes("openclaw-weixin"), true);
+    });
+
+    await runTest("CLI top-level install delegates upstream plugin installs through the OpenClaw host path", async () => {
+      const result = await runCli(
+        ["install", "openai", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.action, "install");
+      assert.equal(payload.args.includes("@openclaw/openai-provider"), true);
+    });
+
+    await runTest("CLI top-level install delegates foundation plugin installs through the same path", async () => {
+      const result = await runCli(
+        ["install", "openclaw-weixin", "--openclaw-cli", fakeOpenClaw.commandPath, "--json", "--yes"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.action, "install");
+      assert.equal(payload.args.includes("@tencent-weixin/openclaw-weixin"), true);
+      assert.equal(payload.args.includes("--yes"), true);
+    });
+
+    await runTest("CLI top-level enable and disable reuse the delegated host lifecycle path", async () => {
+      let result = await runCli(
+        ["enable", "openclaw-weixin", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      let payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(Array.isArray(payload.args), true);
+      assert.equal(payload.args[0], "plugins");
+      assert.equal(payload.args[1], "enable");
+      assert.equal(payload.args.includes("openclaw-weixin"), true);
+
+      result = await runCli(
+        ["disable", "openclaw-weixin", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(Array.isArray(payload.args), true);
+      assert.equal(payload.args[0], "plugins");
+      assert.equal(payload.args[1], "disable");
+      assert.equal(payload.args.includes("openclaw-weixin"), true);
+    });
+
+    await runTest("CLI top-level update reuses the delegated host lifecycle path", async () => {
+      const result = await runCli(
+        ["update", "openai", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.action, "update");
+      assert.equal(payload.args.includes("openai"), true);
+    });
+
+    await runTest("CLI qr delegates to the OpenClaw qr command family", async () => {
+      const result = await runCli(
+        ["qr", "--openclaw-cli", fakeOpenClaw.commandPath, "--json", "--public-url", "https://example.test"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.args[0], "qr");
+      assert.equal(payload.args.includes("--public-url"), true);
+      assert.equal(payload.args.includes("https://example.test"), true);
+    });
+
+    await runTest("CLI devices delegates to the OpenClaw devices command family", async () => {
+      const result = await runCli(
+        ["devices", "list", "--openclaw-cli", fakeOpenClaw.commandPath, "--json", "--pending"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.args[0], "devices");
+      assert.equal(payload.args[1], "list");
+      assert.equal(payload.args.includes("--pending"), true);
+    });
+
+    await runTest("CLI pairing delegates to the OpenClaw pairing command family", async () => {
+      const result = await runCli(
+        ["pairing", "list", "--openclaw-cli", fakeOpenClaw.commandPath, "--json", "--channel", "openclaw-weixin"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.args[0], "pairing");
+      assert.equal(payload.args[1], "list");
+      assert.equal(payload.args.includes("--channel"), true);
+      assert.equal(payload.args.includes("openclaw-weixin"), true);
+    });
+
+    await runTest("CLI acp delegates to the OpenClaw acp command family", async () => {
+      const result = await runCli(
+        ["acp", "--openclaw-cli", fakeOpenClaw.commandPath, "--json", "--session", "agent:main:main"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.args[0], "acp");
+      assert.equal(payload.args.includes("--session"), true);
+      assert.equal(payload.args.includes("agent:main:main"), true);
+    });
+
+    await runTest("CLI secrets delegates to the OpenClaw secrets command family", async () => {
+      const result = await runCli(
+        ["secrets", "list", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.args[0], "secrets");
+      assert.equal(payload.args[1], "list");
+    });
+
+    await runTest("CLI webhooks delegates to the OpenClaw webhooks command family", async () => {
+      const result = await runCli(
+        ["webhooks", "list", "--openclaw-cli", fakeOpenClaw.commandPath, "--json"],
+        cwd,
+        { OPENCLAW_FAKE_LOG: fakeOpenClaw.logPath },
+      );
+      assert.equal(result.code, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.args[0], "webhooks");
+      assert.equal(payload.args[1], "list");
     });
   });
 

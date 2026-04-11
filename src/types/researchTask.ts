@@ -18,14 +18,24 @@ export type ResearchTaskState =
   | "failed";
 
 export type ResearchTaskReviewStatus = "pending" | "passed" | "needs-review";
+export type ResearchTaskWorkstreamId = "search" | "reading" | "synthesis";
+export type ResearchTaskWorkstreamStatus = "pending" | "in_progress" | "completed" | "blocked";
 
 export interface ResearchTaskHandoffArtifactRef {
-  kind: "report" | "review";
+  kind: "report" | "review" | "workstream";
   id: string;
   title: string;
   path: string;
   createdAt: string;
   notes: string[];
+}
+
+export interface ResearchTaskWorkstream {
+  id: ResearchTaskWorkstreamId;
+  label: string;
+  status: ResearchTaskWorkstreamStatus;
+  summary: string;
+  nextStep: string;
 }
 
 export interface ResearchTaskHandoff {
@@ -39,6 +49,9 @@ export interface ResearchTaskHandoff {
   reviewStatus: ResearchTaskReviewStatus;
   nextRecommendedAction: string;
   blockers: string[];
+  activeWorkstreamId?: ResearchTaskWorkstreamId | undefined;
+  workstreams: ResearchTaskWorkstream[];
+  workstreamPaths: Record<ResearchTaskWorkstreamId, string>;
   artifacts: ResearchTaskHandoffArtifactRef[];
   roundPath: string;
   briefPath: string;

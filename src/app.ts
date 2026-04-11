@@ -18,6 +18,7 @@ import { ResearchDiscoverySchedulerService } from "./services/researchDiscoveryS
 import { ResearchDiscoveryService } from "./services/researchDiscoveryService.js";
 import { buildResearchService } from "./services/researchService.js";
 import { ResearchTaskService } from "./services/researchTaskService.js";
+import { RuntimeJobsService } from "./services/runtimeJobsService.js";
 
 export async function createApp() {
   const app = Fastify({
@@ -32,7 +33,11 @@ export async function createApp() {
   const memoryService = new MemoryService(workspaceDir);
   const memoryRecallService = new MemoryRecallService(workspaceDir, researchService);
   const memoryCompactionService = new MemoryCompactionService(workspaceDir);
-  const memoryCompactionSchedulerService = new MemoryCompactionSchedulerService(memoryCompactionService, app.log);
+  const memoryCompactionSchedulerService = new MemoryCompactionSchedulerService(
+    workspaceDir,
+    memoryCompactionService,
+    app.log,
+  );
   await memoryService.ensureWorkspace();
   const channelService = new ChannelService(workspaceDir, researchService, memoryService, {
     wechatProvider: env.WECHAT_PROVIDER,
@@ -52,9 +57,14 @@ export async function createApp() {
   const researchDiscoverySchedulerService = new ResearchDiscoverySchedulerService(
     workspaceDir,
     researchDiscoveryService,
+    app.log,
   );
+  const runtimeJobsService = new RuntimeJobsService({
+    researchDiscoverySchedulerService,
+    memoryCompactionSchedulerService,
+  });
 
-  await registerHealthRoutes(app, workspaceDir);
+  await registerHealthRoutes(app, workspaceDir, runtimeJobsService);
   await registerResearchRoutes(
     app,
     workspaceDir,
@@ -69,6 +79,7 @@ export async function createApp() {
     memoryService,
     memoryRecallService,
     memoryCompactionService,
+    memoryCompactionSchedulerService,
     async () => memoryCompactionSchedulerService.refresh(),
   );
   await registerChannelRoutes(app, channelService);

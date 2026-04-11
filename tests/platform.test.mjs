@@ -63,10 +63,16 @@ class StubResearchService {
 class StubChatService {
   constructor() {
     this.inputs = [];
+    this.plainInputs = [];
   }
 
   async reply(input) {
     this.inputs.push(input);
+    return `Agent reply: ${input.text}`;
+  }
+
+  async plainReply(input) {
+    this.plainInputs.push(input);
     return `Chat reply: ${input.text}`;
   }
 }
@@ -370,9 +376,9 @@ async function main() {
       const chatReply = await channels.receiveWeChatMessage({
         senderId: "wx-user-chat-1",
         senderName: "Dana",
-        text: "你好，帮我看看这个工作台能做什么"
+        text: "hello there"
       });
-      assert.equal(chatReply.reply, "Chat reply: 你好，帮我看看这个工作台能做什么");
+      assert.equal(chatReply.reply, "Chat reply: hello there");
 
       const rememberReply = await channels.receiveWeChatMessage({
         senderId: "wx-user-chat-1",
@@ -382,7 +388,7 @@ async function main() {
       assert.equal(rememberReply.reply, "Saved to today's memory file.");
 
       const messages = await channels.listWeChatMessages();
-      assert.equal(messages.some((message) => message.text === "Chat reply: 你好，帮我看看这个工作台能做什么"), true);
+      assert.equal(messages.some((message) => message.text === "Chat reply: hello there"), true);
       assert.equal(messages.at(-1)?.direction, "outbound");
     });
   });
@@ -454,15 +460,15 @@ async function main() {
       const chatReply = await channels.receiveUiChatMessage({
         senderId: "ui-wechat-user",
         senderName: "Console User",
-        text: "你好，测试一下本地聊天"
+        text: "hello from ui"
       });
-      assert.equal(chatReply.reply, "Chat reply: 你好，测试一下本地聊天");
+      assert.equal(chatReply.reply, "Chat reply: hello from ui");
 
       const messages = await channels.listWeChatMessages();
       assert.equal(messages.length, 2);
       assert.equal(messages[0]?.direction, "inbound");
       assert.equal(messages[1]?.direction, "outbound");
-      assert.equal(messages[1]?.text, "Chat reply: 你好，测试一下本地聊天");
+      assert.equal(messages[1]?.text, "Chat reply: hello from ui");
     });
   });
 
@@ -610,9 +616,62 @@ async function main() {
         text: "hello from wechat"
       });
 
-      assert.equal(chatService.inputs.length, 2);
-      assert.equal(chatService.inputs[0].source, "ui");
-      assert.equal(chatService.inputs[1].source, "wechat");
+      assert.equal(chatService.plainInputs.length, 2);
+      assert.equal(chatService.plainInputs[0].source, "ui");
+      assert.equal(chatService.plainInputs[1].source, "wechat");
+      assert.equal(chatService.inputs.length, 0);
+    });
+  });
+
+  await runTest("ChannelService routes greeting-style WeChat messages through plain chat when available", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      await memory.ensureWorkspace();
+      const chatService = new StubChatService();
+      const channels = new ChannelService(dir, new StubResearchService(), memory, {
+        wechatProvider: "mock",
+        chatService
+      });
+
+      await channels.startWeChatLogin(false);
+      await channels.completeWeChatLogin("Mock User");
+
+      const greetingReply = await channels.receiveWeChatMessage({
+        senderId: "wx-user-plain-1",
+        senderName: "Plain User",
+        text: "���"
+      });
+
+      assert.equal(greetingReply.reply, "Chat reply: ���");
+      assert.equal(chatService.plainInputs.length, 1);
+      assert.equal(chatService.plainInputs[0].source, "wechat");
+      assert.equal(chatService.inputs.length, 0);
+    });
+  });
+
+  await runTest("ChannelService routes research-style WeChat messages through the agent runtime path", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      await memory.ensureWorkspace();
+      const chatService = new StubChatService();
+      const channels = new ChannelService(dir, new StubResearchService(), memory, {
+        wechatProvider: "mock",
+        chatService
+      });
+
+      await channels.startWeChatLogin(false);
+      await channels.completeWeChatLogin("Mock User");
+
+      const reply = await channels.receiveWeChatMessage({
+        senderId: "wx-user-agent-1",
+        senderName: "Agent User",
+        text: "please analyze this paper"
+      });
+
+      assert.equal(reply.reply, "Agent reply: please analyze this paper");
+      assert.equal(chatService.inputs.length, 1);
+      assert.equal(chatService.inputs[0].source, "wechat");
+      assert.equal(chatService.plainInputs.length, 0);
     });
   });
 

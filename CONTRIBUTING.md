@@ -34,11 +34,11 @@ npm.cmd run check:all
 npm.cmd run test
 ```
 
-If your change only touches the publishable packages:
+If your change only touches the standalone publishable package:
 
 ```powershell
-npm.cmd run build:packages
-npm.cmd run check:packages
+npm.cmd run release:verify
+npm.cmd run release:pack
 ```
 
 ## Pull Request Guidelines

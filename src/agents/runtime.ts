@@ -4,15 +4,25 @@ import path from "node:path";
 import { z } from "zod";
 
 import { env } from "../config/env.js";
+import { AgentRuntimeAuditService } from "./runtimeAuditService.js";
+import { ToolExecutionPipeline } from "./toolExecutionPipeline.js";
+import type {
+  AgentRuntimeHook,
+  AgentRuntimeHookContext,
+  AgentRuntimeLlmCallInfo,
+  AgentRuntimeLlmCallResult,
+  AgentRuntimeReplyEmitInfo,
+  AgentRuntimeToolCallInfo,
+  AgentRuntimeToolPolicyDecision,
+} from "./runtimeHooks.js";
+import { ToolRegistry, type AgentToolDefinition } from "./toolRegistry.js";
 import {
   OpenAiCompatClient,
-  type CompatConversationState,
   type CompatToolTurnResult,
   type FunctionToolSpec,
   type OpenAiCompatClientShape,
   type OpenAiReasoningEffort,
   type OpenAiWireApi,
-  type ToolCallOutput,
 } from "../providers/llm/openAiCompatClient.js";
 import {
   LlmRegistryService,
@@ -132,6 +142,13 @@ interface AgentTurn {
   name?: string | undefined;
 }
 
+interface AgentSessionDigest {
+  updatedAt: string;
+  recentUserIntents: string[];
+  recentToolOutcomes: string[];
+  pendingActions: string[];
+}
+
 interface AgentSession {
   updatedAt: string;
   roleId: string;
@@ -141,6 +158,7 @@ interface AgentSession {
   modelId?: string | undefined;
   fallbackRoutes?: LlmRouteSelection[] | undefined;
   reasoningEffort?: OpenAiReasoningEffort | undefined;
+  digest: AgentSessionDigest;
   turns: AgentTurn[];
 }
 
@@ -154,21 +172,12 @@ interface AgentToolContext {
   session: AgentSession;
 }
 
-interface AgentToolDefinition<T> {
-  name: string;
-  description: string;
-  skillId: string;
-  toolsetIds: AgentToolsetId[];
-  inputSchema: z.ZodType<T>;
-  parameters: Record<string, unknown>;
-  execute(args: T, context: AgentToolContext): Promise<unknown>;
-}
-
 interface AgentRuntimeOptions {
   client?: OpenAiCompatClientShape;
   model?: string;
   researchService?: Pick<ResearchService, "runResearch" | "listRecentReports" | "getReport">;
   wireApi?: OpenAiWireApi;
+  hooks?: AgentRuntimeHook[] | undefined;
 }
 
 interface AutoChainStep {
@@ -181,6 +190,12 @@ interface AutoChainStep {
 interface RuntimeSkillDefinition extends AgentSkill {
   prompt?: string | undefined;
   always?: boolean | undefined;
+  referencePaths?: string[] | undefined;
+}
+
+interface AgentReplyResult {
+  text: string;
+  usedTools: string[];
 }
 
 type AgentResolvedLlmRoute = Omit<ResolvedLlmRoute, "source"> & {
@@ -220,10 +235,17 @@ const GRAPH_NODE_TYPE_VALUES = [
 ] as const;
 
 const MAX_TURNS_PER_SESSION = 16;
+const PROMPT_TURN_HISTORY_LIMIT = 8;
 const MEMORY_PRIMER_LIMIT = 2;
 const MAX_TOOL_ROUNDS = 6;
 const MAX_FALLBACK_ECHO_CHARS = 120;
 const MAX_RESPONSE_RETRIES = 3;
+const MAX_DISCLOSED_WORKSPACE_SKILLS = 2;
+const MAX_DISCLOSED_SKILL_REFERENCES_PER_SKILL = 2;
+const MAX_DISCLOSED_SKILL_REFERENCE_CHARS = 1000;
+const MAX_DIGEST_USER_INTENTS = 6;
+const MAX_DIGEST_TOOL_OUTCOMES = 6;
+const MAX_DIGEST_PENDING_ACTIONS = 4;
 const ALL_AGENT_TOOLSETS: AgentToolsetId[] = [
   "workspace",
   "memory",
@@ -291,7 +313,17 @@ function defaultSession(): AgentSession {
     modelId: undefined,
     fallbackRoutes: [],
     reasoningEffort: undefined,
+    digest: defaultSessionDigest(),
     turns: [],
+  };
+}
+
+function defaultSessionDigest(): AgentSessionDigest {
+  return {
+    updatedAt: nowIso(),
+    recentUserIntents: [],
+    recentToolOutcomes: [],
+    pendingActions: [],
   };
 }
 
@@ -304,6 +336,10 @@ function defaultStore(): AgentSessionStore {
 
 function trimTurns(turns: AgentTurn[]): AgentTurn[] {
   return turns.slice(-MAX_TURNS_PER_SESSION);
+}
+
+function trimDigestItems(items: string[], limit: number): string[] {
+  return [...new Set(items.map((item) => item.trim()).filter(Boolean))].slice(-limit);
 }
 
 function clipPreview(text: string, maxLength = 96): string {
@@ -355,22 +391,25 @@ function collectExecutedToolNames(toolTurns: AgentTurn[]): string[] {
   const names: string[] = [];
 
   for (const turn of toolTurns) {
-    if (turn.name?.trim()) {
-      names.push(toolLabel(turn.name.trim()));
-    }
-
     try {
       const payload = JSON.parse(turn.content) as {
         ok?: boolean | undefined;
         result?: { autoChain?: Array<{ toolName?: string | undefined }> | undefined } | undefined;
       };
+      if (payload.ok !== false && turn.name?.trim()) {
+        names.push(toolLabel(turn.name.trim()));
+      }
       const autoChain = Array.isArray(payload.result?.autoChain) ? payload.result.autoChain : [];
       for (const step of autoChain) {
         if (step?.toolName?.trim()) {
           names.push(toolLabel(step.toolName.trim()));
         }
       }
-    } catch {}
+    } catch {
+      if (turn.name?.trim()) {
+        names.push(toolLabel(turn.name.trim()));
+      }
+    }
   }
 
   return [...new Set(names)];
@@ -508,6 +547,206 @@ function buildTurnHistory(turns: AgentTurn[]): string {
     .join("\n");
 }
 
+function extractPendingActionsFromAssistantReply(content: string): string[] {
+  const normalized = content.replace(/\r\n/g, "\n");
+  const headings = [
+    "What you should do next",
+    "浣犳帴涓嬫潵鍙互鍋氫粈涔?",
+  ];
+
+  for (const heading of headings) {
+    const index = normalized.indexOf(heading);
+    if (index === -1) {
+      continue;
+    }
+
+    const body = normalized
+      .slice(index + heading.length)
+      .trim()
+      .split(/\n+/u)
+      .map((line) => line.replace(/^[-*\d.\s]+/u, "").trim())
+      .filter(Boolean);
+
+    if (body.length > 0) {
+      return body.slice(0, MAX_DIGEST_PENDING_ACTIONS).map((line) => clipText(line, 180));
+    }
+  }
+
+  const lines = normalized
+    .split(/\n+/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const candidate = lines.find((line) => /^if you want\b/iu.test(line) || /^濡傛灉浣犳効鎰?/u.test(line));
+  return candidate ? [clipText(candidate, 180)] : [];
+}
+
+function summarizeToolTurn(turn: AgentTurn): string | null {
+  if (turn.role !== "tool") {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(turn.content) as {
+      ok?: boolean | undefined;
+      result?: unknown;
+      error?: string | undefined;
+    };
+    const label = toolLabel(turn.name?.trim() || "tool");
+    if (payload.ok === false) {
+      return `${label}: failed (${clipText(payload.error ?? "unknown error", 120)})`;
+    }
+
+    if (payload.result != null) {
+      if (typeof payload.result === "string") {
+        return `${label}: ${clipText(payload.result, 120)}`;
+      }
+
+      if (typeof payload.result === "object") {
+        const record = payload.result as Record<string, unknown>;
+        const summary =
+          (typeof record.summary === "string" && record.summary.trim()) ||
+          (typeof record.title === "string" && record.title.trim()) ||
+          (typeof record.topic === "string" && record.topic.trim()) ||
+          (typeof record.label === "string" && record.label.trim()) ||
+          (typeof record.path === "string" && record.path.trim()) ||
+          "";
+        return summary ? `${label}: ${clipText(summary, 120)}` : `${label}: completed`;
+      }
+    }
+
+    return `${label}: completed`;
+  } catch {
+    return turn.name?.trim() ? `${toolLabel(turn.name.trim())}: completed` : null;
+  }
+}
+
+function buildDigestFromTurns(turns: AgentTurn[]): AgentSessionDigest {
+  const recentUserIntents = trimDigestItems(
+    turns
+      .filter((turn) => turn.role === "user")
+      .map((turn) => `User asked: ${clipText(turn.content, 160)}`),
+    MAX_DIGEST_USER_INTENTS,
+  );
+  const recentToolOutcomes = trimDigestItems(
+    turns.map((turn) => summarizeToolTurn(turn)).filter((item): item is string => Boolean(item)),
+    MAX_DIGEST_TOOL_OUTCOMES,
+  );
+  const assistantTurns = turns.filter((turn) => turn.role === "assistant");
+  const latestPendingActions = assistantTurns.length > 0
+    ? extractPendingActionsFromAssistantReply(assistantTurns[assistantTurns.length - 1]!.content)
+    : [];
+
+  return {
+    updatedAt: nowIso(),
+    recentUserIntents,
+    recentToolOutcomes,
+    pendingActions: trimDigestItems(latestPendingActions, MAX_DIGEST_PENDING_ACTIONS),
+  };
+}
+
+function mergeSessionDigest(current: AgentSessionDigest, turns: AgentTurn[]): AgentSessionDigest {
+  const nextUserIntents = trimDigestItems(
+    [
+      ...current.recentUserIntents,
+      ...turns
+        .filter((turn) => turn.role === "user")
+        .map((turn) => `User asked: ${clipText(turn.content, 160)}`),
+    ],
+    MAX_DIGEST_USER_INTENTS,
+  );
+  const nextToolOutcomes = trimDigestItems(
+    [
+      ...current.recentToolOutcomes,
+      ...turns.map((turn) => summarizeToolTurn(turn)).filter((item): item is string => Boolean(item)),
+    ],
+    MAX_DIGEST_TOOL_OUTCOMES,
+  );
+  const latestAssistant = [...turns].reverse().find((turn) => turn.role === "assistant");
+  const nextPendingActions = latestAssistant
+    ? trimDigestItems(
+        extractPendingActionsFromAssistantReply(latestAssistant.content),
+        MAX_DIGEST_PENDING_ACTIONS,
+      )
+    : current.pendingActions;
+
+  return {
+    updatedAt: nowIso(),
+    recentUserIntents: nextUserIntents,
+    recentToolOutcomes: nextToolOutcomes,
+    pendingActions: nextPendingActions,
+  };
+}
+
+function buildSessionDigestBlock(digest: AgentSessionDigest): string {
+  const sections = [
+    digest.recentUserIntents.length > 0
+      ? ["Recent user intents:", ...digest.recentUserIntents.map((item) => `- ${item}`)]
+      : [],
+    digest.recentToolOutcomes.length > 0
+      ? ["Recent tool outcomes:", ...digest.recentToolOutcomes.map((item) => `- ${item}`)]
+      : [],
+    digest.pendingActions.length > 0
+      ? ["Pending actions:", ...digest.pendingActions.map((item) => `- ${item}`)]
+      : [],
+  ].flat();
+
+  return sections.length > 0 ? sections.join("\n") : "No structured session digest yet.";
+}
+
+function tokenizeForSkillMatch(value: string): string[] {
+  const stopwords = new Set([
+    "a",
+    "an",
+    "and",
+    "are",
+    "asks",
+    "ask",
+    "for",
+    "from",
+    "into",
+    "that",
+    "the",
+    "their",
+    "them",
+    "then",
+    "this",
+    "use",
+    "user",
+    "when",
+    "with",
+    "your",
+  ]);
+
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4 && !stopwords.has(token));
+}
+
+function scoreWorkspaceSkillForTurn(inputText: string, skill: RuntimeSkillDefinition): number {
+  const inputTokens = new Set(tokenizeForSkillMatch(inputText));
+  if (inputTokens.size === 0) {
+    return skill.always ? 10 : 0;
+  }
+
+  const skillTokens = new Set([
+    ...tokenizeForSkillMatch(skill.label),
+    ...tokenizeForSkillMatch(skill.id.replace(/^workspace:/u, "")),
+    ...tokenizeForSkillMatch(skill.instruction),
+    ...(skill.relatedTools ?? []).flatMap((tool) => tokenizeForSkillMatch(tool)),
+  ]);
+
+  let score = skill.always ? 10 : 0;
+  for (const token of inputTokens) {
+    if (skillTokens.has(token)) {
+      score += token.length >= 6 ? 4 : 2;
+    }
+  }
+
+  return score;
+}
+
 function describeError(error: unknown): string {
   if (error instanceof z.ZodError) {
     return error.issues
@@ -548,6 +787,8 @@ export class AgentRuntime {
   private readonly storePath: string;
   private readonly llmRegistry: LlmRegistryService;
   private readonly skillRegistry: SkillRegistryService;
+  private readonly auditService: AgentRuntimeAuditService;
+  private readonly hooks: AgentRuntimeHook[];
   private readonly injectedClient: OpenAiCompatClient | null;
   private readonly injectedModel?: string | undefined;
   private readonly injectedWireApi?: OpenAiWireApi | undefined;
@@ -565,6 +806,7 @@ export class AgentRuntime {
   private readonly researchMemoryRegistryService: ResearchMemoryRegistryService;
   private readonly memoryCompactionService: MemoryCompactionService;
   private readonly memoryRecallService: MemoryRecallService;
+  private readonly toolRegistry: ToolRegistry<AgentToolContext>;
   private readonly roleMap = new Map(ROLE_DEFINITIONS.map((role) => [role.id, role]));
   private readonly skillMap = new Map(SKILL_DEFINITIONS.map((skill) => [skill.id, skill]));
 
@@ -576,6 +818,8 @@ export class AgentRuntime {
     this.storePath = path.join(workspaceDir, "channels", "agent-runtime.json");
     this.llmRegistry = new LlmRegistryService(workspaceDir);
     this.skillRegistry = new SkillRegistryService(workspaceDir);
+    this.auditService = new AgentRuntimeAuditService(workspaceDir);
+    this.hooks = [this.auditService.createHook(), ...(options.hooks ?? [])];
     this.mcpRegistry = new McpRegistryService(workspaceDir);
     this.researchDirectionService = new ResearchDirectionService(workspaceDir);
     this.researchDirectionReportService = new ResearchDirectionReportService(workspaceDir);
@@ -605,6 +849,7 @@ export class AgentRuntime {
             options.client,
           )
         : null;
+    this.toolRegistry = this.createToolRegistry();
   }
 
   listRoles(): AgentRole[] {
@@ -632,6 +877,7 @@ export class AgentRuntime {
       source: skill.source,
       notes: [...skill.notes],
       relatedTools: [...skill.relatedTools],
+      referencePaths: [...skill.referencePaths],
       ...(skill.prompt ? { prompt: skill.prompt } : {}),
       ...(skill.always ? { always: true } : {}),
     };
@@ -686,6 +932,187 @@ export class AgentRuntime {
     }
 
     return new OpenAiCompatClient(route.apiKey, route.modelId, route.wireApi, route.baseUrl);
+  }
+
+  private buildHookContext(input: AgentChatInput, session: AgentSession): AgentRuntimeHookContext {
+    return {
+      input: {
+        senderId: input.senderId,
+        ...(input.senderName ? { senderName: input.senderName } : {}),
+        text: input.text,
+        ...(input.source ? { source: input.source } : {}),
+      },
+      session: {
+        roleId: session.roleId,
+        skillIds: [...session.skillIds],
+        ...(session.lastEntrySource ? { lastEntrySource: session.lastEntrySource } : {}),
+        ...(session.providerId ? { providerId: session.providerId } : {}),
+        ...(session.modelId ? { modelId: session.modelId } : {}),
+        reasoningEffort: session.reasoningEffort ?? "default",
+      },
+    };
+  }
+
+  private buildLlmCallInfo(
+    stage: AgentRuntimeLlmCallInfo["stage"],
+    route: AgentResolvedLlmRoute,
+    functionTools: FunctionToolSpec[] = [],
+    mcpTools: Array<{ server_label?: string | undefined; connector_id?: string | undefined }> = [],
+  ): AgentRuntimeLlmCallInfo {
+    return {
+      stage,
+      providerId: route.providerId,
+      providerLabel: route.providerLabel,
+      modelId: route.modelId,
+      modelLabel: route.modelLabel,
+      ...(route.wireApi ? { wireApi: route.wireApi } : {}),
+      toolNames: functionTools.map((tool) => tool.name),
+      mcpToolNames: mcpTools
+        .map((tool) => tool.server_label?.trim() || tool.connector_id?.trim() || "")
+        .filter(Boolean),
+    };
+  }
+
+  private summarizeToolTurnResult(result: CompatToolTurnResult): AgentRuntimeLlmCallResult {
+    return {
+      success: true,
+      ...(result.text.trim() ? { responseText: clipText(result.text.trim(), 240) } : {}),
+      functionCallNames: result.functionCalls.map((call) => call.name),
+    };
+  }
+
+  private summarizeTextResult(text: string): AgentRuntimeLlmCallResult {
+    return {
+      success: true,
+      ...(text.trim() ? { responseText: clipText(text.trim(), 240) } : {}),
+      functionCallNames: [],
+    };
+  }
+
+  private async emitPreLlmCall(
+    input: AgentChatInput,
+    session: AgentSession,
+    call: AgentRuntimeLlmCallInfo,
+  ): Promise<void> {
+    const context = this.buildHookContext(input, session);
+    for (const hook of this.hooks) {
+      await hook.preLlmCall?.({ context, call });
+    }
+  }
+
+  private async emitPostLlmCall(
+    input: AgentChatInput,
+    session: AgentSession,
+    call: AgentRuntimeLlmCallInfo,
+    result: AgentRuntimeLlmCallResult,
+  ): Promise<void> {
+    const context = this.buildHookContext(input, session);
+    for (const hook of this.hooks) {
+      await hook.postLlmCall?.({ context, call, result });
+    }
+  }
+
+  private async emitPreToolCall(
+    input: AgentChatInput,
+    session: AgentSession,
+    tool: AgentRuntimeToolCallInfo,
+  ): Promise<void> {
+    const context = this.buildHookContext(input, session);
+    for (const hook of this.hooks) {
+      await hook.preToolCall?.({ context, tool });
+    }
+  }
+
+  private async emitPostToolCall(
+    input: AgentChatInput,
+    session: AgentSession,
+    tool: AgentRuntimeToolCallInfo,
+    output: unknown,
+  ): Promise<void> {
+    const context = this.buildHookContext(input, session);
+    for (const hook of this.hooks) {
+      await hook.postToolCall?.({ context, tool, output });
+    }
+  }
+
+  private async emitToolError(
+    input: AgentChatInput,
+    session: AgentSession,
+    tool: AgentRuntimeToolCallInfo,
+    error: string,
+  ): Promise<void> {
+    const context = this.buildHookContext(input, session);
+    for (const hook of this.hooks) {
+      await hook.toolError?.({ context, tool, error });
+    }
+  }
+
+  private async emitToolBlocked(
+    input: AgentChatInput,
+    session: AgentSession,
+    tool: AgentRuntimeToolCallInfo,
+    reason: string,
+  ): Promise<void> {
+    const context = this.buildHookContext(input, session);
+    for (const hook of this.hooks) {
+      await hook.toolBlocked?.({ context, tool, reason });
+    }
+  }
+
+  private async evaluateToolPolicy(
+    input: AgentChatInput,
+    session: AgentSession,
+    tool: AgentRuntimeToolCallInfo,
+  ): Promise<AgentRuntimeToolPolicyDecision> {
+    const context = this.buildHookContext(input, session);
+
+    for (const hook of this.hooks) {
+      const decision = await hook.checkToolCall?.({ context, tool });
+      if (decision && decision.allow === false) {
+        return {
+          allow: false,
+          reason: decision.reason?.trim() || `Tool call blocked by runtime policy: ${tool.toolName}`,
+        };
+      }
+    }
+
+    return {
+      allow: true,
+    };
+  }
+
+  private async emitPreReplyEmit(
+    input: AgentChatInput,
+    session: AgentSession,
+    reply: AgentRuntimeReplyEmitInfo,
+  ): Promise<void> {
+    const context = this.buildHookContext(input, session);
+    for (const hook of this.hooks) {
+      await hook.preReplyEmit?.({ context, reply });
+    }
+  }
+
+  private async runLlmOperation<T>(
+    input: AgentChatInput,
+    session: AgentSession,
+    call: AgentRuntimeLlmCallInfo,
+    operation: () => Promise<T>,
+    summarize: (result: T) => AgentRuntimeLlmCallResult,
+  ): Promise<T> {
+    await this.emitPreLlmCall(input, session, call);
+
+    try {
+      const result = await this.runWithRetry(operation);
+      await this.emitPostLlmCall(input, session, call, summarize(result));
+      return result;
+    } catch (error) {
+      await this.emitPostLlmCall(input, session, call, {
+        success: false,
+        functionCallNames: [],
+        error: describeError(error),
+      });
+      throw error;
+    }
   }
 
   private async buildSessionSummary(senderId: string, session: AgentSession): Promise<AgentSessionSummary> {
@@ -1018,11 +1445,23 @@ export class AgentRuntime {
     const llmRoute = await this.resolveLlmRouteForSession(session);
     const llmClient = this.injectedClient ?? this.buildCompatClient(llmRoute);
 
-    const reply = llmClient
-      ? await this.replyWithTools(input, session, memoryPrimer, llmClient, llmRoute).catch(() =>
-          this.buildFallbackReply(input, memoryPrimer),
-        )
-      : this.buildFallbackReply(input, memoryPrimer);
+    const result: AgentReplyResult = llmClient
+      ? await this.replyWithTools(input, session, memoryPrimer, llmClient, llmRoute).catch((error) => {
+          this.logRuntimeFailure("tool-turn", input, llmRoute, error);
+          return {
+            text: this.buildFallbackReply(input, memoryPrimer),
+            usedTools: [],
+          };
+        })
+      : {
+          text: this.buildFallbackReply(input, memoryPrimer),
+          usedTools: [],
+        };
+
+    await this.emitPreReplyEmit(input, session, {
+      reply: result.text,
+      usedTools: result.usedTools,
+    });
 
     await this.appendTurns(input.senderId, [
       {
@@ -1032,12 +1471,65 @@ export class AgentRuntime {
       },
       {
         role: "assistant",
-        content: reply,
+        content: result.text,
         createdAt: nowIso(),
       },
     ]);
 
-    return reply;
+    return result.text;
+  }
+
+  async replyPlain(input: AgentChatInput): Promise<string> {
+    const text = input.text.trim();
+    if (!text) {
+      return "Please enter a message.";
+    }
+
+    await this.setLastEntrySource(input.senderId, resolveInputSource(input));
+    const session = await this.getSession(input.senderId);
+    const memoryPrimer = await this.memoryRecallService
+      .recall(text, {
+        limit: MEMORY_PRIMER_LIMIT,
+        includeWorkspace: true,
+        includeArtifacts: true,
+      })
+      .then((result) => result.hits)
+      .catch(() => []);
+    const llmRoute = await this.resolveLlmRouteForSession(session);
+    const llmClient = this.injectedClient ?? this.buildCompatClient(llmRoute);
+
+    const result: AgentReplyResult = llmClient
+      ? await this.replyPlainText(input, session, memoryPrimer, llmClient, llmRoute).catch((error) => {
+          this.logRuntimeFailure("plain-text", input, llmRoute, error);
+          return {
+            text: this.buildFallbackReply(input, memoryPrimer),
+            usedTools: [],
+          };
+        })
+      : {
+          text: this.buildFallbackReply(input, memoryPrimer),
+          usedTools: [],
+        };
+
+    await this.emitPreReplyEmit(input, session, {
+      reply: result.text,
+      usedTools: result.usedTools,
+    });
+
+    await this.appendTurns(input.senderId, [
+      {
+        role: "user",
+        content: text,
+        createdAt: nowIso(),
+      },
+      {
+        role: "assistant",
+        content: result.text,
+        createdAt: nowIso(),
+      },
+    ]);
+
+    return result.text;
   }
 
   private buildSessionKey(senderId: string): string {
@@ -1113,6 +1605,33 @@ export class AgentRuntime {
                         ...(turn.name ? { name: turn.name } : {}),
                       }))
                   : [];
+                const rawDigest =
+                  partial.digest && typeof partial.digest === "object"
+                    ? (partial.digest as Partial<AgentSessionDigest>)
+                    : null;
+                const digest = rawDigest
+                  ? {
+                      updatedAt: typeof rawDigest.updatedAt === "string" ? rawDigest.updatedAt : nowIso(),
+                      recentUserIntents: trimDigestItems(
+                        Array.isArray(rawDigest.recentUserIntents)
+                          ? rawDigest.recentUserIntents.filter((item): item is string => typeof item === "string")
+                          : [],
+                        MAX_DIGEST_USER_INTENTS,
+                      ),
+                      recentToolOutcomes: trimDigestItems(
+                        Array.isArray(rawDigest.recentToolOutcomes)
+                          ? rawDigest.recentToolOutcomes.filter((item): item is string => typeof item === "string")
+                          : [],
+                        MAX_DIGEST_TOOL_OUTCOMES,
+                      ),
+                      pendingActions: trimDigestItems(
+                        Array.isArray(rawDigest.pendingActions)
+                          ? rawDigest.pendingActions.filter((item): item is string => typeof item === "string")
+                          : [],
+                        MAX_DIGEST_PENDING_ACTIONS,
+                      ),
+                    }
+                  : buildDigestFromTurns(turns);
 
                 return [
                   sessionId,
@@ -1126,6 +1645,7 @@ export class AgentRuntime {
                     ...(modelId ? { modelId } : {}),
                     fallbackRoutes,
                     ...(reasoningEffort ? { reasoningEffort } : {}),
+                    digest,
                     turns,
                   } satisfies AgentSession,
                 ];
@@ -1179,6 +1699,7 @@ export class AgentRuntime {
       store.sessions[key] = {
         ...current,
         updatedAt: nowIso(),
+        digest: mergeSessionDigest(current.digest, turns),
         turns: trimTurns([...current.turns, ...turns]),
       };
       return store;
@@ -1198,30 +1719,97 @@ export class AgentRuntime {
     });
   }
 
-  private buildInstructions(
-    input: AgentChatInput,
+  private getEnabledSkillsForSession(
     session: AgentSession,
-    llmRoute: AgentResolvedLlmRoute,
     allSkills: RuntimeSkillDefinition[],
-  ): string {
-    const source = resolveInputSource(input);
-    const allowedToolsets = resolveAllowedToolsetsForSource(source);
-    const role = this.getRoleOrDefault(session.roleId);
+  ): RuntimeSkillDefinition[] {
     const skillMap = new Map(allSkills.map((skill) => [skill.id, skill]));
     const enabledSkillIds = new Set([
       ...session.skillIds,
       ...allSkills.filter((skill) => skill.always).map((skill) => skill.id),
     ]);
-    const skills = [...enabledSkillIds]
+
+    return [...enabledSkillIds]
       .map((skillId) => skillMap.get(skillId))
-      .filter((skill): skill is AgentSkill => Boolean(skill));
-    const workspaceSkillPrompts = allSkills.filter(
+      .filter((skill): skill is RuntimeSkillDefinition => Boolean(skill));
+  }
+
+  private async buildWorkspaceSkillDisclosure(
+    input: AgentChatInput,
+    enabledSkills: RuntimeSkillDefinition[],
+  ): Promise<{
+    catalogLines: string[];
+    disclosedPromptBlocks: string[];
+    referenceBlocks: string[];
+  }> {
+    const workspaceSkills = enabledSkills.filter(
       (skill) =>
-        enabledSkillIds.has(skill.id) &&
         skill.source === "workspace-skill" &&
         typeof skill.prompt === "string" &&
         skill.prompt.trim().length > 0,
     );
+
+    const catalogLines = workspaceSkills.map((skill) => {
+      const relatedTools = (skill.relatedTools ?? []).slice(0, 4).join(", ");
+      return `- ${skill.label} (${skill.id}): ${skill.instruction}${relatedTools ? ` | tools: ${relatedTools}` : ""}`;
+    });
+
+    const scored = workspaceSkills
+      .map((skill) => ({
+        skill,
+        score: scoreWorkspaceSkillForTurn(input.text, skill),
+      }))
+      .sort((left, right) => right.score - left.score || left.skill.label.localeCompare(right.skill.label));
+
+    const matched = scored.filter((entry) => entry.score > 0).slice(0, MAX_DISCLOSED_WORKSPACE_SKILLS);
+    const selected =
+      matched.length > 0
+        ? matched.map((entry) => entry.skill)
+        : workspaceSkills.length === 1
+          ? [workspaceSkills[0]!]
+          : [];
+    const referenceBlocks = await this.loadWorkspaceSkillReferenceBlocks(selected);
+
+    return {
+      catalogLines,
+      disclosedPromptBlocks: selected.flatMap((skill) => [
+        `### ${skill.label} (${skill.id})`,
+        skill.prompt ?? "",
+      ]),
+      referenceBlocks,
+    };
+  }
+
+  private async loadWorkspaceSkillReferenceBlocks(skills: RuntimeSkillDefinition[]): Promise<string[]> {
+    const blocks: string[] = [];
+
+    for (const skill of skills) {
+      const paths = (skill.referencePaths ?? []).slice(0, MAX_DISCLOSED_SKILL_REFERENCES_PER_SKILL);
+      for (const referencePath of paths) {
+        try {
+          const content = await readFile(referencePath, "utf8");
+          blocks.push(
+            `### ${skill.label} reference: ${path.basename(referencePath)}`,
+            clipText(content, MAX_DISCLOSED_SKILL_REFERENCE_CHARS),
+          );
+        } catch {}
+      }
+    }
+
+    return blocks;
+  }
+
+  private async buildInstructions(
+    input: AgentChatInput,
+    session: AgentSession,
+    llmRoute: AgentResolvedLlmRoute,
+    allSkills: RuntimeSkillDefinition[],
+  ): Promise<string> {
+    const source = resolveInputSource(input);
+    const allowedToolsets = resolveAllowedToolsetsForSource(source);
+    const role = this.getRoleOrDefault(session.roleId);
+    const skills = this.getEnabledSkillsForSession(session, allSkills);
+    const workspaceSkillDisclosure = await this.buildWorkspaceSkillDisclosure(input, skills);
 
     return [
       "You are ReAgent, operating inside a host-style workspace runtime.",
@@ -1253,14 +1841,78 @@ export class AgentRuntime {
       "- Keep the final answer concise and actionable.",
       "- When tools or research actions were involved, structure the final answer as: What I understood / What I did / What you should do next.",
       "- Reply in the same language as the user.",
-      ...(workspaceSkillPrompts.length > 0
+      ...(workspaceSkillDisclosure.catalogLines.length > 0
         ? [
             "",
             "Enabled workspace skills:",
-            ...workspaceSkillPrompts.flatMap((skill) => [
-              `### ${skill.label} (${skill.id})`,
-              skill.prompt ?? "",
-            ]),
+            ...workspaceSkillDisclosure.catalogLines,
+          ]
+        : []),
+      ...(workspaceSkillDisclosure.disclosedPromptBlocks.length > 0
+        ? [
+            "",
+            "Disclosed workspace skill instructions for this turn:",
+            ...workspaceSkillDisclosure.disclosedPromptBlocks,
+          ]
+        : []),
+      ...(workspaceSkillDisclosure.referenceBlocks.length > 0
+        ? [
+            "",
+            "Referenced workspace skill files for this turn:",
+            ...workspaceSkillDisclosure.referenceBlocks,
+          ]
+        : []),
+    ].join("\n");
+  }
+
+  private async buildPlainChatInstructions(
+    input: AgentChatInput,
+    session: AgentSession,
+    llmRoute: AgentResolvedLlmRoute,
+    allSkills: RuntimeSkillDefinition[],
+  ): Promise<string> {
+    const source = resolveInputSource(input);
+    const role = this.getRoleOrDefault(session.roleId);
+    const skills = this.getEnabledSkillsForSession(session, allSkills);
+    const workspaceSkillDisclosure = await this.buildWorkspaceSkillDisclosure(input, skills);
+
+    return [
+      "You are ReAgent, speaking directly with the user inside a workspace runtime.",
+      "This turn is plain chat only.",
+      "Do not call, mention, or simulate tools unless the user explicitly asks for slash commands or workspace control.",
+      `Active role: ${role.label} (${role.id})`,
+      `Active entry: ${labelForEntrySource(source)} (${source})`,
+      `Model route: ${llmRoute.providerLabel}/${llmRoute.modelLabel}${llmRoute.wireApi ? ` via ${llmRoute.wireApi}` : ""}`,
+      role.instruction,
+      "",
+      "Enabled skills:",
+      ...skills.map((skill) => `- ${skill.label} (${skill.id})`),
+      "",
+      "Plain chat rules:",
+      "- Reply naturally and directly.",
+      "- Keep the answer concise unless the user asks for depth.",
+      "- Reply in the same language as the user.",
+      "- If the user asks for runtime controls, tell them the relevant slash commands briefly.",
+      "- If the user asks for deep research, memory operations, or saved workspace state, you may suggest slash commands or a more structured follow-up.",
+      ...(workspaceSkillDisclosure.catalogLines.length > 0
+        ? [
+            "",
+            "Enabled workspace skills:",
+            ...workspaceSkillDisclosure.catalogLines,
+          ]
+        : []),
+      ...(workspaceSkillDisclosure.disclosedPromptBlocks.length > 0
+        ? [
+            "",
+            "Disclosed workspace skill instructions for this turn:",
+            ...workspaceSkillDisclosure.disclosedPromptBlocks,
+          ]
+        : []),
+      ...(workspaceSkillDisclosure.referenceBlocks.length > 0
+        ? [
+            "",
+            "Referenced workspace skill files for this turn:",
+            ...workspaceSkillDisclosure.referenceBlocks,
           ]
         : []),
     ].join("\n");
@@ -1275,8 +1927,11 @@ export class AgentRuntime {
       "Current workspace primer:",
       buildMemoryPrimer(memoryPrimer),
       "",
+      "Structured session digest:",
+      buildSessionDigestBlock(session.digest),
+      "",
       "Recent session history:",
-      buildTurnHistory(session.turns),
+      buildTurnHistory(session.turns.slice(-PROMPT_TURN_HISTORY_LIMIT)),
       "",
       `Current user (${input.senderName?.trim() || input.senderId}): ${input.text.trim()}`,
     ].join("\n");
@@ -1482,12 +2137,9 @@ export class AgentRuntime {
     return result;
   }
 
-  private buildTools(
-    input: AgentChatInput,
-    session: AgentSession,
-  ): AgentToolDefinition<unknown>[] {
-    const allowedToolsets = new Set(resolveAllowedToolsetsForSource(resolveInputSource(input)));
-    const tools: AgentToolDefinition<unknown>[] = [
+  private createToolRegistry(): ToolRegistry<AgentToolContext> {
+    const registry = new ToolRegistry<AgentToolContext>();
+    const tools: AgentToolDefinition<unknown, AgentToolContext>[] = [
       {
         name: "agent_describe",
         description: "Read the current agent session configuration, including active role and enabled skills.",
@@ -1499,7 +2151,7 @@ export class AgentRuntime {
           properties: {},
           additionalProperties: false,
         },
-        execute: async () => this.describeSession(input.senderId),
+        execute: async (_args, context) => this.describeSession(context.input.senderId),
       },
       {
         name: "memory_search",
@@ -1632,17 +2284,17 @@ export class AgentRuntime {
             required: ["topic"],
             additionalProperties: false,
           },
-          execute: async (args) => {
-            const parsed = args as {
-              topic: string;
-              question?: string | undefined;
-              maxPapers?: number | undefined;
-            };
-            const report = await this.options.researchService!.runResearch({
-              topic: parsed.topic,
-              question:
+        execute: async (args, context) => {
+          const parsed = args as {
+            topic: string;
+            question?: string | undefined;
+            maxPapers?: number | undefined;
+          };
+          const report = await this.options.researchService!.runResearch({
+            topic: parsed.topic,
+            question:
                 parsed.question ??
-                `Agent runtime request from ${input.senderName?.trim() || input.senderId}: ${parsed.topic}`,
+                `Agent runtime request from ${context.input.senderName?.trim() || context.input.senderId}: ${parsed.topic}`,
               maxPapers: parsed.maxPapers ?? 10,
             });
             return {
@@ -2217,14 +2869,18 @@ export class AgentRuntime {
         },
       },
     );
-    const enabledSkills = new Set(session.skillIds);
-    return tools
-      .filter((tool) => enabledSkills.has(tool.skillId))
-      .filter((tool) => tool.toolsetIds.some((toolsetId) => allowedToolsets.has(toolsetId)))
-      .map((tool) => ({
-        ...tool,
-        execute: (args, context) => tool.execute(args, context),
-      }));
+    registry.registerMany(tools);
+    return registry;
+  }
+
+  private buildTools(
+    input: AgentChatInput,
+    session: AgentSession,
+  ): AgentToolDefinition<unknown, AgentToolContext>[] {
+    return this.toolRegistry.resolve({
+      enabledSkillIds: session.skillIds,
+      allowedToolsetIds: resolveAllowedToolsetsForSource(resolveInputSource(input)),
+    });
   }
 
   private async runWithRetry<T>(operation: () => Promise<T>): Promise<T> {
@@ -2275,14 +2931,20 @@ export class AgentRuntime {
           session.skillIds.includes("mcp-ops") && allowedToolsets.has("mcp") && route.wireApi === "responses"
             ? await this.mcpRegistry.buildOpenAiTools()
             : [];
-        const response = await this.runWithRetry(() =>
-          client.startToolTurn({
-            instructions: this.buildInstructions(input, session, route, allSkills),
-            input: this.buildUserInput(input, session, memoryPrimer),
-            tools: functionTools,
-            mcpTools,
-            ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {}),
-          }),
+        const instructions = await this.buildInstructions(input, session, route, allSkills);
+        const response = await this.runLlmOperation(
+          input,
+          session,
+          this.buildLlmCallInfo("tool-start", route, functionTools, mcpTools),
+          () =>
+            client.startToolTurn({
+              instructions,
+              input: this.buildUserInput(input, session, memoryPrimer),
+              tools: functionTools,
+              mcpTools,
+              ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {}),
+            }),
+          (result) => this.summarizeToolTurnResult(result),
         );
 
         return {
@@ -2298,13 +2960,46 @@ export class AgentRuntime {
     throw lastError instanceof Error ? lastError : new Error(describeError(lastError));
   }
 
+  private async replyPlainText(
+    input: AgentChatInput,
+    session: AgentSession,
+    memoryPrimer: MemoryRecallHit[],
+    llmClient: OpenAiCompatClient,
+    llmRoute: AgentResolvedLlmRoute,
+  ): Promise<AgentReplyResult> {
+    const allSkills = await this.listAllSkills();
+    const systemPrompt = await this.buildPlainChatInstructions(input, session, llmRoute, allSkills);
+    const text = await this.runLlmOperation(
+      input,
+      session,
+      this.buildLlmCallInfo("plain-text", llmRoute),
+      () =>
+        llmClient.createText({
+          systemPrompt,
+          userPayload: this.buildUserInput(input, session, memoryPrimer),
+          ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {}),
+        }),
+      (result) => this.summarizeTextResult(result),
+    );
+
+    const normalized = text.trim();
+    if (!normalized) {
+      throw new Error("Agent runtime plain-text response was empty.");
+    }
+
+    return {
+      text: normalized,
+      usedTools: [],
+    };
+  }
+
   private async replyWithTools(
     input: AgentChatInput,
     session: AgentSession,
     memoryPrimer: MemoryRecallHit[],
     _client: OpenAiCompatClient,
     llmRoute: AgentResolvedLlmRoute,
-  ): Promise<string> {
+  ): Promise<AgentReplyResult> {
     const allSkills = await this.listAllSkills();
     const tools = this.buildTools(input, session);
     const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
@@ -2323,93 +3018,51 @@ export class AgentRuntime {
     );
     const activeClient = initial.client;
     const activeRoute = initial.route;
-    let response = initial.response;
     const allowedToolsets = new Set(resolveAllowedToolsetsForSource(resolveInputSource(input)));
     const activeMcpTools =
       session.skillIds.includes("mcp-ops") && allowedToolsets.has("mcp") && activeRoute.wireApi === "responses"
         ? await this.mcpRegistry.buildOpenAiTools()
         : [];
+    const pipeline = new ToolExecutionPipeline<AgentToolContext>({
+      toolMap,
+      toolContext: { input, session },
+      initialResponse: initial.response,
+      maxRounds: MAX_TOOL_ROUNDS,
+      nowIso,
+      continueTurn: ({ state, outputs }) =>
+        this.runLlmOperation(
+          input,
+          session,
+          this.buildLlmCallInfo("tool-continue", activeRoute, functionTools, activeMcpTools),
+          () =>
+            activeClient.continueToolTurn({
+              state,
+              tools: functionTools,
+              mcpTools: activeMcpTools,
+              outputs,
+              ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {}),
+            }),
+          (result) => this.summarizeToolTurnResult(result),
+        ),
+      transformToolResult: (toolName, result) => this.enrichResearchToolResult(toolName, result, input),
+      checkToolCall: (tool) => this.evaluateToolPolicy(input, session, tool),
+      onPreToolCall: (tool) => this.emitPreToolCall(input, session, tool),
+      onPostToolCall: (tool, output) => this.emitPostToolCall(input, session, tool, output),
+      onToolError: (tool, error) => this.emitToolError(input, session, tool, error),
+      onToolBlocked: (tool, reason) => this.emitToolBlocked(input, session, tool, reason),
+    });
+    const execution = await pipeline.run();
+    const toolTurns = execution.toolTurns as AgentTurn[];
+    const usedTools = collectExecutedToolNames(toolTurns);
 
-    const toolTurns: AgentTurn[] = [];
-
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      const functionCalls = response.functionCalls;
-
-      if (functionCalls.length === 0) {
-        const text = response.text?.trim();
-        if (text) {
-          if (toolTurns.length > 0) {
-            await this.appendTurns(input.senderId, toolTurns);
-          }
-          return toolTurns.length > 0 ? formatStructuredToolReply(input, text, toolTurns) : text;
-        }
-        throw new Error("Agent runtime response was empty.");
-      }
-
-      const outputs: ToolCallOutput[] = await Promise.all(
-        functionCalls.map(async (call: { id: string; name: string; arguments: string }) => {
-          const tool = toolMap.get(call.name);
-          if (!tool) {
-            const missing = JSON.stringify({ ok: false, error: `Unknown tool: ${call.name}` });
-            toolTurns.push({
-              role: "tool",
-              name: call.name,
-              content: missing,
-              createdAt: nowIso(),
-            });
-            return {
-              toolCallId: call.id,
-              toolName: call.name,
-              output: missing,
-            };
-          }
-
-          try {
-            const rawArgs = call.arguments?.trim() ? JSON.parse(call.arguments) : {};
-            const parsedArgs = tool.inputSchema.parse(rawArgs);
-            const result = await tool.execute(parsedArgs, { input, session });
-            const enrichedResult = await this.enrichResearchToolResult(call.name, result, input);
-            const output = JSON.stringify({ ok: true, result: enrichedResult });
-            toolTurns.push({
-              role: "tool",
-              name: call.name,
-              content: output,
-              createdAt: nowIso(),
-            });
-            return {
-              toolCallId: call.id,
-              toolName: call.name,
-              output,
-            };
-          } catch (error) {
-            const output = JSON.stringify({ ok: false, error: describeError(error) });
-            toolTurns.push({
-              role: "tool",
-              name: call.name,
-              content: output,
-              createdAt: nowIso(),
-            });
-            return {
-              toolCallId: call.id,
-              toolName: call.name,
-              output,
-            };
-          }
-        }),
-      );
-
-      response = await this.runWithRetry(() =>
-        activeClient.continueToolTurn({
-          state: response.state as CompatConversationState,
-          tools: functionTools,
-          mcpTools: activeMcpTools,
-          outputs,
-          ...(session.reasoningEffort ? { reasoningEffort: session.reasoningEffort } : {}),
-        }),
-      );
+    if (toolTurns.length > 0) {
+      await this.appendTurns(input.senderId, toolTurns);
     }
 
-    throw new Error(`Agent runtime exceeded ${MAX_TOOL_ROUNDS} tool rounds without producing a final answer.`);
+    return {
+      text: toolTurns.length > 0 ? formatStructuredToolReply(input, execution.finalText, toolTurns) : execution.finalText,
+      usedTools,
+    };
   }
 
   private buildFallbackReply(
@@ -2417,38 +3070,80 @@ export class AgentRuntime {
     memoryHits: MemoryRecallHit[],
   ): string {
     const normalized = input.text.trim();
+    const preferChinese = /[\u3400-\u9fff]/u.test(normalized);
     const capabilityPattern =
-      /(help|commands?|what can you do|how do you work|features?|usage|support|abilities|role|skills?|model|provider)/iu;
-    const greetingPattern = /^(hi|hello|hey)\b/iu;
+      /(help|commands?|what can you do|how do you work|features?|usage|support|abilities|role|skills?|model|provider|你的作用是什么|你能做什么|功能|能力)/iu;
+    const greetingPattern = /^(hi|hello|hey)\b|^(你好|您好|嗨|哈喽)/iu;
 
     if (capabilityPattern.test(normalized)) {
-      return [
-        "I support direct chat and agent-style workspace control with roles, skills, and local tools.",
-        "Available slash commands remain: /research <topic>, /memory <query>, /remember <fact>, /role <id>, /skills, /model.",
-      ].join("\n");
+      return preferChinese
+        ? [
+            "我是你的工作区助手，可以直接聊天，也可以帮你处理研究方向、论文、记忆和工作区操作。",
+            "常用命令有：/research <topic>、/memory <query>、/remember <fact>、/role <id>、/skills、/model。",
+          ].join("\n")
+        : [
+            "I support direct chat and can help with research directions, papers, memory, and workspace control.",
+            "Common slash commands: /research <topic>, /memory <query>, /remember <fact>, /role <id>, /skills, /model.",
+          ].join("\n");
     }
 
     if (greetingPattern.test(normalized)) {
-      return [
-        "Yes. Talk to me normally here, or use slash commands when you want explicit workspace control.",
-        "Agent runtime roles and model routes are available via /role, /skills, and /model.",
-      ].join("\n");
+      return preferChinese
+        ? [
+            "你好，我在。",
+            "你可以直接告诉我你想做什么，比如设研究方向、看近期论文、总结论文，或者就一个问题继续聊。",
+          ].join("\n")
+        : [
+            "Hi, I am here.",
+            "You can talk to me normally here, ask for recent papers, set a research direction, or ask for a paper summary.",
+          ].join("\n");
     }
 
     const memoryLine =
       memoryHits.length > 0
-        ? `I also found relevant memory context: ${memoryHits
-            .slice(0, 2)
-            .map((hit) => `${hit.title} (${hit.path ?? hit.artifactType ?? hit.layer})`)
-            .join("; ")}.`
+        ? preferChinese
+          ? `我还找到了相关上下文：${memoryHits
+              .slice(0, 2)
+              .map((hit) => `${hit.title}（${hit.path ?? hit.artifactType ?? hit.layer}）`)
+              .join("；")}。`
+          : `I also found relevant memory context: ${memoryHits
+              .slice(0, 2)
+              .map((hit) => `${hit.title} (${hit.path ?? hit.artifactType ?? hit.layer})`)
+              .join("; ")}.`
         : "";
 
-    return [
-      `Received. I will handle this in the agent runtime. You asked about: ${clipText(normalized)}`,
-      memoryLine,
-      "Use /role, /skills, or /model to inspect the active runtime configuration.",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    return preferChinese
+      ? [
+          `我先记下你的需求：${clipText(normalized)}`,
+          memoryLine,
+          "如果你想让我直接动手，尽量说具体一点，比如“把半监督图像学习设为研究方向”或“推送今天的论文”。",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : [
+          `I noted your request: ${clipText(normalized)}`,
+          memoryLine,
+          "If you want me to take action directly, be a bit more specific, for example \"set semi-supervised image learning as my research direction\" or \"push today's papers\".",
+        ]
+          .filter(Boolean)
+          .join("\n");
+  }
+
+  private logRuntimeFailure(
+    stage: "tool-turn" | "plain-text",
+    input: AgentChatInput,
+    llmRoute: AgentResolvedLlmRoute,
+    error: unknown,
+  ): void {
+    const payload = {
+      stage,
+      senderId: input.senderId,
+      source: resolveInputSource(input),
+      providerId: llmRoute.providerId,
+      modelId: llmRoute.modelId,
+      wireApi: llmRoute.wireApi ?? null,
+      message: describeError(error),
+    };
+    console.error(`[ReAgent AgentRuntime] ${JSON.stringify(payload)}`);
   }
 }

@@ -2,170 +2,170 @@
 
 ## 0. Current Product Reality
 
-截至 2026-04-08，ReAgent 的产品现实应以“单一 CLI 控制面 + 可选 Web 观察面板”为准，而不是多入口分裂心智。
+As of 2026-04-08, ReAgent's product reality should follow a "unified CLI control plane + optional Web observation panel" model, not fragmented multi-entry point design.
 
-- 唯一主控制入口是 `reagent`
-- 运行控制统一收口到 `reagent service ...`
-- 运行检查统一收口到 `reagent runtime ...`
-- 研究工作流统一收口到 `reagent research ...`
-- 渠道、记忆、配置、插件统一收口到 `reagent channels ...`、`reagent memory ...`、`reagent config ...`、`reagent plugins ...`
-- `reagent gateway`、`reagent status`、`reagent health`、`reagent logs`、`reagent doctor` 只保留为兼容 alias，不再是推荐心智
-- Web UI 的定位是观察、浏览、辅助操作，不应再承担只有 UI 才能做的独占控制能力
+- The single primary control entry point is `reagent`
+- Runtime control is unified under `reagent service ...`
+- Runtime inspection is unified under `reagent runtime ...`
+- Research workflow is unified under `reagent research ...`
+- Channels, memory, config, and plugins are unified under `reagent channels ...`, `reagent memory ...`, `reagent config ...`, `reagent plugins ...`
+- `reagent gateway`, `reagent status`, `reagent health`, `reagent logs`, `reagent doctor` are kept only as compatibility aliases, no longer recommended
+- The Web UI is positioned for observation, browsing, and auxiliary operations, not for exclusive control capabilities
 
-这意味着后续设计判断要遵守三个约束：
+This means subsequent design decisions must follow three constraints:
 
-1. 不再新增第二套“平行控制面”
-2. 新能力优先进入 `reagent ...`，UI 只做映射和可视化
-3. 文案、状态页、部署页、帮助页都应默认展示 `service/runtime/research/...`，而不是回退到 `gateway` 时代的命名
+1. Do not introduce a second "parallel control plane"
+2. New capabilities go into `reagent ...` first; UI only handles mapping and visualization
+3. All copy, status pages, deployment pages, and help pages should default to showing `service/runtime/research/...`, not revert to the `gateway` era naming
 
-## 1. 一句话定义
+## 1. One-Line Definition
 
-ReAgent 不是一个“带研究按钮的聊天机器人”，而是一个本地优先、可持续运行的 `Research Workspace / Research OS`。
+ReAgent is not a "chatbot with a research button," but rather a local-first, continuously-runnable `Research Workspace / Research OS`.
 
-它的任务是围绕明确的研究方向，持续完成：
+Its mission is to continuously accomplish the following around a clearly defined research direction:
 
-- 发现新论文与相关来源
-- 标准化论文、文章、仓库和证据
-- 产出有判断的研究报告
-- 提取可复用模块与实现线索
-- 生成周报、baseline map、组会 PPT
-- 通过 Web / WeChat / OpenClaw 等渠道稳定交付
-- 把反馈与结果写回记忆，驱动下一轮研究
+- Discover new papers and related sources
+- Normalize papers, articles, repositories, and evidence
+- Produce evidence-backed research reports
+- Extract reusable modules and implementation insights
+- Generate weekly summaries, baseline maps, and group meeting PPTs
+- Deliver stably through Web / WeChat / OpenClaw and other channels
+- Write feedback and results back to memory, driving the next research cycle
 
-## 2. 为什么要参考开源项目
+## 2. Why Reference Open Source Projects
 
-ReAgent 不应该闭门造车。
+ReAgent should not operate in isolation.
 
-当前开源研究 agent 领域已经出现了几条很明确的路线：
+Several clear research agent directions have already emerged in the open source space:
 
-- 深度研究报告路线
-- 长任务工作台路线
-- 学术检索优化路线
-- 多智能体企业分析路线
-- 论文到工具 / Agent 的转译路线
-- 自动科学发现路线
+- Deep research report pipeline
+- Long-task workbench approach
+- Academic retrieval optimization
+- Multi-agent enterprise analysis
+- Paper-to-tool/Agent translation
+- Automated scientific discovery
 
-ReAgent 的合理做法不是复制其中任何一个项目，而是基于这些项目提炼出适合自身的产品边界和技术优先级。
+ReAgent's rational approach is not to copy any single project, but to extract product boundaries and technical priorities suited to itself from these projects.
 
-## 3. 开源参考系
+## 3. Open Source Reference Systems
 
 ### 3.1 [GPT Researcher](https://github.com/assafelovic/gpt-researcher)
 
-可借鉴点：
+Key learnings:
 
-- 把“深度研究”定义为标准工作流，而不是一次普通对话
-- 以 `planner -> execution -> publisher` 的结构组织研究过程
-- 报告必须强调 citation、source tracking 和可追溯性
-- 支持 web research 与 local research 的统一输出
-- 深度研究可以用树状探索，而不是线性搜索
+- Defines "deep research" as a standard workflow, not just a regular conversation
+- Structures research as `planner -> execution -> publisher`
+- Reports must emphasize citation, source tracking, and traceability
+- Supports unified output for both web research and local research
+- Tree-based exploration for complex research paths instead of linear search
 
-对 ReAgent 的启发：
+Implications for ReAgent:
 
-- ReAgent 的核心输出必须是高质量研究工件，而不是随手生成的回答
-- 报告结构、证据引用、来源追踪应该是默认能力
-- 对方向研究，应该支持“广度发现 + 深度下钻”的混合流程
+- ReAgent's core output must be high-quality research artifacts, not ad-hoc answers
+- Report structure, evidence citation, and source tracking should be default capabilities
+- For directional research, should support mixed "breadth discovery + depth drilling" workflows
 
 ### 3.2 [DeerFlow](https://github.com/bytedance/deer-flow)
 
-可借鉴点：
+Key learnings:
 
-- 把 agent 设计成 long-horizon harness，而不是单轮助手
-- memory、tools、skills、subagents、gateway 都是一等公民
-- 任务可能持续分钟到小时，因此状态可见性非常重要
-- 本地部署、可控权限、可观测性是产品能力，不是附属功能
+- Designs agents as long-horizon harnesses, not single-turn assistants
+- Memory, tools, skills, subagents, and gateway are all first-class citizens
+- Tasks may run for minutes to hours, so state visibility is critical
+- Local deployment, controllable permissions, and observability are product capabilities, not afterthoughts
 
-对 ReAgent 的启发：
+Implications for ReAgent:
 
-- ReAgent 应该是一个长期运行的工作台，而不是只重视“问答体验”
-- 研究任务需要显式状态、审计、恢复和计划执行
-- 记忆、技能、渠道接入和运行时边界要明确，而不是混在 prompt 里
-- 本地可信环境与可观测运行是核心优势
+- ReAgent should be a long-running workbench, not just focused on "Q&A experience"
+- Research tasks need explicit state, audit trails, recovery, and plan execution
+- Memory, skills, channel integration, and runtime boundaries must be clear, not mixed into prompts
+- Local trustworthy environment and observable execution are core advantages
 
 ### 3.3 [PaSa](https://github.com/bytedance/pasa)
 
-可借鉴点：
+Key learnings:
 
-- 学术检索本身就是核心问题，不是搜索 API 的简单包装
-- 论文搜索需要连续决策：调用搜索工具、阅读论文、筛参考文献、扩展检索
-- 检索质量决定后续报告质量
+- Academic retrieval itself is the core problem, not just a simple wrapper around search APIs
+- Paper search requires continuous decision-making: invoke search tools, read papers, filter references, extend retrieval
+- Retrieval quality determines subsequent report quality
 
-对 ReAgent 的启发：
+Implications for ReAgent:
 
-- ReAgent 必须把 paper discovery 和 academic retrieval 放在核心能力里
-- “找什么、为什么找、是否继续扩展引用链” 应该是显式决策
-- 研究方向的 brief 需要直接驱动检索策略，而不是只当标签
+- ReAgent must place paper discovery and academic retrieval at its core capabilities
+- "What to search, why search, whether to extend reference chains" should be explicit decisions
+- Research direction briefs must directly drive retrieval strategy, not just serve as labels
 
 ### 3.4 [Enterprise Deep Research](https://github.com/SalesforceAIResearch/enterprise-deep-research)
 
-可借鉴点：
+Key learnings:
 
-- 用 master planning agent 做查询拆解
-- 用专门的 search agents 分别处理通用搜索、学术搜索、GitHub 搜索等
-- reflection 机制用于发现知识缺口并修正方向
-- human-in-the-loop steering 能在长任务中随时纠偏
-- progress tracking、streaming、benchmarking 是产品级能力
+- Uses master planning agent for query decomposition
+- Uses specialized search agents to handle general search, academic search, GitHub search, etc.
+- Reflection mechanism identifies knowledge gaps and corrects direction
+- Human-in-the-loop steering allows course correction during long tasks
+- Progress tracking, streaming, and benchmarking are product-level capabilities
 
-对 ReAgent 的启发：
+Implications for ReAgent:
 
-- ReAgent 需要把任务拆解、专用搜索角色、反思环路和人工纠偏纳入设计
-- 工作台里必须能看到任务进展，而不是只看到最终结果
-- 如果以后做多智能体，必须是为了提高清晰度和吞吐，而不是为了“看起来高级”
+- ReAgent needs to incorporate task decomposition, specialized search roles, reflection loops, and human steering
+- The workbench must show task progress, not just final results
+- If multi-agent design is future work, it must improve clarity and throughput, not just "look advanced"
 
 ### 3.5 [Paper2Agent](https://github.com/jmiao24/Paper2Agent)
 
-可借鉴点：
+Key learnings:
 
-- 强论文不仅能被总结，还能被转成可交互工具或专用 agent
-- 从论文 / repo 中抽取 MCP server、tool、测试、质量报告是一条可复用路径
-- 研究结果最终可以进入“可操作资产层”
+- Strong papers can not only be summarized but also converted into interactive tools or specialized agents
+- Extracting MCP servers, tools, tests, and quality reports from papers/repos is a reusable path
+- Research results can eventually enter the "actionable asset layer"
 
-对 ReAgent 的启发：
+Implications for ReAgent:
 
-- ReAgent 不应停在“读完论文就结束”
-- 对高价值论文，后续应支持抽取模块、工具草案、可复现实验入口
-- `module_asset` 应该成为正式对象，而不是报告里的附带段落
+- ReAgent should not stop at "finishing paper reading"
+- For high-value papers, should later support extracting modules, tool drafts, and experiment reproduction entry points
+- `module_asset` should become a formal object, not just a report section
 
 ### 3.6 [InternAgent](https://github.com/InternScience/InternAgent)
 
-可借鉴点：
+Key learnings:
 
-- 长周期科学发现可以拆成 `Generation -> Verification -> Evolution`
-- 文献分析、知识综合、假设构建、验证与长期记忆应该形成统一系统
-- 多源知识整合比单纯网页总结更接近真实科研工作
+- Long-cycle scientific discovery can be decomposed into `Generation -> Verification -> Evolution`
+- Literature analysis, knowledge synthesis, hypothesis building, verification, and long-term memory form a unified system
+- Multi-source knowledge integration is closer to real research work than single-source summarization
 
-对 ReAgent 的启发：
+Implications for ReAgent:
 
-- ReAgent 的定位应该是“研究循环系统”，不是“研究摘要器”
-- 方向研究不能只停留在阅读，还要支持验证导向的下一步建议
-- 记忆应服务于后续研究演进，而不是只存聊天历史
+- ReAgent's positioning should be "research cycle system," not "research summarizer"
+- Directional research cannot stop at reading; must support verification-driven next steps
+- Memory should serve subsequent research evolution, not just store chat history
 
 ### 3.7 [AI Scientist-v2](https://github.com/SakanaAI/AI-Scientist-v2)
 
-可借鉴点：
+Key learnings:
 
-- 自动科学发现可以延伸到假设生成、实验执行、结果分析和论文写作
-- 树搜索对复杂研究路径探索有效
+- Automated scientific discovery can extend to hypothesis generation, experiment execution, result analysis, and paper writing
+- Tree search is effective for exploring complex research paths
 
-对 ReAgent 的启发：
+Implications for ReAgent:
 
-- ideation、novelty gate、自动实验是后期可扩展方向
-- 这些能力不能早于基础工作台、检索、证据链和工件系统
+- Ideation, novelty gates, and automated experiments are later extensible directions
+- These capabilities must come after foundational workbench, retrieval, evidence chains, and artifact systems
 
-## 4. 参考这些项目后，ReAgent 的产品结论
+## 4. ReAgent's Product Conclusions After Reference Analysis
 
-### 4.1 产品中心必须是“研究闭环”，不是聊天
+### 4.1 Product Center Must Be "Research Cycle," Not Chat
 
-ReAgent 的主线应该是：
+ReAgent's main pipeline should be:
 
 `Research Brief -> Discovery -> Normalize -> Analyze -> Synthesize -> Deliver -> Feedback -> Memory`
 
-而不是：
+Not:
 
 `Chat -> More Chat -> Longer Chat`
 
-### 4.2 最重要的不是“能回答”，而是“能交付”
+### 4.2 Most Important Is Not "Able to Answer," But "Able to Deliver"
 
-ReAgent 最有价值的输出应是：
+ReAgent's most valuable outputs should be:
 
 - daily brief
 - paper brief
@@ -176,77 +176,77 @@ ReAgent 最有价值的输出应是：
 - weekly summary
 - group meeting deck
 
-聊天只是入口之一，不是产品本体。
+Chat is just one entry point, not the product itself.
 
-### 4.3 最重要的不是“搜到很多”，而是“筛出值得处理的”
+### 4.3 Most Important Is Not "Finding Many," But "Filtering What Matters"
 
-从 PaSa 和 GPT Researcher 可以看出，研究系统真正有价值的地方在于：
+From PaSa and GPT Researcher, a research system's true value lies in:
 
-- 查询生成
-- 检索扩展
-- 结果筛选
-- 证据组织
-- 结论生成
+- Query generation
+- Retrieval expansion
+- Result filtering
+- Evidence organization
+- Conclusion generation
 
-因此 ReAgent 应优先提高 discovery quality，而不是堆更多来源。
+Therefore ReAgent should prioritize improving discovery quality, not just stacking more sources.
 
-### 4.4 多智能体是手段，不是目标
+### 4.4 Multi-Agent Is a Tool, Not the Goal
 
-从 DeerFlow、Enterprise Deep Research、InternAgent 看，多智能体只有在这些场景里才值得引入：
+From DeerFlow, Enterprise Deep Research, and InternAgent, multi-agent is only worth introducing in these scenarios:
 
-- 长任务拆解
-- 不同来源的专门检索
-- 反思与纠偏
-- 结果汇总与工件生产
+- Long task decomposition
+- Specialized retrieval from different sources
+- Reflection and course correction
+- Result synthesis and artifact production
 
-如果没有明确角色边界，多智能体只会增加复杂度。
+Without clear role boundaries, multi-agent only adds complexity.
 
-## 5. ReAgent 的目标产品形态
+## 5. ReAgent's Target Product Form
 
-ReAgent 应该被建设为一个本地研究工作台，围绕下面三层展开。
+ReAgent should be built as a local research workbench, organized around three layers.
 
 ### 5.1 Evidence Layer
 
-管理研究证据：
+Manages research evidence:
 
-- 论文
-- PDF
-- 文章链接
-- GitHub 仓库
-- 引用链
-- 证据片段
-- 图表
+- Papers
+- PDFs
+- Article links
+- GitHub repositories
+- Citation chains
+- Evidence snippets
+- Charts
 
 ### 5.2 Memory Layer
 
-管理长期上下文：
+Manages long-term context:
 
-- research brief
-- 用户偏好
-- 历史报告
-- baseline 对比
-- 复用模块
-- 反馈记录
+- Research brief
+- User preferences
+- Historical reports
+- Baseline comparisons
+- Reusable modules
+- Feedback records
 
 ### 5.3 Delivery Layer
 
-管理稳定交付：
+Manages stable delivery:
 
-- Web 工作台
-- WeChat 推送
-- OpenClaw 插件
-- 日报 / 周报
-- 组会材料
+- Web workbench
+- WeChat push
+- OpenClaw plugin
+- Daily/Weekly reports
+- Group meeting materials
 
-## 6. 核心对象模型
+## 6. Core Object Model
 
-参考 GPT Researcher、Paper2Agent、Enterprise Deep Research 之后，ReAgent 应统一使用以下对象：
+After referencing GPT Researcher, Paper2Agent, and Enterprise Deep Research, ReAgent should standardize on the following objects:
 
 ### `ResearchBrief`
 
-描述一个研究方向的目标、约束、评估标准和交付偏好。
+Describes the goal, constraints, evaluation criteria, and delivery preferences of a research direction.
 
-至少包含：
+Must include at minimum:
 
 - title
 - tl;dr
@@ -263,31 +263,31 @@ ReAgent 应该被建设为一个本地研究工作台，围绕下面三层展开
 
 ### `SourceItem`
 
-表示外部来源项，例如：
+Represents an external source item, for example:
 
-- 微信公众号文章
-- 小红书笔记
-- 知乎回答
-- 博客文章
-- 项目页
-- arXiv 页面
-- DOI 页面
+- WeChat public account article
+- Xiaohongshu note
+- Zhihu answer
+- Blog post
+- Project page
+- arXiv page
+- DOI page
 
 ### `Paper`
 
-规范化后的论文实体，关联：
+Normalized paper entity, associated with:
 
 - metadata
 - PDF
-- 来源入口
-- 引用信息
-- 相关方向
-- 结论摘要
-- 证据索引
+- source entry
+- citation information
+- related directions
+- conclusion summary
+- evidence index
 
 ### `Repo`
 
-规范化后的仓库实体，关联：
+Normalized repository entity, associated with:
 
 - official / unofficial
 - stars / activity
@@ -297,11 +297,11 @@ ReAgent 应该被建设为一个本地研究工作台，围绕下面三层展开
 
 ### `ModuleAsset`
 
-从 repo 中抽取出的可复用模块、代码思路、工程技巧或工具草案。
+Reusable modules, code insights, engineering tricks, or tool drafts extracted from repos.
 
 ### `Report`
 
-统一表示：
+Standardized representation of:
 
 - paper brief
 - deep paper report
@@ -311,7 +311,7 @@ ReAgent 应该被建设为一个本地研究工作台，围绕下面三层展开
 
 ### `PresentationAsset`
 
-统一表示：
+Standardized representation of:
 
 - PPT outline
 - slide notes
@@ -320,11 +320,11 @@ ReAgent 应该被建设为一个本地研究工作台，围绕下面三层展开
 
 ### `Feedback`
 
-表示用户对结果的显式反馈，用于影响排序、推送阈值和方向画像。
+Represents explicit user feedback on results, used to influence ranking, push thresholds, and direction profiling.
 
 ### `ResearchRound`
 
-表示一轮完整研究活动，串联：
+Represents one complete research activity, linking:
 
 - brief
 - discovery candidates
@@ -333,65 +333,65 @@ ReAgent 应该被建设为一个本地研究工作台，围绕下面三层展开
 - decisions
 - delivery outputs
 
-## 7. ReAgent 的核心工作流
+## 7. ReAgent's Core Workflows
 
 ### 7.1 Brief-Driven Discovery
 
-参考 PaSa，ReAgent 的 discovery 不能是固定关键词搜索，而应该由 brief 驱动。
+Following PaSa, ReAgent's discovery cannot be fixed keyword search, but must be brief-driven.
 
-系统需要：
+The system needs to:
 
-- 基于 brief 自动生成查询
-- 根据目标问题扩展相关查询
-- 搜最近论文
-- 搜项目页和 GitHub 仓库
-- 对候选进行相关性和价值排序
-- 对重复候选做聚合
+- Auto-generate queries from brief
+- Extend relevant queries based on target problems
+- Search recent papers
+- Search project pages and GitHub repositories
+- Rank discovery candidates by relevance and value
+- Aggregate duplicate candidates
 
 ### 7.2 Article-To-Paper Normalization
 
-参考真实研究场景，用户经常发来的是文章，而不是 arXiv 链接。
+Following real research scenarios, users often send articles, not arXiv links.
 
-因此系统要能从文章中识别：
+The system must be able to identify from articles:
 
-- 论文标题
+- Paper title
 - arXiv / DOI
-- 项目页
-- GitHub 链接
-- 对论文的描述语句
+- Project page
+- GitHub link
+- Descriptive statements about the paper
 
-并把这些入口合并为一个标准 `paper candidate`。
+And merge these entry points into a standard `paper candidate`.
 
 ### 7.3 Evidence-Backed Paper Analysis
 
-参考 GPT Researcher，输出不能只是泛化摘要。
+Following GPT Researcher, output cannot be just a generalized summary.
 
-每篇论文至少要回答：
+Each paper must at minimum answer:
 
-1. 解决什么问题
-2. 核心方法是什么
-3. 真正的新意是什么
-4. 与哪些 baseline 对比
-5. 哪些模块可以复用
-6. 风险、缺点和不确定性是什么
-7. 是否值得进一步行动
+1. What problem does it solve?
+2. What is the core method?
+3. What is the true novelty?
+4. What comparisons with baselines?
+5. Which modules can be reused?
+6. What are the risks, shortcomings, and uncertainties?
+7. Is further action warranted?
 
 ### 7.4 Repo Mining
 
-参考 Paper2Agent，代码仓库分析应该是正式能力。
+Following Paper2Agent, code repository analysis should be a formal capability.
 
-系统要能：
+The system must be able to:
 
-- 查找官方 / 非官方仓库
-- 分析目录结构
-- 识别关键模块
-- 判断复现成本
-- 保存仓库快照或选定模块
-- 形成 module notes
+- Find official / unofficial repositories
+- Analyze directory structure
+- Identify key modules
+- Judge reproduction cost
+- Save repository snapshots or selected modules
+- Form module notes
 
 ### 7.5 Synthesis
 
-参考 GPT Researcher、InternAgent、Enterprise Deep Research，ReAgent 必须支持多论文综合：
+Following GPT Researcher, InternAgent, and Enterprise Deep Research, ReAgent must support multi-paper synthesis:
 
 - baseline map
 - representative paper set
@@ -402,91 +402,91 @@ ReAgent 应该被建设为一个本地研究工作台，围绕下面三层展开
 
 ### 7.6 Feedback And Iteration
 
-参考 DeerFlow 和 Enterprise Deep Research，长任务不能没有纠偏入口。
+Following DeerFlow and Enterprise Deep Research, long tasks cannot lack steering mechanisms.
 
-用户应该能快速表达：
+Users should be able to quickly express:
 
-- 有用 / 没用
-- 多一点 / 少一点
-- 太理论 / 太工程
-- 值得跟 / 先忽略
+- Useful / not useful
+- More / less
+- Too theoretical / too engineering
+- Worth follow-up / ignore for now
 
-系统据此更新：
+The system then updates:
 
-- 排序策略
-- 推送策略
-- brief 画像
-- 下一轮探索重点
+- Ranking strategy
+- Push strategy
+- Brief profiling
+- Next round exploration focus
 
-## 8. 结构化输出
+## 8. Structured Output
 
 ### 8.1 Daily Paper Brief
 
-至少包含：
+Must include at minimum:
 
-- 标题
-- 来源
-- 日期
-- relevance reason
-- novelty guess
-- code availability
-- recommendation level
+- Title
+- Source
+- Date
+- Relevance reason
+- Novelty guess
+- Code availability
+- Recommendation level
 
 ### 8.2 Deep Paper Report
 
-至少包含：
+Must include at minimum:
 
-- 元数据
-- 来源链
-- 问题定义
-- 方法结构
-- 创新点
-- baseline 对比
-- 优势与弱点
-- repo 情况
-- 可复用模块
-- 下一步建议
-- 证据引用
-- 置信度
+- Metadata
+- Source link
+- Problem definition
+- Method structure
+- Innovation points
+- Baseline comparison
+- Strengths and weaknesses
+- Repo situation
+- Reusable modules
+- Next steps recommendation
+- Evidence citations
+- Confidence level
 
 ### 8.3 Repo Report
 
-至少包含：
+Must include at minimum:
 
-- 仓库链接
-- 官方性判断
-- 活跃度
-- 关键目录
-- 复现复杂度
-- 关键模块
-- 风险说明
+- Repository link
+- Officiality judgment
+- Activity level
+- Key directories
+- Reproduction complexity
+- Key modules
+- Risk notes
 
 ### 8.4 Direction Report
 
-至少包含：
+Must include at minimum:
 
-- 方向概览
-- 代表论文
-- baseline map
-- common modules
-- underexplored combinations
-- possible next steps
+- Direction overview
+- Representative papers
+- Baseline map
+- Common modules
+- Underexplored combinations
+- Possible next steps
 
 ### 8.5 Group Meeting Deck Package
 
-至少包含：
+Must include at minimum:
 
-- 组会大纲
-- 按页说明
-- 关键图表
-- 引用列表
-- 最终导出文件或源文件
+- Meeting outline
+- Per-slide notes
+- Key charts
+- Citation list
+- Final export file or source file
 
-## 9. 任务状态机
+## 9. Task State Machine
 
-参考 DeerFlow 和 Enterprise Deep Research，ReAgent 的任务必须可见、可恢复、可重试。
+Following DeerFlow and Enterprise Deep Research, ReAgent's tasks must be visible, recoverable, and retryable.
 
-建议状态至少包括：
+Recommended states include at minimum:
 
 - `queued`
 - `fetching`
@@ -503,160 +503,160 @@ ReAgent 应该被建设为一个本地研究工作台，围绕下面三层展开
 - `completed`
 - `failed`
 
-## 10. 系统模块建议
+## 10. System Module Recommendations
 
 ### 10.1 Brief Manager
 
-负责管理研究方向、研究 brief 和用户偏好。
+Manages research directions, research briefs, and user preferences.
 
 ### 10.2 Discovery Engine
 
-负责查询生成、来源拉取、候选聚合和初步排序。
+Responsible for query generation, source pulling, candidate aggregation, and initial ranking.
 
 ### 10.3 Ranking Layer
 
-负责：
+Responsible for:
 
-- relevance scoring
-- novelty estimation
-- reproducibility scoring
-- recommendation classification
+- Relevance scoring
+- Novelty estimation
+- Reproducibility scoring
+- Recommendation classification
 
 ### 10.4 Ingestion Engine
 
-负责：
+Responsible for:
 
-- 下载 PDF
-- 解析正文
-- 提取图表
-- 标记证据位置
+- Download PDFs
+- Parse full text
+- Extract charts
+- Mark evidence locations
 
 ### 10.5 Analysis Engine
 
-负责：
+Responsible for:
 
-- 方法分析
-- baseline 分析
-- 弱点识别
-- 证据与推断分层
+- Method analysis
+- Baseline analysis
+- Weakness identification
+- Evidence and inference layering
 
 ### 10.6 Repo Mining Engine
 
-负责：
+Responsible for:
 
-- repo 搜索
-- officiality 判定
-- 关键模块提取
-- module asset 生成
+- Repo search
+- Officiality judgment
+- Key module extraction
+- Module asset generation
 
 ### 10.7 Synthesis Engine
 
-负责：
+Responsible for:
 
-- 多论文对比
-- 方向级总结
-- 周报
-- 组会材料
+- Multi-paper comparison
+- Direction-level summarization
+- Weekly reports
+- Group meeting materials
 
 ### 10.8 Delivery Layer
 
-负责：
+Responsible for:
 
-- Web 展示
-- WeChat 推送
-- OpenClaw 接入
-- 导出与通知
+- Web display
+- WeChat push
+- OpenClaw integration
+- Export and notification
 
 ### 10.9 Feedback Engine
 
-负责：
+Responsible for:
 
-- 记录反馈
-- 调整排序
-- 更新 brief 画像
-- 驱动下一轮研究
+- Record feedback
+- Adjust ranking
+- Update brief profiling
+- Drive next round research
 
-## 11. MVP 优先级
+## 11. MVP Priority
 
-综合开源参考项目后，ReAgent 当前最应该优先做的是：
+After synthesizing open source reference projects, the most important priorities for ReAgent currently are:
 
 ### P0
 
-- 结构化 `Research Brief`
-- brief 驱动的 discovery
-- `article -> paper -> repo` 归一化
-- 证据驱动的 deep paper report
-- WeChat 日推送
+- Structured `Research Brief`
+- Brief-driven discovery
+- `article -> paper -> repo` normalization
+- Evidence-backed deep paper report
+- WeChat daily push
 
 ### P1
 
-- repo mining
-- module asset 提取
-- direction report
-- weekly summary
-- group meeting PPT outline
+- Repo mining
+- Module asset extraction
+- Direction report
+- Weekly summary
+- Group meeting PPT outline
 
 ### P2
 
-- specialized sub-agents
-- steering / reflection
-- artifact retrieval
+- Specialized sub-agents
+- Steering / reflection
+- Artifact retrieval
 - OpenClaw parity
 
 ### P3
 
-- paper-to-agent / MCP 转译
-- ideation
-- novelty gate
-- 自动实验执行
+- Paper-to-agent / MCP translation
+- Ideation
+- Novelty gates
+- Automated experiment execution
 
-## 12. 明确的非目标
+## 12. Clear Non-Goals
 
-ReAgent 当前不应优先做成：
+ReAgent should not prioritize becoming:
 
-- 通用聊天产品
-- 只会写一份长报告的 deep research 工具
-- 以实验自动执行为主的 AI Scientist
-- 没有工件层和记忆层的 prompt shell
+- A general-purpose chatbot
+- A deep research tool that only writes one long report
+- An AI Scientist focused primarily on automated experiment execution
+- A prompt shell without artifact and memory layers
 
-## 13. 关键产品原则
+## 13. Key Product Principles
 
-### 13.1 质量优先于数量
+### 13.1 Quality Over Quantity
 
-宁可每天少推几篇，也不要把低相关论文塞满渠道。
+Better to push fewer papers daily than to clog channels with low-relevance papers.
 
-### 13.2 判断优先于复述
+### 13.2 Judgment Over Restatement
 
-用户真正需要的是“该怎么处理这篇论文”，而不是更长的摘要。
+Users truly need "how to handle this paper," not longer summarization.
 
-### 13.3 证据优先于文风
+### 13.3 Evidence Over Writing Style
 
-结论要明确区分：
+Conclusions must clearly distinguish between:
 
-- 论文直接支持
-- 代码证据支持
-- agent 推断
-- 明确猜测
+- Direct paper support
+- Code evidence support
+- Agent inference
+- Explicit speculation
 
-### 13.4 工件优先于聊天记录
+### 13.4 Artifacts Over Chat History
 
-真正有价值的是可复用工件，而不是一长串历史对话。
+True value lies in reusable artifacts, not long conversation histories.
 
-### 13.5 本地可控优先于黑盒自动化
+### 13.5 Local Control Over Black-box Automation
 
-部署、权限、状态、记忆和工件都应该尽量可检查、可干预、可恢复。
+Deployment, permissions, state, memory, and artifacts should be as inspectable, interventional, and recoverable as possible.
 
-## 14. 最终定义
+## 14. Final Definition
 
-ReAgent 的目标是把“持续科研”做成一套可运行、可追踪、可积累的工作流系统。
+ReAgent's goal is to turn "continuous research" into a runnable, traceable, and accumulative workflow system.
 
-它最终应该帮助用户：
+It should ultimately help users:
 
-- 知道什么方向值得跟
-- 快速发现高价值论文
-- 用证据支撑研究判断
-- 找到可复用模块和实现入口
-- 生成周报和组会材料
-- 把所有结果沉淀成下一轮研究输入
+- Know which directions are worth following
+- Quickly discover high-value papers
+- Support research decisions with evidence
+- Find reusable modules and implementation entry points
+- Generate weekly reports and group meeting materials
+- Crystallize all results into inputs for the next research round
 
-如果用户在使用 ReAgent 后，逐步从“信息过载”走向“有证据的研究决策 + 可复用工件”，那么这个产品方向就是对的。
+If users gradually move from "information overload" to "evidence-backed research decisions + reusable artifacts" after using ReAgent, then the product direction is correct.

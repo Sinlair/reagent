@@ -7,6 +7,10 @@ import { z } from "zod";
 import { ResearchRequestSchema } from "../schemas/researchSchema.js";
 import { ResearchLinkIngestionService } from "../services/researchLinkIngestionService.js";
 import { ResearchFeedbackService } from "../services/researchFeedbackService.js";
+import {
+  ResearchEvolutionCandidateError,
+  ResearchEvolutionCandidateService,
+} from "../services/researchEvolutionCandidateService.js";
 import { ResearchMemoryRegistryService } from "../services/researchMemoryRegistryService.js";
 import { ResearchModuleAssetService } from "../services/researchModuleAssetService.js";
 import { ResearchPaperAnalysisService } from "../services/researchPaperAnalysisService.js";
@@ -36,6 +40,11 @@ const GRAPH_NODE_TYPES: ResearchMemoryNodeType[] = [
 
 const ResearchTaskParamsSchema = z.object({
   taskId: z.string().uuid()
+});
+
+const ResearchTaskWorkstreamParamsSchema = z.object({
+  taskId: z.string().uuid(),
+  workstreamId: z.enum(["search", "reading", "synthesis"]),
 });
 
 const DirectionParamsSchema = z.object({
@@ -75,6 +84,10 @@ const DirectionReportParamsSchema = z.object({
   reportId: z.string().trim().min(1)
 });
 
+const EvolutionCandidateParamsSchema = z.object({
+  candidateId: z.string().trim().min(1)
+});
+
 const MemoryGraphNodeParamsSchema = z.object({
   nodeId: z.string().trim().min(1)
 });
@@ -85,6 +98,12 @@ const ArtifactQuerySchema = z.object({
 
 const RecentReportsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional().default(20)
+});
+
+const EvolutionCandidateListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+  status: z.enum(["draft", "reviewed", "approved", "rejected", "applied"]).optional(),
+  type: z.enum(["direction-preset", "workspace-skill"]).optional(),
 });
 
 const TaskListQuerySchema = z.object({
@@ -109,6 +128,31 @@ const DirectionReportGenerateSchema = z.object({
   days: z.coerce.number().int().min(1).max(30).optional(),
 }).refine((value) => Boolean(value.directionId || value.topic), {
   message: "directionId or topic is required"
+});
+
+const EvolutionCandidateGenerateSchema = z.object({
+  reportId: z.string().trim().min(1),
+});
+
+const EvolutionSkillCandidateGenerateSchema = z.object({
+  assetId: z.string().trim().min(1),
+});
+
+const EvolutionCandidateReviewSchema = z.object({
+  decision: z.enum(["reviewed", "approved", "rejected"]),
+  reviewer: z.string().trim().min(1).optional(),
+  notes: z.string().trim().min(1).optional(),
+});
+
+const EvolutionCandidateApplySchema = z.object({
+  dryRun: z.boolean().optional(),
+  reviewer: z.string().trim().min(1).optional(),
+  notes: z.string().trim().min(1).optional(),
+});
+
+const EvolutionCandidateRollbackSchema = z.object({
+  reviewer: z.string().trim().min(1).optional(),
+  notes: z.string().trim().min(1).optional(),
 });
 
 const FeedbackRecordSchema = z.object({
@@ -168,6 +212,10 @@ const SchedulerConfigSchema = z.object({
   directionIds: z.array(z.string().trim().min(1)).optional(),
   topK: z.coerce.number().int().min(1).max(10).optional(),
   maxPapersPerQuery: z.coerce.number().int().min(1).max(10).optional(),
+});
+
+const SchedulerRunsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
 const ResearchDirectionProfileSchema = z.object({
@@ -290,6 +338,7 @@ export async function registerResearchRoutes(
   const moduleAssetService = new ResearchModuleAssetService(workspaceDir);
   const feedbackService = new ResearchFeedbackService(workspaceDir);
   const directionReportService = new ResearchDirectionReportService(workspaceDir);
+  const evolutionCandidateService = new ResearchEvolutionCandidateService(workspaceDir);
   const presentationService = new ResearchPresentationService(workspaceDir, researchService);
   const researchMemoryRegistryService = new ResearchMemoryRegistryService(workspaceDir, researchService);
   const researchRoundService = new ResearchRoundService(workspaceDir);
@@ -372,6 +421,36 @@ export async function registerResearchRoutes(
     }
 
     return reply.send(handoff);
+  });
+
+  app.get("/api/research/tasks/:taskId/workstreams/:workstreamId", async (request, reply) => {
+    const parsedParams = ResearchTaskWorkstreamParamsSchema.safeParse(request.params);
+
+    if (!parsedParams.success) {
+      return reply.code(400).send({
+        message: "Invalid research task workstream request",
+        issues: parsedParams.error.flatten()
+      });
+    }
+
+    const task = await researchTaskService.getTaskDetail(parsedParams.data.taskId);
+    if (!task) {
+      return reply.code(404).send({
+        message: "Research task not found"
+      });
+    }
+
+    const workstream = await researchRoundService.getWorkstreamMemo(
+      parsedParams.data.taskId,
+      parsedParams.data.workstreamId,
+    );
+    if (!workstream) {
+      return reply.code(404).send({
+        message: "Research task workstream not found"
+      });
+    }
+
+    return reply.send(workstream);
   });
 
   app.post("/api/research/tasks", async (request, reply) => {
@@ -636,6 +715,25 @@ export async function registerResearchRoutes(
     researchDiscoverySchedulerService.getStatus()
   );
 
+  app.get("/api/research/discovery/scheduler/runtime", async () =>
+    researchDiscoverySchedulerService.getRuntimeSnapshot()
+  );
+
+  app.get("/api/research/discovery/scheduler/runs", async (request, reply) => {
+    const parsed = SchedulerRunsQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid discovery scheduler runs query",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    return reply.send({
+      items: await researchDiscoverySchedulerService.listRecentRuns(parsed.data.limit),
+    });
+  });
+
   app.post("/api/research/discovery/scheduler", async (request, reply) => {
     const parsed = SchedulerConfigSchema.safeParse(request.body ?? {});
 
@@ -860,6 +958,172 @@ export async function registerResearchRoutes(
 
     const report = await directionReportService.generate(parsed.data);
     return reply.code(201).send(report);
+  });
+
+  app.get("/api/research/candidates", async (request, reply) => {
+    const parsedQuery = EvolutionCandidateListQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsedQuery.success) {
+      return reply.code(400).send({
+        message: "Invalid evolution candidate query",
+        issues: parsedQuery.error.flatten()
+      });
+    }
+
+    return reply.send({
+      candidates: await evolutionCandidateService.listRecent(
+        parsedQuery.data.limit,
+        parsedQuery.data.status,
+        parsedQuery.data.type,
+      )
+    });
+  });
+
+  app.get("/api/research/candidates/:candidateId", async (request, reply) => {
+    const parsedParams = EvolutionCandidateParamsSchema.safeParse(request.params);
+
+    if (!parsedParams.success) {
+      return reply.code(400).send({
+        message: "Invalid evolution candidate id",
+        issues: parsedParams.error.flatten()
+      });
+    }
+
+    const candidate = await evolutionCandidateService.getCandidate(parsedParams.data.candidateId);
+    if (!candidate) {
+      return reply.code(404).send({
+        message: "Evolution candidate not found"
+      });
+    }
+
+    return reply.send(candidate);
+  });
+
+  app.post("/api/research/candidates/direction-preset", async (request, reply) => {
+    const parsed = EvolutionCandidateGenerateSchema.safeParse(request.body ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid evolution candidate payload",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    try {
+      const candidate = await evolutionCandidateService.generateDirectionPresetCandidateFromReport(parsed.data.reportId);
+      return reply.code(201).send(candidate);
+    } catch (error) {
+      if (error instanceof ResearchEvolutionCandidateError && error.code === "NOT_FOUND") {
+        return reply.code(404).send({
+          message: error.message
+        });
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/research/candidates/workspace-skill", async (request, reply) => {
+    const parsed = EvolutionSkillCandidateGenerateSchema.safeParse(request.body ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid workspace skill candidate payload",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    try {
+      const candidate = await evolutionCandidateService.generateWorkspaceSkillCandidateFromAsset(parsed.data.assetId);
+      return reply.code(201).send(candidate);
+    } catch (error) {
+      if (error instanceof ResearchEvolutionCandidateError && error.code === "NOT_FOUND") {
+        return reply.code(404).send({
+          message: error.message
+        });
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/research/candidates/:candidateId/review", async (request, reply) => {
+    const parsedParams = EvolutionCandidateParamsSchema.safeParse(request.params);
+    const parsedBody = EvolutionCandidateReviewSchema.safeParse(request.body ?? {});
+
+    if (!parsedParams.success || !parsedBody.success) {
+      return reply.code(400).send({
+        message: "Invalid evolution candidate review payload",
+        issues: {
+          params: parsedParams.success ? undefined : parsedParams.error.flatten(),
+          body: parsedBody.success ? undefined : parsedBody.error.flatten(),
+        }
+      });
+    }
+
+    try {
+      const candidate = await evolutionCandidateService.reviewCandidate(parsedParams.data.candidateId, parsedBody.data);
+      return reply.send(candidate);
+    } catch (error) {
+      if (error instanceof ResearchEvolutionCandidateError) {
+        return reply.code(error.code === "NOT_FOUND" ? 404 : 400).send({
+          message: error.message
+        });
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/research/candidates/:candidateId/apply", async (request, reply) => {
+    const parsedParams = EvolutionCandidateParamsSchema.safeParse(request.params);
+    const parsedBody = EvolutionCandidateApplySchema.safeParse(request.body ?? {});
+
+    if (!parsedParams.success || !parsedBody.success) {
+      return reply.code(400).send({
+        message: "Invalid evolution candidate apply payload",
+        issues: {
+          params: parsedParams.success ? undefined : parsedParams.error.flatten(),
+          body: parsedBody.success ? undefined : parsedBody.error.flatten(),
+        }
+      });
+    }
+
+    try {
+      const outcome = await evolutionCandidateService.applyCandidate(parsedParams.data.candidateId, parsedBody.data);
+      return reply.send(outcome);
+    } catch (error) {
+      if (error instanceof ResearchEvolutionCandidateError) {
+        return reply.code(error.code === "NOT_FOUND" ? 404 : 400).send({
+          message: error.message
+        });
+      }
+      throw error;
+    }
+  });
+
+  app.post("/api/research/candidates/:candidateId/rollback", async (request, reply) => {
+    const parsedParams = EvolutionCandidateParamsSchema.safeParse(request.params);
+    const parsedBody = EvolutionCandidateRollbackSchema.safeParse(request.body ?? {});
+
+    if (!parsedParams.success || !parsedBody.success) {
+      return reply.code(400).send({
+        message: "Invalid evolution candidate rollback payload",
+        issues: {
+          params: parsedParams.success ? undefined : parsedParams.error.flatten(),
+          body: parsedBody.success ? undefined : parsedBody.error.flatten(),
+        }
+      });
+    }
+
+    try {
+      const outcome = await evolutionCandidateService.rollbackCandidate(parsedParams.data.candidateId, parsedBody.data);
+      return reply.send(outcome);
+    } catch (error) {
+      if (error instanceof ResearchEvolutionCandidateError) {
+        return reply.code(error.code === "NOT_FOUND" ? 404 : 400).send({
+          message: error.message
+        });
+      }
+      throw error;
+    }
   });
 
   app.get("/api/research/directions/:directionId", async (request, reply) => {

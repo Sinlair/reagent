@@ -16,7 +16,7 @@ export interface BundledPluginRecord {
   packageRoot: string;
   packageJsonPath: string;
   manifestPath: string;
-  source: "bundled" | "reference";
+  source: "bundled" | "reference" | "upstream";
   installSpec: string;
   minHostVersion?: string | undefined;
   channels: string[];
@@ -83,8 +83,8 @@ export class BundledPluginCatalogService {
     );
   }
 
-  private async findCandidatePluginDirs(): Promise<Array<{ path: string; source: "bundled" | "reference" }>> {
-    const results: Array<{ path: string; source: "bundled" | "reference" }> = [];
+  private async findCandidatePluginDirs(): Promise<Array<{ path: string; source: "bundled" | "reference" | "upstream" }>> {
+    const results: Array<{ path: string; source: "bundled" | "reference" | "upstream" }> = [];
 
     const packagesDir = path.join(this.repoRoot, "packages");
     try {
@@ -107,10 +107,26 @@ export class BundledPluginCatalogService {
       source: "reference",
     });
 
+    const upstreamExtensionsDir = path.join(this.repoRoot, "upstream", "openclaw", "extensions");
+    try {
+      const entries = await readdir(upstreamExtensionsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        results.push({
+          path: path.join(upstreamExtensionsDir, entry.name),
+          source: "upstream",
+        });
+      }
+    } catch {
+      // ignore
+    }
+
     return results;
   }
 
-  private async readPlugin(packageRoot: string, source: "bundled" | "reference"): Promise<BundledPluginRecord | null> {
+  private async readPlugin(packageRoot: string, source: "bundled" | "reference" | "upstream"): Promise<BundledPluginRecord | null> {
     const manifestPath = path.join(packageRoot, "openclaw.plugin.json");
     const packageJsonPath = path.join(packageRoot, "package.json");
 

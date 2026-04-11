@@ -117,6 +117,8 @@ async function main() {
       const artifactStore = JSON.parse(await readFile(path.join(roundDir, "artifacts.json"), "utf8"));
       const reportContent = JSON.parse(await readFile(path.join(roundDir, "report.json"), "utf8"));
       const reviewContent = await readFile(path.join(roundDir, "review.md"), "utf8");
+      const searchWorkstream = await readFile(path.join(roundDir, "workstreams", "search.md"), "utf8");
+      const synthesisWorkstream = await readFile(path.join(roundDir, "workstreams", "synthesis.md"), "utf8");
       const taskStore = JSON.parse(await readFile(path.join(dir, "research", "task-runs.json"), "utf8"));
 
       assert.equal(briefContent.includes("Topic: agentic rag"), true);
@@ -125,8 +127,13 @@ async function main() {
       assert.equal(Array.isArray(artifactStore.items), true);
       assert.equal(artifactStore.items.some((item) => item.kind === "report"), true);
       assert.equal(artifactStore.items.some((item) => item.kind === "review"), true);
+      assert.equal(artifactStore.items.some((item) => item.kind === "workstream" && item.id === "search"), true);
       assert.equal(reportContent.taskId, task.taskId);
       assert.equal(reviewContent.includes("Verdict: moderate"), true);
+      assert.equal(searchWorkstream.includes("## Search Context"), true);
+      assert.equal(searchWorkstream.includes("Queries: agentic rag"), true);
+      assert.equal(synthesisWorkstream.includes("## Synthesis Context"), true);
+      assert.equal(synthesisWorkstream.includes("Summary for agentic rag"), true);
       assert.equal("report" in taskStore.tasks[0], false);
     });
   });

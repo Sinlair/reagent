@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import type { FastifyBaseLogger } from "fastify";
+
 import type { ResearchDiscoveryRunResult } from "../types/researchDiscovery.js";
 import type {
   ResearchDiscoveryScheduleConfig,
@@ -10,6 +12,8 @@ import type {
 import { ResearchFeedbackService } from "./researchFeedbackService.js";
 import { ResearchDirectionService } from "./researchDirectionService.js";
 import { ResearchDiscoveryService } from "./researchDiscoveryService.js";
+import { JobRuntimeObservabilityService } from "./jobRuntimeObservabilityService.js";
+import { JobRuntimeService } from "./jobRuntimeService.js";
 
 const STORE_FILE = "channels/research-discovery-scheduler.json";
 const TICK_INTERVAL_MS = 60_000;
@@ -100,16 +104,49 @@ export class ResearchDiscoverySchedulerService {
   private readonly storePath: string;
   private readonly directionService: ResearchDirectionService;
   private readonly feedbackService: ResearchFeedbackService;
-  private timer: NodeJS.Timeout | null = null;
-  private runningTick = false;
+  private readonly observability: JobRuntimeObservabilityService;
+  private readonly runtime: JobRuntimeService<ResearchDiscoveryRunResult[]>;
 
   constructor(
     private readonly workspaceDir: string,
     private readonly discoveryService: ResearchDiscoveryService,
+    private readonly logger?: FastifyBaseLogger,
   ) {
     this.storePath = path.join(workspaceDir, STORE_FILE);
     this.directionService = new ResearchDirectionService(workspaceDir);
     this.feedbackService = new ResearchFeedbackService(workspaceDir);
+    this.observability = new JobRuntimeObservabilityService(workspaceDir);
+    this.runtime = new JobRuntimeService<ResearchDiscoveryRunResult[]>({
+      jobName: "research-discovery-scheduler",
+      logger,
+      scheduledErrorMessage: "Research discovery scheduler tick failed.",
+      observers: [this.observability],
+      classifyResult: (results) =>
+        results.length > 0
+          ? {
+              state: "completed",
+              summary: `Ran discovery for ${results.length} direction(s).`,
+              metadata: {
+                runCount: results.length,
+                directionIds: results.flatMap((result) => result.directionIds),
+              },
+            }
+          : {
+              state: "skipped",
+              summary: "No discovery runs were triggered.",
+            },
+      onRun: () => this.runTick(),
+      onBusyReturn: () => [],
+      onScheduledErrorReturn: () => [],
+    });
+  }
+
+  async getRuntimeSnapshot() {
+    return this.observability.getSnapshot("research-discovery-scheduler");
+  }
+
+  async listRecentRuns(limit = 20) {
+    return this.observability.listRecentRuns("research-discovery-scheduler", limit);
   }
 
   private async readState(): Promise<ResearchDiscoveryScheduleState> {
@@ -133,7 +170,7 @@ export class ResearchDiscoverySchedulerService {
   async getStatus(): Promise<ResearchDiscoverySchedulerStatus> {
     const state = await this.readState();
     return {
-      running: Boolean(this.timer),
+      running: this.runtime.isStarted(),
       enabled: state.enabled,
       dailyTimeLocal: state.dailyTimeLocal,
       ...(state.senderId ? { senderId: state.senderId } : {}),
@@ -171,22 +208,18 @@ export class ResearchDiscoverySchedulerService {
   }
 
   async start(): Promise<void> {
-    if (this.timer) {
+    if (this.runtime.isStarted()) {
       return;
     }
 
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, TICK_INTERVAL_MS);
-    this.timer.unref?.();
-    await this.tick();
+    await this.runtime.start({
+      intervalMs: TICK_INTERVAL_MS,
+      immediate: true,
+    });
   }
 
   async stop(): Promise<void> {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    await this.runtime.stop();
   }
 
   private async resolveTargetDirections(state: ResearchDiscoveryScheduleState): Promise<string[]> {
@@ -199,75 +232,70 @@ export class ResearchDiscoverySchedulerService {
   }
 
   async tick(): Promise<ResearchDiscoveryRunResult[]> {
-    if (this.runningTick) {
+    return this.runtime.runDirect();
+  }
+
+  private async runTick(): Promise<ResearchDiscoveryRunResult[]> {
+    const state = await this.readState();
+    if (!state.enabled || !state.senderId.trim()) {
       return [];
     }
 
-    this.runningTick = true;
-    try {
-      const state = await this.readState();
-      if (!state.enabled || !state.senderId.trim()) {
-        return [];
-      }
-
-      const nowTime = currentLocalTimeHHmm();
-      if (nowTime < state.dailyTimeLocal) {
-        return [];
-      }
-
-      const today = todayLocalDate();
-      const targetDirectionIds = await this.resolveTargetDirections(state);
-      const pendingDirectionIds: string[] = [];
-
-      for (const directionId of targetDirectionIds) {
-        const profile = await this.directionService.getProfile(directionId);
-        const policy = await this.feedbackService.getDirectionPushPolicy({
-          directionId,
-          topic: profile?.label,
-        });
-        const lastRunDate = state.lastRunDateByDirection[directionId];
-        if (lastRunDate === today) {
-          continue;
-        }
-        if (daysSinceLocalDate(lastRunDate) < policy.minSpacingDays) {
-          continue;
-        }
-        pendingDirectionIds.push(directionId);
-      }
-
-      if (pendingDirectionIds.length === 0) {
-        return [];
-      }
-
-      const results: ResearchDiscoveryRunResult[] = [];
-      const nextState: ResearchDiscoveryScheduleState = {
-        ...state,
-        lastRunDateByDirection: { ...state.lastRunDateByDirection },
-      };
-
-      for (const directionId of pendingDirectionIds) {
-        const profile = await this.directionService.getProfile(directionId);
-        const policy = await this.feedbackService.getDirectionPushPolicy({
-          directionId,
-          topic: profile?.label,
-        });
-        const adjustedTopK = Math.max(1, Math.min(state.topK + policy.topKAdjustment, 10));
-        const result = await this.discoveryService.runDiscovery({
-          directionId,
-          maxPapersPerQuery: state.maxPapersPerQuery,
-          topK: adjustedTopK,
-          pushToWechat: true,
-          senderId: state.senderId,
-          ...(state.senderName?.trim() ? { senderName: state.senderName.trim() } : {}),
-        });
-        nextState.lastRunDateByDirection[directionId] = today;
-        results.push(result);
-      }
-
-      await this.writeState(nextState);
-      return results;
-    } finally {
-      this.runningTick = false;
+    const nowTime = currentLocalTimeHHmm();
+    if (nowTime < state.dailyTimeLocal) {
+      return [];
     }
+
+    const today = todayLocalDate();
+    const targetDirectionIds = await this.resolveTargetDirections(state);
+    const pendingDirectionIds: string[] = [];
+
+    for (const directionId of targetDirectionIds) {
+      const profile = await this.directionService.getProfile(directionId);
+      const policy = await this.feedbackService.getDirectionPushPolicy({
+        directionId,
+        topic: profile?.label,
+      });
+      const lastRunDate = state.lastRunDateByDirection[directionId];
+      if (lastRunDate === today) {
+        continue;
+      }
+      if (daysSinceLocalDate(lastRunDate) < policy.minSpacingDays) {
+        continue;
+      }
+      pendingDirectionIds.push(directionId);
+    }
+
+    if (pendingDirectionIds.length === 0) {
+      return [];
+    }
+
+    const results: ResearchDiscoveryRunResult[] = [];
+    const nextState: ResearchDiscoveryScheduleState = {
+      ...state,
+      lastRunDateByDirection: { ...state.lastRunDateByDirection },
+    };
+
+    for (const directionId of pendingDirectionIds) {
+      const profile = await this.directionService.getProfile(directionId);
+      const policy = await this.feedbackService.getDirectionPushPolicy({
+        directionId,
+        topic: profile?.label,
+      });
+      const adjustedTopK = Math.max(1, Math.min(state.topK + policy.topKAdjustment, 10));
+      const result = await this.discoveryService.runDiscovery({
+        directionId,
+        maxPapersPerQuery: state.maxPapersPerQuery,
+        topK: adjustedTopK,
+        pushToWechat: true,
+        senderId: state.senderId,
+        ...(state.senderName?.trim() ? { senderName: state.senderName.trim() } : {}),
+      });
+      nextState.lastRunDateByDirection[directionId] = today;
+      results.push(result);
+    }
+
+    await this.writeState(nextState);
+    return results;
   }
 }

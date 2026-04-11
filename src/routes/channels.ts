@@ -18,6 +18,22 @@ const InboundSchema = z.object({
   text: z.string().trim().min(1)
 });
 
+const PushSchema = z.object({
+  senderId: z.string().trim().min(1).optional(),
+  senderName: z.string().trim().min(1).optional(),
+  sessionKey: z.string().trim().min(1).optional(),
+  text: z.string().trim().optional().default(""),
+  mediaUrl: z.string().trim().min(1).optional(),
+  accountId: z.string().trim().min(1).optional(),
+  threadId: z.string().trim().min(1).optional()
+}).refine((value) => Boolean(value.senderId?.trim()) || Boolean(value.sessionKey?.trim()), {
+  message: "Push payload requires senderId or sessionKey.",
+  path: ["senderId"],
+}).refine((value) => value.text.trim().length > 0 || Boolean(value.mediaUrl?.trim()), {
+  message: "Push payload requires text or mediaUrl.",
+  path: ["text"],
+});
+
 const AgentQuerySchema = z.object({
   senderId: z.string().trim().min(1)
 });
@@ -86,6 +102,36 @@ export async function registerChannelRoutes(
 
     return reply.send({
       items: await channelService.listWeChatLifecycleAudit(parsed.data.limit)
+    });
+  });
+
+  app.get("/api/channels/wechat/openclaw-events", async (request, reply) => {
+    const parsed = LifecycleAuditQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid OpenClaw event query",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    return reply.send({
+      items: await channelService.listOpenClawEventAudit(parsed.data.limit)
+    });
+  });
+
+  app.get("/api/channels/wechat/openclaw-sessions", async (request, reply) => {
+    const parsed = LifecycleAuditQuerySchema.safeParse(request.query ?? {});
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid OpenClaw session registry query",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    return reply.send({
+      items: await channelService.listOpenClawSessionRegistry(parsed.data.limit)
     });
   });
 
@@ -237,7 +283,7 @@ export async function registerChannelRoutes(
   });
 
   app.post("/api/channels/wechat/push", async (request, reply) => {
-    const parsed = InboundSchema.safeParse(request.body ?? {});
+    const parsed = PushSchema.safeParse(request.body ?? {});
 
     if (!parsed.success) {
       return reply.code(400).send({

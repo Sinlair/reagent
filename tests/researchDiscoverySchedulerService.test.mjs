@@ -80,11 +80,16 @@ async function main() {
       const first = await scheduler.tick();
       const second = await scheduler.tick();
       const status = await scheduler.getStatus();
+      const runtime = await scheduler.getRuntimeSnapshot();
+      const runs = await scheduler.listRecentRuns(5);
 
       assert.equal(first.length, 1);
       assert.deepEqual(second, []);
       assert.equal(pushes.length, 1);
       assert.equal(status.lastRunDateByDirection[profile.id] != null, true);
+      assert.equal(runtime.lastState, "skipped");
+      assert.equal(runs.some((entry) => entry.event === "finished" && entry.state === "completed"), true);
+      assert.equal(runs.some((entry) => entry.event === "finished" && entry.state === "skipped"), true);
     });
   });
 

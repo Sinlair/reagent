@@ -12,6 +12,7 @@ That means the project should prioritize:
 - durable artifacts and delivery surfaces over chat-only answers
 - long-running task visibility, memory, and tool orchestration over hidden autonomy
 - plugin/package parity and local inspectability over one-off demos
+- OpenClaw parity recovery over drifting into a standalone-only narrative
 
 It should explicitly defer these until the core workspace loop is stronger:
 
@@ -133,6 +134,8 @@ What to add:
 - recent report lookup
 - module asset lookup
 - package-level tests for migrated workflows
+- a first-class OpenClaw status surface in the root CLI
+- foundation-package visibility instead of reference-only language in the operator-facing UX
 
 Why:
 
@@ -257,26 +260,13 @@ The root app should continue to host:
 - delivery surfaces
 - operational deployment modes
 
-### `packages/reagent-core`
+### Single-Package Direction
 
-This package should become the reusable research logic layer:
+The standalone `@sinlair/reagent` package should remain the only official
+installation target.
 
-- brief and direction management
-- discovery
-- feedback scoring
-- report generation
-- artifact serialization
-- paper and repo analysis
-
-### `packages/reagent-openclaw`
-
-This package should become the install-and-mount OpenClaw plugin:
-
-- commands
-- tools
-- artifact inspection surfaces
-- background services
-- host-integrated workflows
+Reusable logic should live inside the root runtime codebase unless there is a
+very strong reason to split it later.
 
 ## Suggested Execution Order
 

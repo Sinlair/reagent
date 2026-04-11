@@ -1,5 +1,5 @@
-import type { ChannelAccountSnapshot } from "openclaw/plugin-sdk/channel-contract";
-import type { PluginRuntime } from "openclaw/plugin-sdk/core";
+import type { ChannelAccountSnapshot } from "../sdk/channel-types.js";
+import type { PluginRuntime } from "../sdk/core.js";
 
 import { getUpdates } from "../api/api.js";
 import { WeixinConfigManager } from "../api/config-cache.js";
@@ -23,7 +23,7 @@ export type MonitorWeixinOpts = {
   accountId: string;
   /** When non-empty, only messages whose from_user_id is in this list are processed. */
   allowFrom?: string[];
-  config: import("openclaw/plugin-sdk/core").OpenClawConfig;
+  config: import("../sdk/core.js").OpenClawConfig;
   runtime?: { log?: (msg: string) => void; error?: (msg: string) => void };
   abortSignal?: AbortSignal;
   longPollTimeoutMs?: number;

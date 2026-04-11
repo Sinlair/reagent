@@ -1,0 +1,15 @@
+﻿{
+    "importedAt":  "2026-04-09T00:48:20.3498248+08:00",
+    "sourcePath":  "E:\\Internship\\program\\openclaw",
+    "sourceCommit":  "21403a3898f6ad8b042e5812caf7848bdf72199c",
+    "trackedFileCount":  11197,
+    "extensionCount":  88,
+    "destinationPath":  "E:\\Internship\\program\\ReAgent\\upstream\\openclaw",
+    "excludedTopLevelNames":  [
+                                  ".git",
+                                  "node_modules",
+                                  ".agents",
+                                  ".vscode",
+                                  ".pi"
+                              ]
+}

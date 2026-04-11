@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { normalizeAccountId } from "openclaw/plugin-sdk/account-id";
-import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { normalizeAccountId } from "../sdk/account.js";
+import type { OpenClawConfig } from "../sdk/core.js";
 
 import { getWeixinRuntime } from "../runtime.js";
 import { resolveStateDir } from "../storage/state-dir.js";
@@ -296,7 +296,7 @@ export function loadConfigRouteTag(accountId?: string): string | undefined {
  */
 export async function triggerWeixinChannelReload(): Promise<void> {
   try {
-    const { loadConfig, writeConfigFile } = await import("openclaw/plugin-sdk/config-runtime");
+    const { loadConfig, writeConfigFile } = await import("../sdk/config-runtime.js");
     const cfg = loadConfig();
     const channels = (cfg.channels ?? {}) as Record<string, unknown>;
     if (!channels["openclaw-weixin"] || Object.keys(channels["openclaw-weixin"] as Record<string, unknown>).every((k) => k === "enabled")) {
