@@ -152,6 +152,12 @@ async function main() {
       assert.notEqual(retry.taskId, first.taskId);
       assert.equal(retry.sourceTaskId, first.taskId);
       assert.equal(retry.attempt, 2);
+
+      const retriedTask = await waitFor(async () => {
+        const current = await service.getTask(retry.taskId);
+        return current?.state === "completed" ? current : null;
+      });
+      assert.equal(retriedTask.attempt, 2);
     });
   });
 }
