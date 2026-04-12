@@ -1,5 +1,7 @@
 # 🦞 OpenClaw — Personal AI Assistant
 
+> Snapshot note: this copy under `ReAgent/upstream/openclaw/` is a trimmed migration snapshot, not a runnable upstream checkout. ReAgent intentionally removed the top-level `scripts/` tree, CI/workflow files, several Docker/Vitest entrypoints, and Android Kotlin sources.
+
 <p align="center">
     <picture>
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/openclaw/openclaw/main/docs/assets/openclaw-logo-text-dark.svg">

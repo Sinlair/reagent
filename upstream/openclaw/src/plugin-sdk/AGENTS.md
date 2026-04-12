@@ -13,7 +13,7 @@ can affect bundled plugins and third-party plugins.
   - `docs/plugins/architecture.md`
 - Definition files:
   - `package.json`
-  - `scripts/lib/plugin-sdk-entrypoints.json`
+  - original upstream also used `scripts/lib/plugin-sdk-entrypoints.json`, but this trimmed ReAgent snapshot no longer carries the top-level `scripts/` tree
   - `src/plugin-sdk/entrypoints.ts`
   - `src/plugin-sdk/api-baseline.ts`
   - `src/plugin-sdk/plugin-entry.ts`
@@ -38,7 +38,7 @@ can affect bundled plugins and third-party plugins.
 - Additive, backwards-compatible changes are the default.
 - When adding or changing a public subpath, keep these aligned:
   - docs in `docs/plugins/*`
-  - `scripts/lib/plugin-sdk-entrypoints.json`
+  - the original upstream plugin SDK entrypoint inventory
   - `src/plugin-sdk/entrypoints.ts`
   - `package.json` exports
   - API baseline and export checks

@@ -40,7 +40,10 @@ function resolveSandboxScript(scriptRel: string): SandboxScriptInfo | null {
 async function runSandboxScript(scriptRel: string, runtime: RuntimeEnv): Promise<boolean> {
   const script = resolveSandboxScript(scriptRel);
   if (!script) {
-    note(`Unable to locate ${scriptRel}. Run it from the repo root.`, "Sandbox");
+    note(
+      `Unable to locate ${scriptRel}. This trimmed snapshot does not include the original top-level scripts/ tree.`,
+      "Sandbox",
+    );
     return false;
   }
 

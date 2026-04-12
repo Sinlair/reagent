@@ -57,6 +57,11 @@ export async function maybeRepairUiProtocolFreshness(
       if (shouldRepair) {
         note("Building Control UI assets... (this may take a moment)", "UI");
         const uiScriptPath = path.join(root, "scripts/ui.js");
+        const uiScriptExists = await fs.stat(uiScriptPath).catch(() => null);
+        if (!uiScriptExists) {
+          note("Skipping UI build: this trimmed snapshot does not include the top-level scripts/ tree.", "UI");
+          return;
+        }
         const buildResult = await runCommandWithTimeout([process.execPath, uiScriptPath, "build"], {
           cwd: root,
           timeoutMs: 120_000,
@@ -124,6 +129,11 @@ export async function maybeRepairUiProtocolFreshness(
           // Use scripts/ui.js to build, assuming node is available as we are running in it.
           // We use the same node executable to run the script.
           const uiScriptPath = path.join(root, "scripts/ui.js");
+          const uiScriptExists = await fs.stat(uiScriptPath).catch(() => null);
+          if (!uiScriptExists) {
+            note("Skipping UI rebuild: this trimmed snapshot does not include the top-level scripts/ tree.", "UI");
+            return;
+          }
           const buildResult = await runCommandWithTimeout(
             [process.execPath, uiScriptPath, "build"],
             {

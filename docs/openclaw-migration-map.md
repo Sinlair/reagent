@@ -11,9 +11,11 @@ This document maps the imported OpenClaw upstream snapshot to the current ReAgen
 
 - snapshot path: `upstream/openclaw/`
 - imported commit: `21403a3898f6ad8b042e5812caf7848bdf72199c`
-- entry launcher: `upstream/openclaw/openclaw.mjs`
+- entry launcher anchor: `upstream/openclaw/openclaw.mjs`
 - main extension tree: `upstream/openclaw/extensions/`
 - plugin SDK tree: `upstream/openclaw/src/plugin-sdk/`
+
+The imported tree is now a trimmed migration snapshot. It remains useful as a code/reference baseline, but it is no longer expected to build, test, or run as a standalone OpenClaw checkout inside this repository.
 
 ## ReAgent current anchors
 

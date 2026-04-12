@@ -15,12 +15,24 @@ The import is intentionally done as an in-repo upstream snapshot:
 - destination snapshot: `upstream/openclaw/`
 - source control metadata such as `.git/` is excluded
 - local/editor folders such as `.agents/`, `.vscode/`, `.pi/`, and `node_modules/` are excluded
+- Apple-platform Swift subtrees are excluded from the imported snapshot:
+  - `apps/ios/`
+  - `apps/macos/`
+  - `apps/shared/OpenClawKit/`
+  - `Swabble/`
 - imported snapshot metadata is written to `upstream/openclaw/.reagent-import.json`
+
+The snapshot has since been further trimmed for migration use. In this repository it should be treated as reference material, not a runnable upstream checkout.
+
+- removed later for trim-down: top-level `scripts/`
+- removed later for trim-down: top-level CI/workflow metadata under `.github/`
+- removed later for trim-down: top-level Docker/Vitest automation entrypoints
+- removed later for trim-down: Android Kotlin sources under `apps/android/`
 
 ## Why this approach
 
 1. It preserves a concrete upstream baseline inside the same repository you are reviewing.
-2. It makes module-by-module migration easier because the original OpenClaw file layout remains intact.
+2. It keeps the TypeScript/runtime migration surface reviewable without carrying the upstream Apple-platform Swift app trees in this repository.
 3. It avoids mixing imported upstream code directly into `src/` before we finish mapping responsibilities.
 4. It allows repeatable refreshes by rerunning one scripted sync step.
 

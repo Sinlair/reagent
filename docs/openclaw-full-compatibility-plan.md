@@ -10,6 +10,8 @@ Make ReAgent fully compatible with the imported OpenClaw upstream baseline at:
 - snapshot path: `upstream/openclaw/`
 - imported commit: `21403a3898f6ad8b042e5812caf7848bdf72199c`
 
+The imported baseline is a trimmed migration snapshot, not a runnable upstream checkout. Compatibility work should use the retained source surfaces as reference and should not assume the snapshot's removed automation layers still exist.
+
 For this plan, "fully compatible" means:
 
 - root CLI parity for operator-facing OpenClaw command families

@@ -106,7 +106,7 @@ async function ensureSandboxBrowserImage(image: string) {
     return;
   }
   throw new Error(
-    `Sandbox browser image not found: ${image}. Build it with scripts/sandbox-browser-setup.sh.`,
+    `Sandbox browser image not found: ${image}. The original upstream build helper was scripts/sandbox-browser-setup.sh, but this trimmed snapshot does not include that top-level scripts/ tree.`,
   );
 }
 

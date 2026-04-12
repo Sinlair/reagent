@@ -19,7 +19,7 @@ third-party plugins see.
   - `src/plugin-sdk/core.ts`
   - `src/plugin-sdk/provider-entry.ts`
   - `src/plugin-sdk/channel-contract.ts`
-  - `scripts/lib/plugin-sdk-entrypoints.json`
+  - snapshot note: the original upstream source also used `scripts/lib/plugin-sdk-entrypoints.json`, but ReAgent trimmed the top-level `scripts/` tree from this imported snapshot
   - `package.json`
 
 ## Boundary Rules
