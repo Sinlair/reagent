@@ -1,6 +1,6 @@
-# OpenClaw Snapshot Note
+# OpenClaw Note
 
-This directory is a trimmed upstream snapshot kept inside ReAgent for migration review.
+This directory keeps imported OpenClaw sources inside ReAgent.
 
 Do not treat `upstream/openclaw/` as a runnable OpenClaw checkout. ReAgent intentionally removed:
 

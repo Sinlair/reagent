@@ -2292,7 +2292,7 @@ async function main() {
         assert.equal(payload.channels.channels.wechat.connected, true);
         assert.equal(payload.memory.files, 2);
         assert.equal(payload.gateway.healthReachable, true);
-        assert.equal(payload.openclaw.snapshotAvailable, true);
+        assert.equal(payload.openclaw.upstreamAvailable, true);
         assert.equal(payload.openclaw.importedExtensionCount > 0, true);
       });
 
@@ -2332,7 +2332,7 @@ async function main() {
         const payload = JSON.parse(result.stdout);
         assert.equal(payload.runtime.agent, "ReAgent");
         assert.equal(payload.gateway.healthReachable, true);
-        assert.equal(payload.openclaw.snapshotAvailable, true);
+        assert.equal(payload.openclaw.upstreamAvailable, true);
       });
 
       await runTest("CLI top-level inspect surfaces imported upstream plugin details", async () => {
@@ -2345,7 +2345,7 @@ async function main() {
           );
           assert.equal(result.code, 0, result.stderr);
           const payload = JSON.parse(result.stdout);
-          assert.equal(payload.snapshot.available, true);
+          assert.equal(payload.upstream.available, true);
           assert.equal(payload.target, "openai");
           assert.equal(payload.plugin.id, "openai");
           assert.equal(payload.plugin.source, "upstream");

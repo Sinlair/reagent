@@ -2898,7 +2898,7 @@ async function statusCommand(options: ParsedOptions): Promise<void> {
   console.log(`Workspace: ${runtime.workspaceDir}`);
   console.log(`MCP: ${runtime.mcp.status} (${runtime.mcp.connectors} connector(s))`);
   console.log(
-    `OpenClaw: snapshot=${formatYesNo(payload.openclaw.snapshotAvailable)} foundation=${payload.openclaw.foundationPackageCount} upstream=${payload.openclaw.importedExtensionCount} sessions=${payload.openclaw.sessionRegistryCount}`,
+    `OpenClaw: imported=${formatYesNo(payload.openclaw.upstreamAvailable)} foundation=${payload.openclaw.foundationPackageCount} upstream=${payload.openclaw.importedExtensionCount} sessions=${payload.openclaw.sessionRegistryCount}`,
   );
   console.log(`Channel connected: ${formatYesNo(channels.channels.wechat.connected)}`);
   console.log(`Memory files: ${memory.files}`);
@@ -2917,7 +2917,7 @@ async function statusCommand(options: ParsedOptions): Promise<void> {
     `CLI: ${payload.openclaw.cliPath}`,
     `Gateway URL: ${payload.openclaw.gatewayUrl}`,
     `Channel: ${payload.openclaw.channelId}`,
-    `Snapshot imported: ${formatYesNo(payload.openclaw.snapshotAvailable)}`,
+    `Imported upstream: ${formatYesNo(payload.openclaw.upstreamAvailable)}`,
     `Foundation packages: ${payload.openclaw.foundationPackageCount}`,
     `Imported upstream extensions: ${payload.openclaw.importedExtensionCount}`,
     `Cached host sessions: ${payload.openclaw.sessionRegistryCount}`,
@@ -2950,7 +2950,7 @@ function buildHomeNextSteps(input: {
   }
 
   if (input.runtime.wechatProvider === "openclaw") {
-    steps.push("Inspect OpenClaw host and imported snapshot details with `reagent status --all`.");
+    steps.push("Inspect OpenClaw host and imported upstream details with `reagent status --all`.");
   }
 
   if (input.runtime.wechatProvider !== "mock" && !input.channels.channels.wechat.connected) {

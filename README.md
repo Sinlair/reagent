@@ -151,7 +151,7 @@ The working position in this repository is:
 - ReAgent should borrow Hermes-style runtime seams such as tool registry, runtime hooks, progressive skill disclosure, context compression, job runtime, and constrained delegation.
 - ReAgent should not flatten itself into "another Hermes" and lose its research-first artifact and memory model.
 
-See [docs/hermes-agent-for-reagent.md](./docs/hermes-agent-for-reagent.md) for the internal design memo that compares the two projects and explains what ReAgent wants to learn from Hermes Agent.
+Those choices are reflected directly in the runtime, CLI, and repository structure rather than a separate design memo.
 
 ## Quick Start
 
@@ -318,9 +318,9 @@ This is intentional:
 | [`docs/`](./docs) | Product visuals and supporting docs |
 | [`workspace/skills/`](./workspace/skills) | Local workspace skills and references |
 | [`package/`](./package) | In-repo foundation package: plugin host surface and SDK alignment for bridge and tooling |
-| [`upstream/openclaw/`](./upstream/openclaw) | Imported upstream reference used for compatibility tracking and bridge realignment |
+| [`upstream/openclaw/`](./upstream/openclaw) | Imported upstream reference used for bridge and compatibility work |
 
-**How you install and drive ReAgent.** The supported path is still the standalone package (`npm install -g @sinlair/reagent`) and the `reagent` command as the single control plane. The runtime is built so host-style behavior, the WeChat bridge path, and extension surfaces stay inspectable rather than forked in secret: the foundation code under `package/` is the concrete place that tracks those contracts, and the same root CLI exposes host-oriented operations (`reagent status`, `reagent sessions`, `reagent history`, `reagent watch`, `reagent inspect`, `reagent install`) when you need them beside everyday research and memory commands. For background on parity work and migration notes, see [docs/openclaw-realignment.md](./docs/openclaw-realignment.md) and [docs/openclaw-realignment-worklog.md](./docs/openclaw-realignment-worklog.md).
+**How you install and drive ReAgent.** The supported path is still the standalone package (`npm install -g @sinlair/reagent`) and the `reagent` command as the single control plane. The runtime is built so host-style behavior, the WeChat bridge path, and extension surfaces stay inspectable rather than forked in secret: the foundation code under `package/` is the concrete place that tracks those contracts, and the same root CLI exposes host-oriented operations (`reagent status`, `reagent sessions`, `reagent history`, `reagent watch`, `reagent inspect`, `reagent install`) when you need them beside everyday research and memory commands.
 
 ## Run Modes
 
@@ -359,14 +359,7 @@ npm run release:pack
 - Release process: [docs/release-process.md](./docs/release-process.md)
 - Self-evolution capability map: [docs/reagent-self-evolution-map.md](./docs/reagent-self-evolution-map.md)
 - Self-evolution task list: [docs/reagent-self-evolution-task-list.md](./docs/reagent-self-evolution-task-list.md)
-- OpenClaw compatibility plan: [docs/openclaw-full-compatibility-plan.md](./docs/openclaw-full-compatibility-plan.md)
-- OpenClaw realignment: [docs/openclaw-realignment.md](./docs/openclaw-realignment.md)
-- OpenClaw worklog: [docs/openclaw-realignment-worklog.md](./docs/openclaw-realignment-worklog.md)
-- OpenClaw upstream worklog: [docs/openclaw-upstream-worklog.md](./docs/openclaw-upstream-worklog.md)
-- OpenClaw upstream import: [docs/openclaw-upstream-import.md](./docs/openclaw-upstream-import.md)
-- OpenClaw migration map: [docs/openclaw-migration-map.md](./docs/openclaw-migration-map.md)
 - Research agent landscape notes: [docs/research-agent-landscape.md](./docs/research-agent-landscape.md)
-- Hermes-agent design memo: [docs/hermes-agent-for-reagent.md](./docs/hermes-agent-for-reagent.md)
 
 ## Inspiration
 

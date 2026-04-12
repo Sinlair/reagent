@@ -318,7 +318,6 @@ Owner: Codex working pass
 
 - [README.md](../README.md)
 - [ROADMAP.md](../ROADMAP.md)
-- [docs/hermes-agent-for-reagent.md](./hermes-agent-for-reagent.md)
 - [src/agents/runtime.ts](../src/agents/runtime.ts)
 - [src/services/skillRegistryService.ts](../src/services/skillRegistryService.ts)
 - [src/services/inboundCommandPolicyService.ts](../src/services/inboundCommandPolicyService.ts)

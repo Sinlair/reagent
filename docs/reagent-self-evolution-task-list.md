@@ -380,4 +380,3 @@ Owner: Codex working pass
 - [reagent-self-evolution-map.md](./reagent-self-evolution-map.md)
 - [README.md](../README.md)
 - [ROADMAP.md](../ROADMAP.md)
-- [docs/hermes-agent-for-reagent.md](./hermes-agent-for-reagent.md)

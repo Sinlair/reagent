@@ -47,6 +47,12 @@ if (Test-Path -LiteralPath $destRoot) {
 New-Item -ItemType Directory -Path $destRoot -Force | Out-Null
 
 $excludedTopLevelNames = @(".git", "node_modules", ".agents", ".vscode", ".pi")
+$excludedRelativePaths = @(
+  "apps/ios",
+  "apps/macos",
+  "apps/shared/OpenClawKit",
+  "Swabble"
+)
 
 Get-ChildItem -LiteralPath $sourceRoot -Force | ForEach-Object {
   if ($excludedTopLevelNames -contains $_.Name) {
@@ -54,6 +60,15 @@ Get-ChildItem -LiteralPath $sourceRoot -Force | ForEach-Object {
   }
 
   Copy-Item -LiteralPath $_.FullName -Destination $destRoot -Recurse -Force
+}
+
+$excludedRelativePaths | ForEach-Object {
+  $relativePath = $_
+  $targetPath = Join-Path $destRoot $relativePath
+  Assert-PathWithin -ParentPath $destRoot -ChildPath $targetPath -Label "Excluded destination"
+  if (Test-Path -LiteralPath $targetPath) {
+    Remove-Item -LiteralPath $targetPath -Recurse -Force
+  }
 }
 
 $commit = (& git -C $sourceRoot rev-parse HEAD).Trim()
@@ -72,12 +87,13 @@ $metadata = [ordered]@{
   extensionCount = $extensionCount
   destinationPath = $destRoot
   excludedTopLevelNames = $excludedTopLevelNames
+  excludedRelativePaths = $excludedRelativePaths
 }
 
 $metadataPath = Join-Path $destRoot ".reagent-import.json"
 $metadata | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $metadataPath -Encoding UTF8
 
-Write-Host "Imported OpenClaw snapshot"
+Write-Host "Imported OpenClaw sources"
 Write-Host "Source: $sourceRoot"
 Write-Host "Destination: $destRoot"
 Write-Host "Commit: $commit"

@@ -181,8 +181,9 @@ CLI 更适合：
 | [`docs/`](./docs) | 配图与说明文档 |
 | [`workspace/skills/`](./workspace/skills) | 工作区技能与参考文件 |
 | [`package/`](./package) | 仓内 foundation：插件宿主面与 SDK 对齐，供 bridge 与工具链共用 |
+| [`upstream/openclaw/`](./upstream/openclaw) | 上游参考目录，用于 bridge 与兼容性对照 |
 
-**怎么安装、谁来控场。** 官方路径仍然是全局安装 `@sinlair/reagent`，用唯一命令 `reagent` 做主控制面。运行时按「可检查、可对齐」来设计：WeChat bridge、宿主侧行为与扩展面都有对应落点——`package/` 里是跟踪这些契约的具体代码；需要宿主向操作时，同一套根 CLI 也提供 `reagent status`、`reagent sessions`、`reagent history`、`reagent watch`、`reagent inspect`、`reagent install` 等入口，与日常 research / memory 命令并列。背景与迁移记录见 [docs/openclaw-realignment.md](./docs/openclaw-realignment.md)、[docs/openclaw-realignment-worklog.md](./docs/openclaw-realignment-worklog.md)。
+**怎么安装、谁来控场。** 官方路径仍然是全局安装 `@sinlair/reagent`，用唯一命令 `reagent` 做主控制面。运行时按「可检查、可对齐」来设计：WeChat bridge、宿主侧行为与扩展面都有对应落点——`package/` 里是跟踪这些契约的具体代码；需要宿主向操作时，同一套根 CLI 也提供 `reagent status`、`reagent sessions`、`reagent history`、`reagent watch`、`reagent inspect`、`reagent install` 等入口，与日常 research / memory 命令并列。
 
 ## 开发校验
 
@@ -205,9 +206,10 @@ npm run release:pack
 - 运维说明: [OPERATIONS.md](./OPERATIONS.md)
 - 贡献指南: [CONTRIBUTING.md](./CONTRIBUTING.md)
 - 安全说明: [SECURITY.md](./SECURITY.md)
-- OpenClaw realignment: [docs/openclaw-realignment.md](./docs/openclaw-realignment.md)
-- OpenClaw worklog: [docs/openclaw-realignment-worklog.md](./docs/openclaw-realignment-worklog.md)
-- Hermes-agent 设计备忘: [docs/hermes-agent-for-reagent.md](./docs/hermes-agent-for-reagent.md)
+- 发布流程: [docs/release-process.md](./docs/release-process.md)
+- 自演化能力图: [docs/reagent-self-evolution-map.md](./docs/reagent-self-evolution-map.md)
+- 自演化任务清单: [docs/reagent-self-evolution-task-list.md](./docs/reagent-self-evolution-task-list.md)
+- Research agent landscape notes: [docs/research-agent-landscape.md](./docs/research-agent-landscape.md)
 
 ## 灵感来源
 

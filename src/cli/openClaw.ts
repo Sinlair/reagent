@@ -150,7 +150,7 @@ export function createOpenClawCli(deps: OpenClawCliDeps) {
     if (raw === "bundled" || raw === "bundle") {
       return "bundled";
     }
-    if (raw === "upstream" || raw === "snapshot" || raw === "vendor" || raw === "openclaw") {
+    if (raw === "upstream" || raw === "vendor" || raw === "openclaw") {
       return "upstream";
     }
     if (raw === "reference" || raw === "compat" || raw === "package" || raw === "foundation") {
@@ -218,7 +218,7 @@ Flags:
     cliPath: string;
     gatewayUrl: string;
     channelId: string;
-    snapshotAvailable: boolean;
+    upstreamAvailable: boolean;
     sourceCommit?: string | undefined;
     importedAt?: string | undefined;
     trackedFileCount?: number | undefined;
@@ -290,10 +290,10 @@ Flags:
     const metadata = await readOpenClawImportMetadata();
     const cliPath = await resolveOpenClawCliPath(options);
     const service = await createOpenClawHostSurfaceService(options);
-    const { snapshot, plugin, hostState, host } = await service.inspectPlugin(target, cliPath);
+    const { upstream, plugin, hostState, host } = await service.inspectPlugin(target, cliPath);
     const payload = {
       target,
-      snapshot,
+      upstream,
       ...(plugin ? { plugin } : {}),
       host: {
         available: !hostState.error,
@@ -311,7 +311,7 @@ Flags:
       deps.printBundledPluginList([{ plugin, host }]);
       console.log(`Package root: ${plugin.packageRoot}`);
       console.log(`Manifest: ${plugin.manifestPath}`);
-      console.log(`Snapshot imported: ${deps.formatYesNo(Boolean(metadata))}`);
+      console.log(`Imported upstream: ${deps.formatYesNo(Boolean(metadata))}`);
       if (plugin.source === "upstream" && metadata) {
         console.log(`Imported commit: ${metadata.sourceCommit}`);
       }
@@ -325,7 +325,7 @@ Flags:
       return;
     }
 
-    throw new Error(`Plugin not found in imported snapshot, foundation catalog, or OpenClaw host inventory: ${target}`);
+    throw new Error(`Plugin not found in imported upstream sources, foundation catalog, or OpenClaw host inventory: ${target}`);
   }
 
   async function openClawSessionsCommand(options: ParsedOptions): Promise<void> {
@@ -561,7 +561,7 @@ Flags:
       scriptPath,
       sourcePath,
       stdout: result.stdout.trim(),
-      snapshot: {
+      upstream: {
         available: Boolean(metadata),
         path: path.join(packageRootDir, "upstream", "openclaw"),
         ...(metadata ? { metadata } : {}),
@@ -575,7 +575,7 @@ Flags:
 
     console.log("OpenClaw upstream sync completed.");
     console.log(`Source: ${sourcePath}`);
-    console.log(`Snapshot: ${payload.snapshot.path}`);
+    console.log(`Upstream path: ${payload.upstream.path}`);
     console.log(`Imported: ${deps.formatWhen(metadata?.importedAt)}`);
     console.log(`Commit: ${metadata?.sourceCommit ?? "-"}`);
     console.log(`Extensions: ${metadata?.extensionCount ?? "-"}`);

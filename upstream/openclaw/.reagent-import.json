@@ -11,5 +11,11 @@
                                   ".agents",
                                   ".vscode",
                                   ".pi"
+                              ],
+    "excludedRelativePaths":  [
+                                  "apps/ios",
+                                  "apps/macos",
+                                  "apps/shared/OpenClawKit",
+                                  "Swabble"
                               ]
 }

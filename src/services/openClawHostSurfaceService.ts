@@ -19,7 +19,7 @@ export class OpenClawHostSurfaceService {
   private readonly catalog: OpenClawHostCatalogService;
   private readonly runtimeState: OpenClawRuntimeStateService;
   private readonly importMetadataPath: string;
-  private readonly snapshotPath: string;
+  private readonly upstreamPath: string;
 
   constructor(
     private readonly repoRoot: string,
@@ -27,12 +27,12 @@ export class OpenClawHostSurfaceService {
   ) {
     this.catalog = new OpenClawHostCatalogService(repoRoot);
     this.runtimeState = new OpenClawRuntimeStateService(workspaceDir);
-    this.snapshotPath = path.join(this.repoRoot, "upstream", "openclaw");
-    this.importMetadataPath = path.join(this.snapshotPath, ".reagent-import.json");
+    this.upstreamPath = path.join(this.repoRoot, "upstream", "openclaw");
+    this.importMetadataPath = path.join(this.upstreamPath, ".reagent-import.json");
   }
 
-  getSnapshotPath(): string {
-    return this.snapshotPath;
+  getUpstreamPath(): string {
+    return this.upstreamPath;
   }
 
   getSessionRegistryPath(): string {
@@ -103,7 +103,7 @@ export class OpenClawHostSurfaceService {
     cliPath: string;
     gatewayUrl: string;
     channelId: string;
-    snapshotAvailable: boolean;
+    upstreamAvailable: boolean;
     sourceCommit?: string | undefined;
     importedAt?: string | undefined;
     trackedFileCount?: number | undefined;
@@ -124,7 +124,7 @@ export class OpenClawHostSurfaceService {
       cliPath: input.cliPath,
       gatewayUrl: input.gatewayUrl,
       channelId: input.channelId,
-      snapshotAvailable: Boolean(metadata),
+      upstreamAvailable: Boolean(metadata),
       ...(metadata
         ? {
             sourceCommit: metadata.sourceCommit,
@@ -191,9 +191,9 @@ export class OpenClawHostSurfaceService {
     ]);
     const host = result ? matchOpenClawPluginState(result, hostState.states) : null;
     return {
-      snapshot: {
+      upstream: {
         available: Boolean(metadata),
-        path: this.snapshotPath,
+        path: this.upstreamPath,
         ...(metadata ? { metadata } : {}),
       },
       plugin: result,

@@ -19,7 +19,7 @@ third-party plugins see.
   - `src/plugin-sdk/core.ts`
   - `src/plugin-sdk/provider-entry.ts`
   - `src/plugin-sdk/channel-contract.ts`
-  - snapshot note: the original upstream source also used `scripts/lib/plugin-sdk-entrypoints.json`, but ReAgent trimmed the top-level `scripts/` tree from this imported snapshot
+  - the original upstream source also used `scripts/lib/plugin-sdk-entrypoints.json`, but this imported OpenClaw copy does not include that top-level `scripts/` tree
   - `package.json`
 
 ## Boundary Rules

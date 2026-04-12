@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "updatedAt": "2026-04-09",
   "upstream": {
-    "snapshotPath": "upstream/openclaw/",
+    "upstreamPath": "upstream/openclaw/",
     "commit": "21403a3898f6ad8b042e5812caf7848bdf72199c",
     "entryLauncher": "upstream/openclaw/openclaw.mjs"
   },
