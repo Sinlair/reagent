@@ -11,12 +11,14 @@ import {
 import { dispatchResearchDirectionReportCommand } from "./dispatch.js";
 import type { DeepPaperAnalysisReport } from "../types/researchAnalysis.js";
 import type { ResearchDirectionReport } from "../types/researchDirectionReport.js";
+import type { ResearchReport } from "../types/research.js";
 import type {
   ModuleAsset,
   RepoAnalysisReport,
   ResearchSourceItem,
   WeeklyPresentationResult,
 } from "../types/researchArtifacts.js";
+import type { ResearchTaskHandoff } from "../types/researchTask.js";
 
 type GatewayContextLike = {
   baseUrl: string;
@@ -47,6 +49,12 @@ type ResearchDirectionReportsPayload = {
   reports: ResearchDirectionReport[];
 };
 
+type ResearchWorkstreamMemoPayload = {
+  workstreamId: "search" | "reading" | "synthesis";
+  path: string;
+  content: string;
+};
+
 export interface ResearchArtifactsReportsCliDeps {
   resolveGatewayContext(options: ParsedOptions): Promise<GatewayContextLike>;
   requestGatewayBytes(
@@ -70,6 +78,20 @@ export interface ResearchArtifactsReportsCliDeps {
 }
 
 export function createResearchArtifactsReportsCli(deps: ResearchArtifactsReportsCliDeps) {
+  async function readTextArtifact(
+    baseUrl: string,
+    artifactPath: string,
+    timeoutMs: number,
+  ): Promise<string> {
+    const payload = await deps.requestGatewayBytes(
+      baseUrl,
+      `/api/research/artifact?${deps.buildQueryString({ path: artifactPath })}`,
+      { timeoutMs },
+    );
+
+    return Buffer.from(payload.bytes).toString("utf8");
+  }
+
   async function researchArtifactCommand(options: ParsedOptions): Promise<void> {
     const artifactPath = options.positionals.join(" ").trim();
     if (!artifactPath) {
@@ -116,6 +138,103 @@ export function createResearchArtifactsReportsCli(deps: ResearchArtifactsReports
       return;
     }
     process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
+  }
+
+  async function researchBundleCommand(options: ParsedOptions): Promise<void> {
+    const context = await deps.resolveGatewayContext(options);
+    const taskId = deps.resolveRequiredEntityId(options, "research task");
+    const report = await deps.requestGatewayJson<ResearchReport>(
+      context.baseUrl,
+      `/api/research/${encodeURIComponent(taskId)}`,
+      { timeoutMs: context.timeoutMs },
+    );
+    const handoff = await deps.requestGatewayJson<ResearchTaskHandoff>(
+      context.baseUrl,
+      `/api/research/tasks/${encodeURIComponent(taskId)}/handoff`,
+      { timeoutMs: context.timeoutMs },
+    );
+
+    const missingRequiredArtifacts: string[] = [];
+    let review: { path: string; content: string } | null = null;
+
+    if (handoff.reviewPath) {
+      try {
+        review = {
+          path: handoff.reviewPath,
+          content: await readTextArtifact(context.baseUrl, handoff.reviewPath, context.timeoutMs),
+        };
+      } catch {
+        missingRequiredArtifacts.push(handoff.reviewPath);
+      }
+    }
+
+    const workstreamArtifactRefs = handoff.artifacts.filter((artifact) => artifact.kind === "workstream");
+    const workstreams = await Promise.all(
+      workstreamArtifactRefs.map(async (artifact) => {
+        try {
+          const memo = await deps.requestGatewayJson<ResearchWorkstreamMemoPayload>(
+            context.baseUrl,
+            `/api/research/tasks/${encodeURIComponent(taskId)}/workstreams/${encodeURIComponent(artifact.id)}`,
+            { timeoutMs: context.timeoutMs },
+          );
+
+          return {
+            id: memo.workstreamId,
+            title: artifact.title,
+            path: memo.path,
+            content: memo.content,
+          };
+        } catch {
+          missingRequiredArtifacts.push(artifact.path);
+          return null;
+        }
+      }),
+    );
+
+    if (missingRequiredArtifacts.length > 0) {
+      throw new Error(
+        `Cannot export research bundle because required artifact files are missing: ${missingRequiredArtifacts.join(", ")}`,
+      );
+    }
+
+    const bundle = {
+      format: "reagent-research-bundle",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      taskId,
+      metadata: {
+        topic: handoff.topic,
+        ...(handoff.question ? { question: handoff.question } : {}),
+        reviewStatus: handoff.reviewStatus,
+        roundPath: handoff.roundPath,
+        handoffPath: handoff.handoffPath,
+        artifactsPath: handoff.artifactsPath,
+      },
+      report,
+      handoff,
+      ...(review ? { review } : {}),
+      workstreams: workstreams.filter((item) => Boolean(item)),
+    };
+
+    const outPath = getStringFlag(options, "out") ?? `reagent-research-bundle-${taskId}.json`;
+    const resolvedOutPath = path.resolve(process.cwd(), outPath);
+    await mkdir(path.dirname(resolvedOutPath), { recursive: true });
+    await writeFile(resolvedOutPath, `${JSON.stringify(bundle, null, 2)}\n`, "utf8");
+
+    if (getBooleanFlag(options, "json")) {
+      deps.printJson({
+        taskId,
+        bundlePath: resolvedOutPath,
+        included: {
+          report: true,
+          review: Boolean(review),
+          workstreams: workstreams.filter((item) => Boolean(item)).map((item) => item!.id),
+        },
+      });
+      return;
+    }
+
+    console.log(`Exported research bundle to ${resolvedOutPath}`);
   }
 
   async function researchSourceCommand(options: ParsedOptions): Promise<void> {
@@ -302,6 +421,7 @@ export function createResearchArtifactsReportsCli(deps: ResearchArtifactsReports
 
   return {
     researchArtifactCommand,
+    researchBundleCommand,
     researchSourceCommand,
     researchPaperReportCommand,
     researchRepoReportCommand,

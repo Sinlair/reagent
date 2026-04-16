@@ -4931,13 +4931,19 @@ body::after {
 .research-rail-card #research-task-list,
 .research-rail-card #research-brief-list,
 .research-rail-card #research-session-list,
-.research-rail-card #direction-report-list,
+.research-rail-card #recent-artifact-list,
+.research-rail-card #discovery-scheduler-runs,
+ .research-rail-card #direction-report-list,
  .research-rail-card #presentation-list,
  .research-rail-card #module-asset-list,
  .research-rail-card #feedback-list {
   max-height: 340px;
   overflow: auto;
   padding-right: 2px;
+}
+
+.research-rail-card #discovery-run-detail {
+  margin-top: 14px;
 }
 
 .research-rail-card--briefs {

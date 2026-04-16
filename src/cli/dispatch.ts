@@ -511,6 +511,7 @@ export async function dispatchResearchCommand(
     researchFeedbackCommand: CliCommandHandler;
     researchGraphCommand: CliCommandHandler;
     researchArtifactCommand: CliCommandHandler;
+    researchBundleCommand: CliCommandHandler;
     researchSourceCommand: CliCommandHandler;
     researchPaperReportCommand: CliCommandHandler;
     researchRepoReportCommand: CliCommandHandler;
@@ -545,6 +546,7 @@ export async function dispatchResearchCommand(
       feedback: deps.researchFeedbackCommand,
       graph: deps.researchGraphCommand,
       artifact: deps.researchArtifactCommand,
+      bundle: deps.researchBundleCommand,
       source: deps.researchSourceCommand,
       "paper-report": deps.researchPaperReportCommand,
       "repo-report": deps.researchRepoReportCommand,

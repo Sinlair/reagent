@@ -4,6 +4,10 @@ import {
   formatResearchCoveragePercent,
   summarizeResearchSupportKinds,
 } from "./researchReportState.js";
+import {
+  buildDiscoveryRunState,
+  summarizeDiscoveryCandidateReasons,
+} from "./researchDiscoveryState.js";
 
 const i18n = window.ReAgentI18n;
 
@@ -22,16 +26,20 @@ const state = {
   selectedPresentationId: null,
   selectedModuleAsset: null,
   selectedModuleAssetId: null,
+  selectedWorkstreamMemo: null,
   latestMessages: [],
   transportMessages: [],
   recentReports: [],
   discoveryScheduler: null,
   discoveryRuns: [],
+  selectedDiscoveryRun: null,
+  selectedDiscoveryRunId: null,
   directionReports: [],
   presentations: [],
   moduleAssets: [],
   feedbackItems: [],
   feedbackSummary: null,
+  recentArtifactWorkstreams: [],
   wechatLifecycleAudit: [],
   researchTasks: [],
   lang: "zh",
@@ -171,6 +179,7 @@ const els = {
   wechatLogout: document.querySelector("#wechat-logout"),
   wechatMessage: document.querySelector("#wechat-message"),
   researchSessionList: document.querySelector("#research-session-list"),
+  recentArtifactList: document.querySelector("#recent-artifact-list"),
   discoverySchedulerForm: document.querySelector("#discovery-scheduler-form"),
   discoverySchedulerTime: document.querySelector("#discovery-scheduler-time"),
   discoverySchedulerEnabled: document.querySelector("#discovery-scheduler-enabled"),
@@ -182,6 +191,7 @@ const els = {
   discoverySchedulerRun: document.querySelector("#discovery-scheduler-run"),
   discoverySchedulerStatus: document.querySelector("#discovery-scheduler-status"),
   discoverySchedulerRuns: document.querySelector("#discovery-scheduler-runs"),
+  discoveryRunDetail: document.querySelector("#discovery-run-detail"),
   researchTaskList: document.querySelector("#research-task-list"),
   reportTaskId: document.querySelector("#report-task-id"),
   researchTopic: document.querySelector("#research-topic"),
@@ -854,6 +864,7 @@ function clearResearchSelections() {
   state.selectedPresentationId = null;
   state.selectedModuleAsset = null;
   state.selectedModuleAssetId = null;
+  state.selectedWorkstreamMemo = null;
   state.selectedResearchTask = null;
   state.selectedResearchTaskId = null;
 }
@@ -1506,10 +1517,10 @@ function renderSkillDetail(session) {
         <span class="pill"><strong>${escapeHtml(status)}</strong></span>
       </div>
       <div class="result-stack">
-        <article class="result-item">
+        <button class="session-item ${state.selectedDiscoveryRunId === run.runId ? "session-item--current" : ""}" type="button" data-discovery-run-id="${escapeHtml(run.runId)}">
           <h3>Status</h3>
           <p>${escapeHtml(status)}</p>
-        </article>
+        </button>
         <article class="result-item">
           <h3>Description</h3>
           <p>${escapeHtml(skill.instruction)}</p>
@@ -4223,6 +4234,59 @@ function renderModuleAsset(asset) {
   `;
 }
 
+function renderWorkstreamMemo(workstreamMemo) {
+  if (!workstreamMemo) {
+    els.researchReport.className = "empty-state";
+    els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
+    return;
+  }
+
+  const fileHref = workstreamMemo.path ? `/api/research/artifact?path=${encodeURIComponent(workstreamMemo.path)}` : "";
+
+  els.researchReport.className = "research-report";
+  els.researchReport.innerHTML = `
+    <article class="report-hero">
+      <div class="report-hero__head">
+        <div>
+          <div class="section-kicker">${escapeHtml("Workstream Memo")}</div>
+          <h3>${escapeHtml(`${workstreamMemo.label || workstreamMemo.workstreamId} / ${workstreamMemo.topic || workstreamMemo.taskId}`)}</h3>
+          <p>${escapeHtml("Reopen the saved workstream memo without re-running the task.")}</p>
+        </div>
+        <div class="report-chip-list">
+          ${renderPill(workstreamMemo.workstreamId || "-")}
+          ${workstreamMemo.taskId ? renderPill(workstreamMemo.taskId) : ""}
+          ${workstreamMemo.updatedAt ? renderPill(formatTime(workstreamMemo.updatedAt)) : ""}
+        </div>
+      </div>
+    </article>
+    <div class="research-report-layout">
+      <div class="stack research-report-main">
+        <article class="report-block report-block--feature">
+          <div class="report-item-head">
+            <h3>${escapeHtml("Memo")}</h3>
+            ${renderPill(String((workstreamMemo.content || "").split("\n").length))}
+          </div>
+          <pre class="code-panel">${escapeHtml(clipBlock(workstreamMemo.content || "", 6000))}</pre>
+        </article>
+      </div>
+      <aside class="stack research-report-side">
+        <article class="report-block">
+          <div class="report-item-head">
+            <h3>${escapeHtml("Artifact")}</h3>
+          </div>
+          <div class="result-stack">
+            <article class="result-item">
+              <h3>${escapeHtml("Path")}</h3>
+              <p>${escapeHtml(workstreamMemo.path || "-")}</p>
+              ${fileHref ? `<small><a class="graph-inline-link" href="${escapeHtml(fileHref)}" target="_blank" rel="noopener">${escapeHtml("Open file")}</a></small>` : ""}
+            </article>
+          </div>
+        </article>
+      </aside>
+    </div>
+  `;
+}
+
 function renderDirectionReportList(reports) {
   if (!els.directionReportList) return;
   if (!reports.length) {
@@ -4378,10 +4442,11 @@ function renderDiscoveryRuns() {
   if (!runs.length) {
     els.discoverySchedulerRuns.className = "empty-state compact-empty";
     els.discoverySchedulerRuns.textContent = state.lang === "zh" ? "No scheduled runs yet." : "No scheduled runs yet.";
+    renderDiscoveryRunDetail(null);
     return;
   }
 
-  els.discoverySchedulerRuns.className = "result-stack";
+  els.discoverySchedulerRuns.className = "session-list";
   els.discoverySchedulerRuns.innerHTML = runs
     .map(
       (run) => `
@@ -4396,12 +4461,126 @@ function renderDiscoveryRuns() {
       `
     )
     .join("");
+
+  els.discoverySchedulerRuns.querySelectorAll("[data-discovery-run-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const runId = button.dataset.discoveryRunId;
+      if (!runId) return;
+      await hydrateDiscoveryRun(runId);
+    });
+  });
+}
+
+function renderDiscoveryRunDetail(run) {
+  if (!els.discoveryRunDetail) return;
+
+  if (!run) {
+    els.discoveryRunDetail.className = "empty-state compact-empty";
+    els.discoveryRunDetail.textContent = state.lang === "zh" ? "Select a discovery run to inspect candidate quality." : "Select a discovery run to inspect candidate quality.";
+    return;
+  }
+
+  const runState = buildDiscoveryRunState(run);
+  const items = Array.isArray(run.items) ? run.items : [];
+  const warnings = Array.isArray(run.warnings) ? run.warnings : [];
+  const detailCopy =
+    runState.kind === "empty"
+      ? "This run did not return strong candidates. Adjust the direction scope, venues, or query hints before rerunning."
+      : runState.kind === "weak"
+        ? "This run produced only a narrow candidate set. Inspect the ranking reasons before investing in deeper reading."
+        : "This run returned ranked candidates with usable metadata and ranking context.";
+
+  const warningMarkup = warnings.length
+    ? `
+      <div class="result-stack">
+        ${warnings.map((warning) => `
+          <div class="alert-strip alert-strip--warn">
+            <strong>${escapeHtml("Discovery note")}</strong>
+            <span>${escapeHtml(warning)}</span>
+          </div>
+        `).join("")}
+      </div>
+    `
+    : "";
+
+  const itemMarkup = items.length
+    ? items.map((item, index) => {
+      const reasons = summarizeDiscoveryCandidateReasons(item);
+      const metadata = [item.source, item.year ? String(item.year) : "", item.venue || ""].filter(Boolean);
+      return `
+        <article class="report-block report-block--dense report-evidence-card">
+          <div class="report-item-head">
+            <div>
+              <div class="card-sub">${escapeHtml(`${index + 1}. Candidate`)}</div>
+              <h3>${escapeHtml(item.title)}</h3>
+            </div>
+            <div class="report-chip-list">
+              ${item.directionLabel ? renderPill(item.directionLabel) : ""}
+              ${item.rank ? renderPill(`#${item.rank}`, "ok") : ""}
+            </div>
+          </div>
+          <div class="report-chip-list">
+            ${metadata.map((value) => renderPill(value)).join("")}
+          </div>
+          <p>${escapeHtml(item.queryReason || item.relevanceReason || "No ranking context recorded.")}</p>
+          <div class="result-stack">
+            ${reasons.length
+              ? reasons.map((reason) => `<article class="result-item"><p>${escapeHtml(reason)}</p></article>`).join("")
+              : `<div class="empty-state compact-empty">${escapeHtml("No ranking reasons recorded.")}</div>`}
+          </div>
+          <div class="report-chip-list">
+            ${item.url ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">${escapeHtml("Open source")}</a>` : ""}
+            ${item.pdfUrl ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(item.pdfUrl)}" target="_blank" rel="noopener">${escapeHtml("PDF")}</a>` : ""}
+          </div>
+        </article>
+      `;
+    }).join("")
+    : `<div class="empty-state compact-empty">${escapeHtml("No candidate cards are available for this run.")}</div>`;
+
+  els.discoveryRunDetail.className = "stack";
+  els.discoveryRunDetail.innerHTML = `
+    <article class="report-block">
+      <div class="report-item-head">
+        <h3>${escapeHtml("Discovery candidate context")}</h3>
+        ${renderPill(runState.kind, runState.tone)}
+      </div>
+      <p>${escapeHtml(run.digest || detailCopy)}</p>
+      <small>${escapeHtml(detailCopy)}</small>
+    </article>
+    ${warningMarkup}
+    <div class="result-stack">${itemMarkup}</div>
+  `;
+}
+
+async function hydrateDiscoveryRun(runId) {
+  const run = await requestJson(`/api/research/discovery/runs/${encodeURIComponent(runId)}`);
+  state.selectedDiscoveryRun = run;
+  state.selectedDiscoveryRunId = run.runId;
+  renderDiscoveryRuns();
+  renderDiscoveryRunDetail(run);
+  return run;
 }
 
 async function loadDiscoveryRuns() {
   const payload = await requestJson("/api/research/discovery/recent?limit=8");
   state.discoveryRuns = payload.runs || [];
   renderDiscoveryRuns();
+
+  const selectedRunId = state.selectedDiscoveryRunId;
+  const fallbackRunId = selectedRunId && state.discoveryRuns.some((run) => run.runId === selectedRunId)
+    ? selectedRunId
+    : state.discoveryRuns[0]?.runId;
+
+  if (!fallbackRunId) {
+    state.selectedDiscoveryRun = null;
+    state.selectedDiscoveryRunId = null;
+    renderDiscoveryRunDetail(null);
+    return;
+  }
+
+  await hydrateDiscoveryRun(fallbackRunId).catch(() => {
+    renderDiscoveryRunDetail(null);
+  });
 }
 
 function renderLifecycleAudit(items) {
@@ -4554,6 +4733,7 @@ async function loadPresentations() {
     }
   }
   renderPresentationList(state.presentations);
+  renderRecentArtifacts();
 }
 
 function renderModuleAssetList(assets) {
@@ -4612,6 +4792,151 @@ async function loadModuleAssets() {
     }
   }
   renderModuleAssetList(state.moduleAssets);
+  renderRecentArtifacts();
+}
+
+function buildRecentArtifactItems() {
+  const reportItems = state.recentReports.slice(0, 4).map((report) => ({
+    key: `report:${report.taskId}`,
+    kind: "report",
+    title: report.topic,
+    subtitle: report.summary,
+    updatedAt: report.generatedAt,
+    taskId: report.taskId,
+  }));
+
+  const presentationItems = state.presentations.slice(0, 3).map((presentation) => ({
+    key: `presentation:${presentation.id}`,
+    kind: "presentation",
+    title: presentation.title,
+    subtitle: presentation.filePath,
+    updatedAt: presentation.generatedAt,
+    presentationId: presentation.id,
+  }));
+
+  const moduleItems = state.moduleAssets.slice(0, 3).map((asset) => ({
+    key: `module:${asset.id}`,
+    kind: "module",
+    title: `${asset.owner}/${asset.repo}`,
+    subtitle: asset.archivePath || asset.selectedPaths?.join(", ") || asset.id,
+    updatedAt: asset.updatedAt,
+    moduleAssetId: asset.id,
+  }));
+
+  const workstreamItems = state.recentArtifactWorkstreams.slice(0, 4).map((memo) => ({
+    key: `workstream:${memo.taskId}:${memo.workstreamId}`,
+    kind: "workstream",
+    title: memo.title,
+    subtitle: memo.path,
+    updatedAt: memo.updatedAt,
+    taskId: memo.taskId,
+    workstreamId: memo.workstreamId,
+  }));
+
+  return [...reportItems, ...presentationItems, ...moduleItems, ...workstreamItems]
+    .sort((left, right) => Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || ""))
+    .slice(0, 8);
+}
+
+function renderRecentArtifacts() {
+  if (!els.recentArtifactList) return;
+
+  const items = buildRecentArtifactItems();
+  if (!items.length) {
+    els.recentArtifactList.className = "empty-state compact-empty";
+    els.recentArtifactList.textContent = "No recent artifacts yet.";
+    return;
+  }
+
+  els.recentArtifactList.className = "session-list";
+  els.recentArtifactList.innerHTML = items
+    .map(
+      (item) => `
+        <button class="session-item" type="button" data-artifact-kind="${escapeHtml(item.kind)}" data-artifact-id="${escapeHtml(item.presentationId || item.moduleAssetId || item.taskId || "")}" data-workstream-id="${escapeHtml(item.workstreamId || "")}">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml(item.title)}</span>
+            <span>${escapeHtml(formatRelativeTime(item.updatedAt))}</span>
+          </div>
+          <p>${escapeHtml(trimText(item.subtitle || "-", 140))}</p>
+          <small>${escapeHtml(item.kind)}</small>
+        </button>
+      `,
+    )
+    .join("");
+
+  els.recentArtifactList.querySelectorAll("[data-artifact-kind]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const kind = button.dataset.artifactKind;
+      const artifactId = button.dataset.artifactId;
+      const workstreamId = button.dataset.workstreamId;
+      try {
+        if (kind === "report" && artifactId) {
+          await hydrateReport(artifactId);
+          return;
+        }
+        if (kind === "presentation" && artifactId) {
+          await hydratePresentation(artifactId);
+          return;
+        }
+        if (kind === "module" && artifactId) {
+          await hydrateModuleAsset(artifactId);
+          return;
+        }
+        if (kind === "workstream" && artifactId && workstreamId) {
+          await hydrateWorkstreamMemo(artifactId, workstreamId);
+        }
+      } catch (error) {
+        showError(error);
+      }
+    });
+  });
+}
+
+async function hydrateWorkstreamMemo(taskId, workstreamId) {
+  const memo = await requestJson(`/api/research/tasks/${encodeURIComponent(taskId)}/workstreams/${encodeURIComponent(workstreamId)}`);
+  clearResearchSelections();
+  state.selectedWorkstreamMemo = {
+    ...memo,
+    taskId,
+    topic: state.researchTasks.find((task) => task.taskId === taskId)?.topic || taskId,
+    updatedAt: state.researchTasks.find((task) => task.taskId === taskId)?.updatedAt,
+    title: `${workstreamId} workstream`,
+    label: workstreamId,
+  };
+  renderWorkstreamMemo(state.selectedWorkstreamMemo);
+  renderRecentArtifacts();
+  return memo;
+}
+
+async function loadRecentArtifactWorkstreams(tasks) {
+  const candidates = (Array.isArray(tasks) ? tasks : [])
+    .filter((task) => task?.taskId)
+    .slice(0, 3);
+
+  const handoffs = await Promise.all(
+    candidates.map((task) =>
+      requestJson(`/api/research/tasks/${encodeURIComponent(task.taskId)}/handoff`)
+        .then((handoff) => ({ task, handoff }))
+        .catch(() => null),
+    ),
+  );
+
+  state.recentArtifactWorkstreams = handoffs
+    .filter(Boolean)
+    .flatMap(({ task, handoff }) =>
+      (Array.isArray(handoff?.artifacts) ? handoff.artifacts : [])
+        .filter((artifact) => artifact.kind === "workstream")
+        .map((artifact) => ({
+          taskId: task.taskId,
+          topic: task.topic,
+          updatedAt: artifact.createdAt || task.updatedAt,
+          workstreamId: artifact.id,
+          title: artifact.title || `${artifact.id} workstream`,
+          path: artifact.path,
+        })),
+    );
+
+  renderRecentArtifacts();
 }
 
 async function loadFeedback() {
@@ -4714,6 +5039,10 @@ async function loadResearchTasks() {
   const payload = await requestJson("/api/research/tasks?limit=12");
   state.researchTasks = payload.tasks || [];
   renderResearchTasks(state.researchTasks);
+  await loadRecentArtifactWorkstreams(state.researchTasks).catch(() => {
+    state.recentArtifactWorkstreams = [];
+    renderRecentArtifacts();
+  });
   renderLandingSurfaces();
 
   const selectedTaskId = state.selectedResearchTaskId;
@@ -6796,6 +7125,7 @@ async function loadRecentResearch(options = {}) {
   renderOverviewCards(els.chatOverviewCards, true);
   renderOverviewCards(els.overviewCards, false);
   renderOverviewNotes();
+  renderRecentArtifacts();
   updateGlobalSummary();
 
   if (options.hydrateLatest && !state.latestReport && state.recentReports[0]?.taskId) {
@@ -7702,12 +8032,15 @@ window.addEventListener("reagent-language-change", () => {
   else if (state.selectedDirectionReport) renderDirectionReport(state.selectedDirectionReport);
   else if (state.selectedPresentation) renderPresentationArtifact(state.selectedPresentation);
   else if (state.selectedModuleAsset) renderModuleAsset(state.selectedModuleAsset);
+  else if (state.selectedWorkstreamMemo) renderWorkstreamMemo(state.selectedWorkstreamMemo);
   else if (state.selectedResearchTask) renderResearchTaskDetail(state.selectedResearchTask);
   else renderResearchReport(state.latestReport);
   renderResearchBriefTemplates();
   renderResearchBriefList(state.researchBriefs);
+  renderRecentArtifacts();
   renderDiscoveryScheduler(state.discoveryScheduler);
   renderDiscoveryRuns();
+  renderDiscoveryRunDetail(state.selectedDiscoveryRun);
   renderDirectionReportList(state.directionReports);
   renderPresentationList(state.presentations);
   renderModuleAssetList(state.moduleAssets);

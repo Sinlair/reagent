@@ -578,6 +578,7 @@ Commands:
   reagent research feedback ...
   reagent research graph ...
   reagent research artifact <workspace-relative-path>
+  reagent research bundle <taskId>
   reagent research source <sourceItemId>
   reagent research paper-report <reportId>
   reagent research repo-report <reportId>
@@ -3937,6 +3938,7 @@ async function researchCommand(options: ParsedOptions): Promise<void> {
     researchFeedbackCommand,
     researchGraphCommand,
     researchArtifactCommand,
+    researchBundleCommand,
     researchSourceCommand,
     researchPaperReportCommand,
     researchRepoReportCommand,
@@ -4267,6 +4269,7 @@ const {
 
 const {
   researchArtifactCommand,
+  researchBundleCommand,
   researchSourceCommand,
   researchPaperReportCommand,
   researchRepoReportCommand,

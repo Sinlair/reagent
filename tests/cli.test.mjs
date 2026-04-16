@@ -3291,6 +3291,21 @@ async function main() {
         payload = JSON.parse(result.stdout);
         assert.equal(payload.workstreamId, "search");
         assert.equal(payload.path.endsWith("/workstreams/search.md"), true);
+
+        const bundleOutPath = path.join(cwd, "research-bundle.json");
+        result = await runCli(
+          ["research", "bundle", taskId, "--url", fixture.baseUrl, "--out", bundleOutPath, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.taskId, taskId);
+        assert.equal(payload.bundlePath.endsWith("research-bundle.json"), true);
+        assert.equal(payload.included.report, true);
+        assert.equal(payload.included.review, true);
+        const exportedBundle = JSON.parse(await readFile(bundleOutPath, "utf8"));
+        assert.equal(exportedBundle.report.taskId, taskId);
+        assert.equal(exportedBundle.review.path.endsWith("/review.md"), true);
       });
 
       await runTest("CLI research direction and discovery commands manage profiles and scheduler", async () => {

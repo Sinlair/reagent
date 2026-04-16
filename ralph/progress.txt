@@ -33,14 +33,41 @@ Completed
   - Added near-duplicate title detection with a publication-window guard so punctuation and minor title variants collapse into one candidate.
   - Split merge preference from rank sorting so deduplicated candidates keep richer metadata for later UI display while final ordering stays deterministic.
   - Added regression coverage for normalized duplicate collapse and deterministic ordering after deduplication.
+- US-006: Show discovery ranking reasons and candidate context in the UI
+  - Added a focused discovery run detail panel in the Web research rail instead of showing only run summaries.
+  - Recent discovery runs are now selectable, and each selected run renders candidate cards with ranking reasons, source, year, venue, and direct paper or PDF links.
+  - Added explicit weak-run and empty-run explanatory copy so narrow candidate sets are not rendered as a blank list.
+  - Added a small pure helper module plus regression coverage for discovery empty-state and weak-run classification.
+  - Browser verification was not rerun here because no browser automation tool is available in this environment.
+- US-007: Surface evidence, support labels, and warnings in report detail
+  - Report detail now renders explicit support labels alongside evidence source type and confidence instead of only showing a flat quote list.
+  - Added weak-coverage, unsupported-evidence, inference-heavy, and no-evidence warning states to report detail.
+  - Added a focused report-state helper module with regression coverage for support-kind classification and warning generation.
+  - Browser verification was not rerun here because no browser automation tool is available in this environment.
+- US-008: Add recent artifact reopen flow for personal work loops
+  - Added a unified Recent Artifacts rail card in the Web research surface that aggregates reports, presentations, module assets, and recent workstream memos.
+  - Recent artifact items now reopen reports, presentations, module assets, or workstream memos directly from one list.
+  - Added an in-app workstream memo detail view backed by the existing workstream route instead of forcing raw path inspection.
+  - Existing `reagent home` output continues to surface the latest report and latest task, which satisfies the CLI side of this story.
+  - Browser verification was not rerun here because no browser automation tool is available in this environment.
+- US-009: Export a single research artifact bundle
+  - Added `reagent research bundle <taskId>` to export one task's report bundle into a single JSON file.
+  - The exported bundle includes core metadata, the report payload, handoff metadata, any saved review markdown, and related workstream memos when they are already persisted as artifacts.
+  - Bundle export now returns a concrete local file path in JSON mode and writes a portable single-file bundle by default.
+  - Export failures now name the missing review or workstream artifact paths when the handoff says they should exist but they cannot be read.
 
 Verification
 - `node --import tsx/esm tests/cli.test.mjs`
 - `npm.cmd run check`
 - `node tests/researchBriefTemplates.test.mjs`
+- `node tests/researchReportState.test.mjs`
+- `node tests/researchDiscoveryState.test.mjs`
+- `node tests/researchRecentArtifacts.test.mjs`
 - `node tests/researchDirectionService.test.mjs`
 - `npm.cmd run build`
 - `node tests/researchDiscoveryService.test.mjs`
+- `npm.cmd run test:cli`
+- `npm.cmd run test:root`
 
 Next
-- US-006: Show discovery ranking reasons and candidate context in the UI
+- US-010: Create workspace backup snapshots
