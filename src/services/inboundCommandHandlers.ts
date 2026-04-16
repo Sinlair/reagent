@@ -14,6 +14,13 @@ type WorkspaceMutationCommandId = "research" | "remember" | "feedback";
 type SessionControlCommandId = "role" | "skills" | "model" | "fallbacks" | "reasoning";
 
 export type SessionControlSummary = {
+  sessionId?: string | undefined;
+  senderId?: string | undefined;
+  entrySource?: "direct" | "ui" | "wechat" | "openclaw" | undefined;
+  activeEntrySource?: "direct" | "ui" | "wechat" | "openclaw" | undefined;
+  activeEntryLabel?: string | undefined;
+  enabledToolsets?: string[] | undefined;
+  availableToolsets?: string[] | undefined;
   roleId: string;
   roleLabel: string;
   skillIds: string[];
@@ -48,6 +55,10 @@ export type SessionControlSummary = {
   availableSkills: Array<{ id: string; label: string }>;
   availableLlmProviders: Array<{ id: string; label: string; models?: Array<{ id: string; label: string }> }>;
   availableReasoningEfforts: string[];
+  hostSessionKey?: string | undefined;
+  accountId?: string | undefined;
+  threadId?: string | number | undefined;
+  lastHostSyncAt?: string | undefined;
 };
 
 type InboundHandler<Input> = (argsText: string) => Promise<InboundCommandExecutionResult>;

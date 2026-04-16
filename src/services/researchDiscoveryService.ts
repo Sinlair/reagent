@@ -163,8 +163,183 @@ function buildDirectionPlan(profile: ResearchDirectionProfile, query: string): R
   };
 }
 
-function aggregateKey(paper: PaperCandidate): string {
-  return (paper.doi?.trim() || paper.url.trim() || paper.title.trim()).toLowerCase();
+function normalizePaperDoi(value?: string | undefined): string | null {
+  const trimmed = value?.trim().toLowerCase();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.replace(/^https?:\/\/(?:dx\.)?doi\.org\//u, "");
+}
+
+function normalizePaperUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const normalizedPath = parsed.pathname.replace(/\/+$/u, "") || "/";
+    return `${parsed.hostname.toLowerCase()}${normalizedPath.toLowerCase()}`;
+  } catch {
+    return trimmed.toLowerCase().replace(/[?#].*$/u, "").replace(/\/+$/u, "");
+  }
+}
+
+function normalizePaperTitle(value: string): string {
+  return normalizeMatchText(value);
+}
+
+function buildDiscoveryAggregateKeys(paper: PaperCandidate): string[] {
+  const keys = [
+    normalizePaperDoi(paper.doi) ? `doi:${normalizePaperDoi(paper.doi)}` : "",
+    normalizePaperUrl(paper.url) ? `url:${normalizePaperUrl(paper.url)}` : "",
+    normalizePaperTitle(paper.title) ? `title:${normalizePaperTitle(paper.title)}` : "",
+  ].filter(Boolean);
+
+  return uniqueTrimmed(keys);
+}
+
+function hasCompatiblePublicationWindow(left: PaperCandidate, right: PaperCandidate): boolean {
+  if (!left.year || !right.year) {
+    return true;
+  }
+  return Math.abs(left.year - right.year) <= 1;
+}
+
+function isNearDuplicatePaper(left: PaperCandidate, right: PaperCandidate): boolean {
+  if (!hasCompatiblePublicationWindow(left, right)) {
+    return false;
+  }
+
+  const leftTitle = normalizePaperTitle(left.title);
+  const rightTitle = normalizePaperTitle(right.title);
+  if (!leftTitle || !rightTitle) {
+    return false;
+  }
+
+  if (leftTitle === rightTitle) {
+    return true;
+  }
+
+  const leftTokens = new Set(buildMatchTokens(left.title));
+  const rightTokens = new Set(buildMatchTokens(right.title));
+  if (leftTokens.size === 0 || rightTokens.size === 0) {
+    return false;
+  }
+
+  let overlap = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  const maxTokenCount = Math.max(leftTokens.size, rightTokens.size);
+  return overlap / maxTokenCount >= 0.8;
+}
+
+function scoreDiscoveryMetadataCompleteness(item: PaperCandidate): number {
+  let score = 0;
+  if (item.doi) {
+    score += 3;
+  }
+  if (item.venue) {
+    score += 2;
+  }
+  if (item.pdfUrl) {
+    score += 1;
+  }
+  if (item.abstract) {
+    score += 1;
+  }
+  if (item.authors.length > 0) {
+    score += 1;
+  }
+  return score;
+}
+
+function compareDiscoveryItems(left: ResearchDiscoveryItem, right: ResearchDiscoveryItem): number {
+  const scoreDelta = (right.score ?? 0) - (left.score ?? 0);
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+
+  const metadataDelta = scoreDiscoveryMetadataCompleteness(right) - scoreDiscoveryMetadataCompleteness(left);
+  if (metadataDelta !== 0) {
+    return metadataDelta;
+  }
+
+  const yearDelta = (right.year ?? 0) - (left.year ?? 0);
+  if (yearDelta !== 0) {
+    return yearDelta;
+  }
+
+  const titleDelta = left.title.localeCompare(right.title);
+  if (titleDelta !== 0) {
+    return titleDelta;
+  }
+
+  const sourceDelta = left.source.localeCompare(right.source);
+  if (sourceDelta !== 0) {
+    return sourceDelta;
+  }
+
+  return left.url.localeCompare(right.url);
+}
+
+function compareDiscoveryMergePreference(left: ResearchDiscoveryItem, right: ResearchDiscoveryItem): number {
+  const metadataDelta = scoreDiscoveryMetadataCompleteness(right) - scoreDiscoveryMetadataCompleteness(left);
+  if (metadataDelta !== 0) {
+    return metadataDelta;
+  }
+
+  const yearDelta = (right.year ?? 0) - (left.year ?? 0);
+  if (yearDelta !== 0) {
+    return yearDelta;
+  }
+
+  const scoreDelta = (right.score ?? 0) - (left.score ?? 0);
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+
+  const titleDelta = left.title.localeCompare(right.title);
+  if (titleDelta !== 0) {
+    return titleDelta;
+  }
+
+  return left.url.localeCompare(right.url);
+}
+
+function mergeDiscoveryItemPair(primaryCandidate: ResearchDiscoveryItem, secondaryCandidate: ResearchDiscoveryItem): ResearchDiscoveryItem {
+  const primary =
+    compareDiscoveryMergePreference(primaryCandidate, secondaryCandidate) <= 0 ? primaryCandidate : secondaryCandidate;
+  const secondary = primary === primaryCandidate ? secondaryCandidate : primaryCandidate;
+
+  return {
+    ...primary,
+    authors: primary.authors.length > 0 ? primary.authors : secondary.authors,
+    url: primary.url || secondary.url,
+    pdfUrl: primary.pdfUrl || secondary.pdfUrl,
+    year: primary.year ?? secondary.year,
+    venue: primary.venue ?? secondary.venue,
+    doi: primary.doi ?? secondary.doi,
+    source: primary.source || secondary.source,
+    directionLabel: uniqueTrimmed([primary.directionLabel, secondary.directionLabel]).join(" | "),
+    queryReason: uniqueTrimmed([primary.queryReason, secondary.queryReason]).join("; "),
+    rankingReasons: uniqueTrimmed([...(primary.rankingReasons ?? []), ...(secondary.rankingReasons ?? [])]),
+    relevanceReason: uniqueTrimmed([
+      primary.relevanceReason ?? "",
+      secondary.relevanceReason ?? "",
+    ]).join(" "),
+    venuePreferenceMatched: primary.venuePreferenceMatched || secondary.venuePreferenceMatched,
+    datasetOrBenchmarkMatched: primary.datasetOrBenchmarkMatched || secondary.datasetOrBenchmarkMatched,
+    targetProblemMatched: primary.targetProblemMatched || secondary.targetProblemMatched,
+    baselineOrEvaluationMatched:
+      primary.baselineOrEvaluationMatched || secondary.baselineOrEvaluationMatched,
+    blockedTopicMatched: primary.blockedTopicMatched || secondary.blockedTopicMatched,
+  };
 }
 
 function scorePreferenceMatches(item: ResearchDiscoveryItem, profile: ResearchDirectionProfile): number {
@@ -255,40 +430,41 @@ function buildDiscoveryItem(
 }
 
 function mergeDiscoveryItems(items: ResearchDiscoveryItem[]): ResearchDiscoveryItem[] {
-  const byKey = new Map<string, ResearchDiscoveryItem>();
+  const byCanonicalKey = new Map<string, ResearchDiscoveryItem>();
+  const keyToCanonicalKey = new Map<string, string>();
 
   for (const item of items) {
-    const key = aggregateKey(item);
-    const existing = byKey.get(key);
-    if (!existing) {
-      byKey.set(key, item);
+    const keys = buildDiscoveryAggregateKeys(item);
+    const canonicalKey =
+      keys.map((key) => keyToCanonicalKey.get(key)).find((value): value is string => Boolean(value)) ??
+      [...byCanonicalKey.entries()].find(([, existing]) => isNearDuplicatePaper(existing, item))?.[0];
+
+    if (!canonicalKey) {
+      const nextCanonicalKey = keys[0] ?? `id:${item.id}`;
+      byCanonicalKey.set(nextCanonicalKey, item);
+      for (const key of keys) {
+        keyToCanonicalKey.set(key, nextCanonicalKey);
+      }
       continue;
     }
 
-    const existingScore = existing.score ?? 0;
-    const nextScore = item.score ?? 0;
-    const primary = nextScore > existingScore ? item : existing;
-    const secondary = primary === item ? existing : item;
+    const existing = byCanonicalKey.get(canonicalKey);
+    if (!existing) {
+      byCanonicalKey.set(canonicalKey, item);
+      for (const key of keys) {
+        keyToCanonicalKey.set(key, canonicalKey);
+      }
+      continue;
+    }
 
-    byKey.set(key, {
-      ...primary,
-      directionLabel: uniqueTrimmed([primary.directionLabel, secondary.directionLabel]).join(" | "),
-      queryReason: uniqueTrimmed([primary.queryReason, secondary.queryReason]).join("; "),
-      rankingReasons: uniqueTrimmed([...(primary.rankingReasons ?? []), ...(secondary.rankingReasons ?? [])]),
-      relevanceReason: uniqueTrimmed([
-        primary.relevanceReason ?? "",
-        secondary.relevanceReason ?? "",
-      ]).join(" "),
-      venuePreferenceMatched: primary.venuePreferenceMatched || secondary.venuePreferenceMatched,
-      datasetOrBenchmarkMatched: primary.datasetOrBenchmarkMatched || secondary.datasetOrBenchmarkMatched,
-      targetProblemMatched: primary.targetProblemMatched || secondary.targetProblemMatched,
-      baselineOrEvaluationMatched:
-        primary.baselineOrEvaluationMatched || secondary.baselineOrEvaluationMatched,
-      blockedTopicMatched: primary.blockedTopicMatched || secondary.blockedTopicMatched,
-    });
+    const merged = mergeDiscoveryItemPair(existing, item);
+    byCanonicalKey.set(canonicalKey, merged);
+    for (const key of [...keys, ...buildDiscoveryAggregateKeys(merged)]) {
+      keyToCanonicalKey.set(key, canonicalKey);
+    }
   }
 
-  return [...byKey.values()];
+  return [...byCanonicalKey.values()];
 }
 
 function formatDiscoveryDigest(result: ResearchDiscoveryRunResult): string {
@@ -481,18 +657,12 @@ export class ResearchDiscoveryService {
         }
       }
 
-      perProfilePapers.sort((left, right) => (right.score ?? 0) - (left.score ?? 0));
+      perProfilePapers.sort(compareDiscoveryItems);
       rankedCandidates.push(...perProfilePapers.slice(0, topK * 2));
     }
 
     const merged = mergeDiscoveryItems(rankedCandidates)
-      .sort((left, right) => {
-        const scoreDelta = (right.score ?? 0) - (left.score ?? 0);
-        if (scoreDelta !== 0) {
-          return scoreDelta;
-        }
-        return (right.year ?? 0) - (left.year ?? 0) || left.title.localeCompare(right.title);
-      })
+      .sort(compareDiscoveryItems)
       .slice(0, topK)
       .map((item, index) => ({
         ...item,

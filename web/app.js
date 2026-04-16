@@ -1,3 +1,10 @@
+import {
+  buildResearchReportWarnings,
+  deriveResearchEvidenceSupportKind,
+  formatResearchCoveragePercent,
+  summarizeResearchSupportKinds,
+} from "./researchReportState.js";
+
 const i18n = window.ReAgentI18n;
 
 const NAV_STORAGE_KEY = "reagent-ui-nav-collapsed";
@@ -35,8 +42,15 @@ const state = {
   paletteActiveIndex: 0,
   health: null,
   channels: null,
+  agentRuntimeOverview: null,
   agentSession: null,
+  selectedAgentSessionId: `ui:${UI_AGENT_SENDER_ID}`,
+  agentSessionHistory: null,
+  agentSessionHooks: null,
+  agentDelegations: [],
   agentSessions: [],
+  agentSessionsFilterSource: "all",
+  agentSessionsFilterStatus: "all",
   agentsPanel: "overview",
   runtimeMeta: null,
   skillsFilter: "",
@@ -99,6 +113,7 @@ const els = {
   chatMemoryPill: document.querySelector("#chat-memory-pill"),
   chatOverviewCards: document.querySelector("#chat-overview-cards"),
   agentSessionSummary: document.querySelector("#agent-session-summary"),
+  agentRuntimeOverview: document.querySelector("#agent-runtime-overview"),
   agentRuntimeNotes: document.querySelector("#agent-runtime-notes"),
   agentRoleSelect: document.querySelector("#agent-role-select"),
   agentModelSelect: document.querySelector("#agent-model-select"),
@@ -117,6 +132,8 @@ const els = {
   skillDetail: document.querySelector("#skill-detail"),
   skillDetailModal: document.querySelector("#skill-detail-modal"),
   agentSessionsList: document.querySelector("#agent-sessions-list"),
+  agentSessionsFilterSource: document.querySelector("#agent-sessions-filter-source"),
+  agentSessionsFilterStatus: document.querySelector("#agent-sessions-filter-status"),
   settingsOverview: document.querySelector("#settings-overview"),
   chatLatestReport: document.querySelector("#chat-latest-report"),
   chatSessionList: document.querySelector("#chat-session-list"),
@@ -195,6 +212,7 @@ const els = {
   researchBriefMarkdown: document.querySelector("#research-brief-markdown"),
   researchBriefList: document.querySelector("#research-brief-list"),
   researchBriefStatus: document.querySelector("#research-brief-status"),
+  researchBriefTemplates: document.querySelector("#research-brief-templates"),
   researchBriefNew: document.querySelector("#research-brief-new"),
   researchBriefExport: document.querySelector("#research-brief-export"),
   researchBriefDelete: document.querySelector("#research-brief-delete"),
@@ -252,6 +270,137 @@ const QUICK_ACTIONS = [
   { id: "cmd-research", label: "/research agentic rag", desc: "actions.insertPrompt", prompt: "/research agentic rag" },
   { id: "cmd-memory", label: "/memory user preference", desc: "actions.insertPrompt", prompt: "/memory user preference" },
   { id: "cmd-remember", label: "/remember user prefers TypeScript", desc: "actions.insertPrompt", prompt: "/remember user prefers TypeScript" }
+];
+
+const RESEARCH_BRIEF_TEMPLATES = [
+  {
+    id: "literature-scan",
+    label: "Literature Scan",
+    summary: "Map a topic quickly and identify representative papers, common baselines, and open problems.",
+    tlDr: "Use this when you need a scoped reading list and a first-pass direction map.",
+    background: "The goal is breadth first, not implementation depth.",
+    targetProblem: "Identify the strongest representative papers and the main solution clusters for one topic.",
+    successCriteria: [
+      "Representative papers cover the main solution families",
+      "Common baselines are listed explicitly",
+      "Open problems are concrete enough to guide follow-up reading"
+    ],
+    knownBaselines: [
+      "Strong survey or benchmark paper",
+      "Most-cited public baseline in the topic"
+    ],
+    evaluationPriorities: [
+      "Coverage over novelty",
+      "Clear taxonomy",
+      "Actionable reading order"
+    ],
+    shortTermValidationTargets: [
+      "Find 5 to 8 representative papers",
+      "Capture 3 common baselines",
+      "List 3 open problems"
+    ],
+    currentGoals: [
+      "Understand the landscape quickly",
+      "Decide what to read deeply next"
+    ],
+    openQuestions: [
+      "Which sub-direction is strongest right now?",
+      "Which papers are repeatedly cited as anchors?"
+    ],
+    queryHints: [
+      "survey",
+      "benchmark",
+      "state of the art"
+    ],
+    preferredPaperStyles: ["engineering", "application"],
+    priority: "primary",
+    enabled: true,
+  },
+  {
+    id: "baseline-comparison",
+    label: "Baseline Comparison",
+    summary: "Compare one target approach against strong baselines with explicit evidence and evaluation criteria.",
+    tlDr: "Use this when you already know the topic and need a fair baseline frame.",
+    background: "The goal is not a survey but a defensible comparison frame.",
+    targetProblem: "Determine whether one approach is actually better than the strongest available baselines.",
+    successCriteria: [
+      "At least 3 baselines are named explicitly",
+      "Comparison criteria are tied to datasets or benchmarks",
+      "Evidence separates paper claims from inference"
+    ],
+    knownBaselines: [
+      "Best public baseline on the main benchmark",
+      "Simple reproducible baseline",
+      "Closest engineering baseline"
+    ],
+    evaluationPriorities: [
+      "Benchmark comparability",
+      "Reproducibility signals",
+      "Evidence quality"
+    ],
+    shortTermValidationTargets: [
+      "Collect benchmark results for 3 baselines",
+      "Find implementation or repo evidence when possible"
+    ],
+    currentGoals: [
+      "Build a fair comparison frame",
+      "Avoid weak or cherry-picked baselines"
+    ],
+    openQuestions: [
+      "Are the reported metrics directly comparable?",
+      "Which claimed gains are only inference?"
+    ],
+    queryHints: [
+      "baseline comparison",
+      "benchmark",
+      "reproducibility"
+    ],
+    preferredPaperStyles: ["engineering", "reproducibility"],
+    priority: "primary",
+    enabled: true,
+  },
+  {
+    id: "weekly-digest",
+    label: "Weekly Digest",
+    summary: "Track a direction continuously and produce concise updates that can be revisited later.",
+    tlDr: "Use this when you want a stable reading rhythm rather than one-off discovery.",
+    background: "The goal is cadence, continuity, and durable memory.",
+    targetProblem: "Capture the most relevant recent papers for one direction and keep follow-up questions visible.",
+    successCriteria: [
+      "Recent candidates are scoped to the target direction",
+      "Each digest has clear next actions",
+      "Signals are durable enough to reopen next week"
+    ],
+    knownBaselines: [
+      "Current direction anchor paper",
+      "Recent top benchmark result"
+    ],
+    evaluationPriorities: [
+      "Recency",
+      "Direction fit",
+      "Follow-up usefulness"
+    ],
+    shortTermValidationTargets: [
+      "Surface 3 to 5 strong weekly candidates",
+      "Store one durable memory note per digest"
+    ],
+    currentGoals: [
+      "Keep the direction warm",
+      "Reduce restart cost between sessions"
+    ],
+    openQuestions: [
+      "Which papers are worth a deep read this week?",
+      "What should be tracked next week?"
+    ],
+    queryHints: [
+      "recent",
+      "latest",
+      "weekly"
+    ],
+    preferredPaperStyles: ["engineering", "application"],
+    priority: "secondary",
+    enabled: true,
+  }
 ];
 
 const GRAPH_VIEW = "paper";
@@ -1230,11 +1379,11 @@ function bindSettingsTabs() {
 
 function renderAgentPanelTabs() {
   const tabs = [
-    ["overview", t("agents.panelOverview", "Overview")],
-    ["skills", t("agents.panelSkills", "Skills")],
-    ["tools", t("agents.panelTools", "Tools")],
-    ["channels", t("agents.panelChannels", "Channels")],
-    ["cron", t("agents.panelCron", "Scheduler")]
+    ["overview", t("agents.panelOverview", "Profile")],
+    ["history", t("agents.panelHistory", "History")],
+    ["hooks", t("agents.panelHooks", "Hooks")],
+    ["delegations", t("agents.panelDelegations", "Delegations")],
+    ["runtime", t("agents.panelRuntime", "Runtime")]
   ];
 
   return `
@@ -1474,22 +1623,123 @@ function renderAgentCronPanel() {
   return notes.map((note) => `<article class="result-item"><p>${escapeHtml(note)}</p></article>`).join("");
 }
 
+function getSelectedAgentSessionId() {
+  return state.selectedAgentSessionId || state.agentSession?.sessionId || `ui:${UI_AGENT_SENDER_ID}`;
+}
+
+function renderAgentRuntimeOverviewCard() {
+  if (!els.agentRuntimeOverview) return;
+  const overview = state.agentRuntimeOverview;
+  if (!overview) {
+    els.agentRuntimeOverview.innerHTML = `<div class="detail-row"><span>${escapeHtml("Runtime")}</span><strong>${escapeHtml("-")}</strong></div>`;
+    return;
+  }
+
+  const rows = [
+    ["Sessions", String(overview.sessionCount ?? 0)],
+    ["Direct", String(overview.sessionCountsByEntrySource?.direct ?? 0)],
+    ["UI", String(overview.sessionCountsByEntrySource?.ui ?? 0)],
+    ["WeChat", String(overview.sessionCountsByEntrySource?.wechat ?? 0)],
+    ["OpenClaw", String(overview.sessionCountsByEntrySource?.openclaw ?? 0)],
+    [
+      "Default route",
+      `${overview.defaultRoute?.providerLabel || overview.defaultRoute?.providerId || "-"} / ${overview.defaultRoute?.modelLabel || overview.defaultRoute?.modelId || "-"}`
+    ],
+    ["Audit", `${overview.audit?.status || "-"} (${overview.audit?.path || "-"})`]
+  ];
+
+  els.agentRuntimeOverview.innerHTML = rows
+    .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
+    .join("");
+}
+
+function renderAgentHistoryPanel() {
+  const payload = state.agentSessionHistory;
+  if (!payload?.items?.length) {
+    return `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No runtime history for this session yet." : "No runtime history for this session yet.")}</div>`;
+  }
+
+  return payload.items
+    .map(
+      (item) => `
+        <article class="activity-item">
+          <div class="message__meta">
+            <span class="message__author">${escapeHtml(item.role)}${item.name ? ` / ${escapeHtml(item.name)}` : ""}</span>
+            <span>${escapeHtml(formatTime(item.createdAt))}</span>
+          </div>
+          <p>${nl2br(item.content)}</p>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderAgentHooksPanel() {
+  const payload = state.agentSessionHooks;
+  if (!payload?.items?.length) {
+    return `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No hook events for this session yet." : "No hook events for this session yet.")}</div>`;
+  }
+
+  return payload.items
+    .map(
+      (item) => `
+        <article class="result-item">
+          <h3>${escapeHtml(item.event)}</h3>
+          <p>${escapeHtml(
+            [
+              item.stage ? `stage=${item.stage}` : "",
+              item.toolName ? `tool=${item.toolName}` : "",
+              item.providerId || item.modelId ? `model=${item.providerId || "-"} / ${item.modelId || "-"}` : "",
+            ]
+              .filter(Boolean)
+              .join(" | ") || "runtime event"
+          )}</p>
+          <small>${escapeHtml(item.error || item.preview || formatTime(item.ts))}</small>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderAgentDelegationsPanel() {
+  const items = (state.agentDelegations || []).filter((item) => item.sessionId === getSelectedAgentSessionId());
+  if (!items.length) {
+    return `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No delegations for this session yet." : "No delegations for this session yet.")}</div>`;
+  }
+
+  return items
+    .map(
+      (item) => `
+        <article class="result-item">
+          <h3>${escapeHtml(item.kind)} / ${escapeHtml(item.status)}</h3>
+          <p>${escapeHtml(`Task ${item.taskId}`)}</p>
+          <small>${escapeHtml(item.artifact?.path || item.input?.prompt || item.error || formatTime(item.updatedAt))}</small>
+        </article>
+      `
+    )
+    .join("");
+}
+
 function renderAgentSessionsList(sessions) {
   state.agentSessions = Array.isArray(sessions) ? sessions : [];
   if (!els.agentSessionsList) return;
 
-  if (!state.agentSessions.length) {
+  const filteredSessions = state.agentSessions
+    .filter((session) => state.agentSessionsFilterSource === "all" || session.entrySource === state.agentSessionsFilterSource)
+    .filter((session) => state.agentSessionsFilterStatus === "all" || session.llmStatus === state.agentSessionsFilterStatus);
+
+  if (!filteredSessions.length) {
     els.agentSessionsList.className = "empty-state";
     els.agentSessionsList.textContent = t("empty.sessions", "No sessions yet.");
     return;
   }
 
   els.agentSessionsList.className = "session-list";
-  els.agentSessionsList.innerHTML = state.agentSessions
+  els.agentSessionsList.innerHTML = filteredSessions
     .map((session) => {
-      const isCurrent = session.senderId === UI_AGENT_SENDER_ID;
+      const isCurrent = session.sessionId === getSelectedAgentSessionId();
       return `
-        <article class="session-item ${isCurrent ? "session-item--current" : ""}">
+        <button class="session-item ${isCurrent ? "session-item--current" : ""}" type="button" data-agent-session-id="${escapeHtml(session.sessionId)}">
           <div class="message__meta">
             <span class="message__author">${escapeHtml(session.sessionId)}</span>
             <span>${escapeHtml(formatRelativeTime(session.updatedAt))}</span>
@@ -1503,12 +1753,23 @@ function renderAgentSessionsList(sessions) {
             )}</span>
             <span>${escapeHtml(`${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}`)}</span>
             <span>${escapeHtml(session.skillLabels.join(", ") || "-")}</span>
-            ${isCurrent ? `<span>${escapeHtml(state.lang === "zh" ? "\u5f53\u524d\u804a\u5929" : "Current chat")}</span>` : ""}
+            ${isCurrent ? `<span>${escapeHtml(state.lang === "zh" ? "\u5f53\u524d\u4f1a\u8bdd" : "Selected")}</span>` : ""}
           </div>
-        </article>
+        </button>
       `;
     })
     .join("");
+
+  els.agentSessionsList.querySelectorAll("[data-agent-session-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const sessionId = button.dataset.agentSessionId;
+      if (!sessionId) return;
+      state.selectedAgentSessionId = sessionId;
+      state.agentsPanel = "overview";
+      setActiveTab("agents");
+      await loadAgentSession(sessionId).catch(showError);
+    });
+  });
 }
 
 function renderSettingsOverview() {
@@ -1794,7 +2055,7 @@ function buildFallbackCandidateOptions(session) {
   return options;
 }
 
-function renderAgentSession(session) {
+function renderAgentSessionLegacy(session) {
   state.agentSession = session;
 
   if (!session) {
@@ -1993,6 +2254,219 @@ function renderAgentSession(session) {
   if (state.agentsPanel !== "skills") {
     renderSkillsCatalog(session);
   }
+  renderSettingsOverview();
+}
+
+function renderAgentSession(session) {
+  state.agentSession = session;
+
+  if (!session) {
+    renderAgentRuntimeOverviewCard();
+    if (els.agentSessionSummary) {
+      els.agentSessionSummary.innerHTML = `${renderAgentPanelTabs()}<div class="empty-state compact-empty">${escapeHtml(t("empty.notes", "No notes available."))}</div>`;
+      bindAgentPanelTabs();
+    }
+    if (els.agentRuntimeNotes) {
+      els.agentRuntimeNotes.innerHTML = "";
+    }
+    els.agentRoleSelect.innerHTML = `<option value="">-</option>`;
+    if (els.agentModelSelect) els.agentModelSelect.innerHTML = `<option value="">-</option>`;
+    if (els.agentFallbacksList) els.agentFallbacksList.innerHTML = `<div class="empty-state compact-empty">${escapeHtml(t("empty.notes", "No notes available."))}</div>`;
+    if (els.agentFallbacksSelect) els.agentFallbacksSelect.innerHTML = `<option value="">-</option>`;
+    if (els.agentReasoningSelect) els.agentReasoningSelect.innerHTML = `<option value="default">default</option>`;
+    if (els.agentSkills) els.agentSkills.innerHTML = `<div class="empty-state compact-empty">${escapeHtml(t("empty.notes", "No notes available."))}</div>`;
+    renderSkillsCatalog(null);
+    renderSettingsOverview();
+    return;
+  }
+
+  state.selectedAgentSessionId = session.sessionId || state.selectedAgentSessionId;
+
+  if (els.agentSessionSummary) {
+    let panelContent = "";
+    if (state.agentsPanel === "overview") {
+      panelContent = [
+        ["Session", session.sessionId || "-"],
+        ["Sender", session.senderId || "-"],
+        ["Entry", `${session.activeEntryLabel || session.activeEntrySource} (${session.entrySource || session.activeEntrySource || "-"})`],
+        ["Toolsets", session.enabledToolsets?.join(", ") || "-"],
+        ["Role", `${session.roleLabel} (${session.roleId})`],
+        ["Skills", session.skillLabels.join(", ") || "-"],
+        ["Model route", `${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}`],
+        ["Fallbacks", String(session.fallbackRoutes?.length ?? 0)],
+        ["Reasoning", session.reasoningEffort || "default"],
+        ["Wire API", session.wireApi || "-"],
+        ["Source", `${session.llmStatus || "-"} (${session.llmSource || "-"})`],
+        ["Host session", session.hostSessionKey || "-"],
+        ["Host account", session.accountId || "-"],
+        ["Host thread", session.threadId == null ? "-" : String(session.threadId)],
+        ["Host synced", session.lastHostSyncAt ? formatTime(session.lastHostSyncAt) : "-"],
+      ]
+        .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
+        .join("");
+    } else if (state.agentsPanel === "history") {
+      panelContent = `<div class="result-stack">${renderAgentHistoryPanel()}</div>`;
+    } else if (state.agentsPanel === "hooks") {
+      panelContent = `<div class="result-stack">${renderAgentHooksPanel()}</div>`;
+    } else if (state.agentsPanel === "delegations") {
+      panelContent = `<div class="result-stack">${renderAgentDelegationsPanel()}</div>`;
+    } else if (state.agentsPanel === "runtime") {
+      const overview = state.agentRuntimeOverview;
+      panelContent = [
+        ["Sessions", String(overview?.sessionCount ?? 0)],
+        ["Direct", String(overview?.sessionCountsByEntrySource?.direct ?? 0)],
+        ["UI", String(overview?.sessionCountsByEntrySource?.ui ?? 0)],
+        ["WeChat", String(overview?.sessionCountsByEntrySource?.wechat ?? 0)],
+        ["OpenClaw", String(overview?.sessionCountsByEntrySource?.openclaw ?? 0)],
+        ["Default route", overview?.defaultRoute ? `${overview.defaultRoute.providerLabel || overview.defaultRoute.providerId}/${overview.defaultRoute.modelLabel || overview.defaultRoute.modelId}` : "-"],
+        ["Audit", overview?.audit ? `${overview.audit.status} (${overview.audit.path})` : "-"],
+      ]
+        .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
+        .join("");
+    }
+
+    els.agentSessionSummary.innerHTML = `${renderAgentPanelTabs()}${panelContent}`;
+    bindAgentPanelTabs();
+  }
+
+  renderAgentRuntimeOverviewCard();
+
+  if (els.agentRuntimeNotes) {
+    const notes = [
+      `Current entry: ${session.activeEntryLabel || session.activeEntrySource}.`,
+      `This entry allows these toolsets: ${(session.enabledToolsets || []).join(", ") || "-"}.`,
+      session.hostSessionKey
+        ? `Host linkage: ${session.hostSessionKey}${session.accountId ? ` / ${session.accountId}` : ""}${session.threadId != null ? ` / ${session.threadId}` : ""}.`
+        : "Host linkage: none.",
+      `Current delegation records: ${(state.agentDelegations || []).filter((item) => item.sessionId === (session.sessionId || "")).length}.`,
+      "Use the Sessions tab to switch the active session detail view.",
+    ];
+    els.agentRuntimeNotes.innerHTML = notes
+      .map((note) => `<article class="result-item"><p>${escapeHtml(note)}</p></article>`)
+      .join("");
+  }
+
+  els.agentRoleSelect.innerHTML = (session.availableRoles || [])
+    .map(
+      (role) =>
+        `<option value="${escapeHtml(role.id)}" ${role.id === session.roleId ? "selected" : ""}>${escapeHtml(role.label)} (${escapeHtml(role.id)})</option>`,
+    )
+    .join("");
+
+  const modelOptions = buildAgentModelOptions(session);
+  if (els.agentModelSelect) {
+    els.agentModelSelect.innerHTML = modelOptions
+      .map(
+        (option) =>
+          `<option value="${escapeHtml(option.value)}" ${option.value === getAgentModelSelectValue(session) ? "selected" : ""}>${escapeHtml(option.label)}</option>`,
+      )
+      .join("");
+  }
+  if (els.agentModelHint) {
+    const defaultRoute = session.defaultRoute;
+    els.agentModelHint.textContent = defaultRoute
+      ? `Default route: ${formatRouteLabel(defaultRoute)}`
+      : "Switch the active model route for this session, or inherit the registry default.";
+  }
+  if (els.agentModelReset) {
+    els.agentModelReset.disabled = !getAgentModelSelectValue(session);
+  }
+
+  if (els.agentFallbacksList) {
+    const routes = session.fallbackRoutes || [];
+    els.agentFallbacksList.innerHTML = routes.length
+      ? routes
+          .map(
+            (route) => `
+              <div class="route-chip">
+                <span class="route-chip__copy">
+                  <strong>${escapeHtml(formatRouteLabel(route))}</strong>
+                  <span>${escapeHtml(`${route.llmStatus} (${route.llmSource})`)}</span>
+                </span>
+                <button class="route-chip__remove" type="button" data-remove-fallback="${escapeHtml(`${route.providerId}::${route.modelId}`)}">Remove</button>
+              </div>
+            `
+          )
+          .join("")
+      : `<div class="empty-state compact-empty">${escapeHtml("No fallback routes configured.")}</div>`;
+  }
+  if (els.agentFallbacksSelect) {
+    const candidateOptions = buildFallbackCandidateOptions(session);
+    els.agentFallbacksSelect.innerHTML = [
+      `<option value="">${escapeHtml("Choose a backup route")}</option>`,
+      ...candidateOptions.map(
+        (option) =>
+          `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`,
+      ),
+    ].join("");
+  }
+  if (els.agentFallbacksAdd) {
+    els.agentFallbacksAdd.disabled = true;
+  }
+  if (els.agentFallbacksList) {
+    els.agentFallbacksList.querySelectorAll("[data-remove-fallback]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const key = button.dataset.removeFallback;
+        if (!key) return;
+        const nextRoutes = (session.fallbackRoutes || [])
+          .filter((route) => `${route.providerId}::${route.modelId}` !== key)
+          .map((route) => ({
+            providerId: route.providerId,
+            modelId: route.modelId
+          }));
+
+        try {
+          const nextSession = await patchSelectedAgentProfile({
+            fallbackRoutes: nextRoutes
+          });
+          state.skillMessage = nextRoutes.length
+            ? `Fallback routes updated: ${nextRoutes.map((route) => `${route.providerId}/${route.modelId}`).join(", ")}.`
+            : "Fallback routes cleared.";
+          renderAgentSession(nextSession);
+        } catch (error) {
+          showError(error);
+          await loadAgentSession().catch(() => {});
+        }
+      });
+    });
+  }
+  if (els.agentFallbacksClear) {
+    els.agentFallbacksClear.disabled = !(session.fallbackRoutes || []).length;
+  }
+
+  if (els.agentReasoningSelect) {
+    const selectedReasoning = session.reasoningEffort || "default";
+    els.agentReasoningSelect.innerHTML = (session.availableReasoningEfforts || ["default"])
+      .map(
+        (effort) =>
+          `<option value="${escapeHtml(effort)}" ${effort === selectedReasoning ? "selected" : ""}>${escapeHtml(effort)}</option>`,
+      )
+      .join("");
+  }
+  if (els.agentReasoningHint) {
+    els.agentReasoningHint.textContent = `Current reasoning effort: ${session.reasoningEffort || "default"}`;
+  }
+
+  if (els.agentSkills) {
+    const checkedSkillIds = new Set(session.skillIds || []);
+    els.agentSkills.innerHTML = (session.availableSkills || [])
+      .map((skill) => {
+        const checked = checkedSkillIds.has(skill.id);
+        return `
+          <label class="agent-skill">
+            <input data-agent-skill-toggle type="checkbox" value="${escapeHtml(skill.id)}" ${checked ? "checked" : ""} />
+            <span class="agent-skill__copy">
+              <strong>${escapeHtml(skill.label)}</strong>
+              <span>${escapeHtml(skill.id)}</span>
+            </span>
+          </label>
+        `;
+      })
+      .join("");
+  }
+
+  bindAgentSkillInputs();
+  renderSkillsCatalog(session);
   renderSettingsOverview();
 }
 
@@ -2793,6 +3267,62 @@ function supportKindLabel(kind) {
   return labels[kind] || kind;
 }
 
+function supportKindTone(kind) {
+  if (kind === "paper" || kind === "code") return "ok";
+  if (kind === "inference") return "warn";
+  return "danger";
+}
+
+function sourceTypeLabel(sourceType) {
+  if (sourceType === "pdf") {
+    return state.lang === "zh" ? "PDF" : "PDF";
+  }
+  if (sourceType === "abstract") {
+    return state.lang === "zh" ? "Abstract" : "Abstract";
+  }
+  return sourceType || "-";
+}
+
+function researchReportWarningTitle(alert) {
+  if (alert.kind === "no_evidence") {
+    return state.lang === "zh" ? "No evidence attached" : "No evidence attached";
+  }
+  if (alert.kind === "low_coverage") {
+    return state.lang === "zh" ? "Evidence coverage is weak" : "Evidence coverage is weak";
+  }
+  if (alert.kind === "unsupported_evidence") {
+    return state.lang === "zh" ? "Some evidence items do not validate" : "Some evidence items do not validate";
+  }
+  if (alert.kind === "inference_heavy") {
+    return state.lang === "zh" ? "Inference outweighs grounded evidence" : "Inference outweighs grounded evidence";
+  }
+  return state.lang === "zh" ? "Evidence warning" : "Evidence warning";
+}
+
+function researchReportWarningBody(alert) {
+  if (alert.kind === "no_evidence") {
+    return state.lang === "zh"
+      ? "This report does not have an evidence ledger yet. Treat the summary as unverified until paper-backed support is attached."
+      : "This report does not have an evidence ledger yet. Treat the summary as unverified until paper-backed support is attached.";
+  }
+  if (alert.kind === "low_coverage") {
+    return state.lang === "zh"
+      ? `${formatResearchCoveragePercent(alert.coverage)} of the findings are backed by explicit evidence items.`
+      : `${formatResearchCoveragePercent(alert.coverage)} of the findings are backed by explicit evidence items.`;
+  }
+  if (alert.kind === "unsupported_evidence") {
+    return state.lang === "zh"
+      ? `${alert.count} evidence item(s) reference missing papers or chunks, or omit support text.`
+      : `${alert.count} evidence item(s) reference missing papers or chunks, or omit support text.`;
+  }
+  if (alert.kind === "inference_heavy") {
+    return state.lang === "zh"
+      ? "Unsupported or weakly grounded evidence is outpacing validated support. Recheck the findings before reusing the report."
+      : "Unsupported or weakly grounded evidence is outpacing validated support. Recheck the findings before reusing the report.";
+  }
+  return state.lang === "zh" ? "Review the report before reuse." : "Review the report before reuse.";
+}
+
 function conclusionKindLabel(kind) {
   const labels = {
     problem_statement: state.lang === "zh" ? "闂瀹氫箟" : "Problem",
@@ -2902,6 +3432,43 @@ function buildResearchBriefPayload() {
     priority: els.researchBriefPriority?.value || "secondary",
     enabled: Boolean(els.researchBriefEnabled?.checked)
   };
+}
+
+function renderResearchBriefTemplates() {
+  if (!els.researchBriefTemplates) return;
+
+  els.researchBriefTemplates.innerHTML = RESEARCH_BRIEF_TEMPLATES
+    .map(
+      (template) => `
+        <button class="route-chip" type="button" data-brief-template="${escapeHtml(template.id)}">
+          <span class="route-chip__copy">
+            <strong>${escapeHtml(template.label)}</strong>
+            <span>${escapeHtml(template.summary)}</span>
+          </span>
+        </button>
+      `,
+    )
+    .join("");
+
+  els.researchBriefTemplates.querySelectorAll("[data-brief-template]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const templateId = button.dataset.briefTemplate;
+      const template = RESEARCH_BRIEF_TEMPLATES.find((item) => item.id === templateId);
+      if (!template) return;
+      clearResearchSelections();
+      clearResearchBriefStatus();
+      populateResearchBriefForm({
+        ...template,
+        id: "",
+        updatedAt: new Date().toISOString(),
+      });
+      setResearchBriefStatus(`Template loaded: ${template.label}`, "ok");
+      if (els.researchBriefLabel) {
+        els.researchBriefLabel.focus();
+        els.researchBriefLabel.select();
+      }
+    });
+  });
 }
 
 function setSelectedResearchBrief(brief) {
@@ -3045,12 +3612,15 @@ function renderResearchReport(report) {
   }
 
   const papers = Array.isArray(report.papers) ? report.papers : [];
+  const evidenceItems = Array.isArray(report.evidence) ? report.evidence : [];
   const taskMeta = report.taskMeta || null;
   const handoff = taskMeta?.handoff || null;
   const reviewStatus = handoff?.reviewStatus || taskMeta?.reviewStatus || "pending";
   const dossierFiles = buildResearchDossierFiles(taskMeta, handoff);
   const dossierLinks = renderResearchDossierLinks(dossierFiles);
   const artifactLinks = renderResearchArtifactLinks(Array.isArray(handoff?.artifacts) ? handoff.artifacts : []);
+  const supportKinds = summarizeResearchSupportKinds(report);
+  const reportWarnings = buildResearchReportWarnings(report);
   const retryAction = taskMeta && canRetryResearchTask(taskMeta, reviewStatus)
     ? `
       <div class="button-row">
@@ -3092,28 +3662,66 @@ function renderResearchReport(report) {
     ? critique.recommendations.map((item) => `<article class="result-item"><p>${escapeHtml(item)}</p></article>`).join("")
     : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "暂无建议。" : "No recommendations yet.")}</div>`;
 
-  const evidence = report.evidence?.length
-    ? report.evidence
+  const evidence = evidenceItems.length
+    ? evidenceItems
         .map(
           (item) => `
             <article class="report-block report-block--dense report-evidence-card">
               <div class="report-item-head">
-                <h3>${escapeHtml(item.claim)}</h3>
-                ${renderPill(item.confidence || item.sourceType, item.confidence === "high" ? "ok" : item.confidence === "medium" ? "warn" : "")}
+                <div>
+                  <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Claim" : "Claim")}</div>
+                  <h3>${escapeHtml(item.claim)}</h3>
+                </div>
+                <div class="report-chip-list">
+                  ${renderPill(supportKindLabel(deriveResearchEvidenceSupportKind(item)), supportKindTone(deriveResearchEvidenceSupportKind(item)))}
+                  ${renderPill(sourceTypeLabel(item.sourceType))}
+                  ${renderPill(item.confidence || "-", confidenceTone(item.confidence))}
+                </div>
               </div>
-              <p>${escapeHtml(item.quote || item.support)}</p>
-              ${item.quote && item.support && item.quote !== item.support ? `<small>${escapeHtml(item.support)}</small>` : ""}
+              <div class="report-evidence-copy">
+                <div>
+                  <div class="card-sub">${escapeHtml(state.lang === "zh" ? "Support" : "Support")}</div>
+                  <p>${escapeHtml(item.quote || item.support)}</p>
+                  ${item.quote && item.support && item.quote !== item.support ? `<small>${escapeHtml((state.lang === "zh" ? "Interpretation: " : "Interpretation: ") + item.support)}</small>` : ""}
+                </div>
+              </div>
               <div class="report-chip-list">
-                ${renderPill(item.sourceType)}
-                ${renderPill(item.paperId)}
-                ${renderPill(item.chunkId || "-")}
+                ${renderPill(`paper:${item.paperId}`)}
+                ${renderPill(item.chunkId ? `chunk:${item.chunkId}` : "chunk:-")}
                 ${item.pageNumber ? renderPill(state.lang === "zh" ? `第${item.pageNumber}页` : `p.${item.pageNumber}`) : ""}
               </div>
             </article>
           `
         )
         .join("")
-    : `<div class="empty-state compact-empty">${escapeHtml(t("empty.evidence", "No evidence."))}</div>`;
+    : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No evidence ledger is attached to this report yet." : "No evidence ledger is attached to this report yet.")}</div>`;
+
+  const supportLabels = supportKinds.length
+    ? supportKinds.map((kind) => renderPill(supportKindLabel(kind), supportKindTone(kind))).join("")
+    : renderPill(state.lang === "zh" ? "Pending evidence labels" : "Pending evidence labels", "warn");
+
+  const evidenceWarnings = reportWarnings.length
+    ? `
+      <article class="report-block report-block--warning">
+        <div class="report-item-head">
+          <h3>${escapeHtml(state.lang === "zh" ? "Evidence Warnings" : "Evidence Warnings")}</h3>
+          ${renderPill(String(reportWarnings.length), "warn")}
+        </div>
+        <div class="report-stack-tight">
+          ${reportWarnings
+            .map(
+              (alert) => `
+                <div class="alert-strip alert-strip--${escapeHtml(alert.tone)}">
+                  <strong>${escapeHtml(researchReportWarningTitle(alert))}</strong>
+                  <span>${escapeHtml(researchReportWarningBody(alert))}</span>
+                </div>
+              `,
+            )
+            .join("")}
+        </div>
+      </article>
+    `
+    : "";
 
   const queries = report.plan?.searchQueries?.length
     ? report.plan.searchQueries.map((query) => renderPill(query)).join("")
@@ -3177,7 +3785,7 @@ function renderResearchReport(report) {
           ${renderPill(critique.verdict, verdictTone(critique.verdict))}
           ${taskMeta ? renderPill(formatResearchReviewStatus(reviewStatus), researchReviewTone(reviewStatus)) : ""}
           ${renderPill(`${papers.length} ${state.lang === "zh" ? "papers" : "papers"}`)}
-          ${renderPill(`${report.evidence.length} ${state.lang === "zh" ? "evidence" : "evidence"}`)}
+          ${renderPill(`${evidenceItems.length} ${state.lang === "zh" ? "evidence" : "evidence"}`)}
         </div>
       </div>
       <div class="research-stat-grid">
@@ -3195,7 +3803,7 @@ function renderResearchReport(report) {
         </article>
         <article class="research-stat">
           <span>${escapeHtml(state.lang === "zh" ? "Coverage" : "Coverage")}</span>
-          <strong>${escapeHtml(String(critique.citationCoverage ?? 0))}</strong>
+          <strong>${escapeHtml(formatResearchCoveragePercent(critique.citationCoverage ?? 0))}</strong>
         </article>
         ${taskMeta ? `
         <article class="research-stat">
@@ -3216,10 +3824,12 @@ function renderResearchReport(report) {
           <div class="result-stack">${findings}</div>
         </article>
 
+        ${evidenceWarnings}
+
         <article class="report-block report-block--feature">
           <div class="report-item-head">
             <h3>${escapeHtml(state.lang === "zh" ? "Evidence Ledger" : "Evidence Ledger")}</h3>
-            ${renderPill(String(report.evidence?.length || 0))}
+            ${renderPill(String(evidenceItems.length || 0))}
           </div>
           <div class="result-stack research-evidence-list">${evidence}</div>
         </article>
@@ -3277,6 +3887,15 @@ function renderResearchReport(report) {
 
         <article class="report-block">
           <div class="report-item-head">
+            <h3>${escapeHtml(state.lang === "zh" ? "Support Labels" : "Support Labels")}</h3>
+            ${renderPill(String(supportKinds.length || 0))}
+          </div>
+          <p>${escapeHtml(state.lang === "zh" ? "Use these tags to separate paper-backed evidence from inference-heavy conclusions before reusing the report." : "Use these tags to separate paper-backed evidence from inference-heavy conclusions before reusing the report.")}</p>
+          <div class="report-chip-list">${supportLabels}</div>
+        </article>
+
+        <article class="report-block">
+          <div class="report-item-head">
             <h3>${escapeHtml(state.lang === "zh" ? "Critique" : "Critique")}</h3>
             ${renderPill(critique.verdict, verdictTone(critique.verdict))}
           </div>
@@ -3292,7 +3911,7 @@ function renderResearchReport(report) {
             </article>
             <article class="research-stat">
               <span>${escapeHtml(state.lang === "zh" ? "Coverage" : "Coverage")}</span>
-              <strong>${escapeHtml(String(critique.citationCoverage ?? 0))}</strong>
+              <strong>${escapeHtml(formatResearchCoveragePercent(critique.citationCoverage ?? 0))}</strong>
             </article>
             <article class="research-stat">
               <span>${escapeHtml(state.lang === "zh" ? "Diversity" : "Diversity")}</span>
@@ -6069,14 +6688,70 @@ renderGraphDetail = function (detail) {
   bindGraphDetailButtons();
 };
 
-async function loadAgentSession() {
-  const session = await requestJson(`/api/channels/wechat/agent?senderId=${encodeURIComponent(UI_AGENT_SENDER_ID)}`);
-  renderAgentSession(session);
+async function loadAgentRuntimeOverview() {
+  state.agentRuntimeOverview = await requestJson("/api/agent/runtime");
+  renderAgentRuntimeOverviewCard();
+}
+
+async function loadAgentSession(sessionId = getSelectedAgentSessionId()) {
+  try {
+    const session = await requestJson(`/api/agent/sessions/${encodeURIComponent(sessionId)}/profile`);
+    state.selectedAgentSessionId = session.sessionId || sessionId;
+    renderAgentSession(session);
+    await Promise.all([
+      loadAgentSessionHistory(state.selectedAgentSessionId),
+      loadAgentSessionHooks(state.selectedAgentSessionId),
+      loadAgentDelegations(state.selectedAgentSessionId),
+    ]);
+    renderAgentSession(session);
+  } catch (error) {
+    if (state.agentSessions.length > 0) {
+      state.selectedAgentSessionId = state.agentSessions[0].sessionId;
+      const fallback = await requestJson(`/api/agent/sessions/${encodeURIComponent(state.selectedAgentSessionId)}/profile`);
+      renderAgentSession(fallback);
+      await Promise.all([
+        loadAgentSessionHistory(state.selectedAgentSessionId),
+        loadAgentSessionHooks(state.selectedAgentSessionId),
+        loadAgentDelegations(state.selectedAgentSessionId),
+      ]);
+      renderAgentSession(fallback);
+      return;
+    }
+    state.agentSessionHistory = null;
+    state.agentSessionHooks = null;
+    state.agentDelegations = [];
+    renderAgentSession(null);
+  }
+}
+
+async function loadAgentSessionHistory(sessionId = getSelectedAgentSessionId()) {
+  state.agentSessionHistory = await requestJson(`/api/agent/sessions/${encodeURIComponent(sessionId)}/history?limit=24`);
+}
+
+async function loadAgentSessionHooks(sessionId = getSelectedAgentSessionId()) {
+  state.agentSessionHooks = await requestJson(`/api/agent/sessions/${encodeURIComponent(sessionId)}/hooks?limit=24`);
+}
+
+async function loadAgentDelegations(sessionId = getSelectedAgentSessionId()) {
+  const payload = await requestJson(`/api/agent/delegations?sessionId=${encodeURIComponent(sessionId)}&limit=24`);
+  state.agentDelegations = payload.items || [];
 }
 
 async function loadAgentSessions() {
-  const payload = await requestJson("/api/channels/wechat/agent/sessions");
+  const payload = await requestJson("/api/agent/sessions?limit=100");
   renderAgentSessionsList(payload.sessions || []);
+}
+
+async function patchSelectedAgentProfile(patch) {
+  const sessionId = getSelectedAgentSessionId();
+  const session = await requestJson(`/api/agent/sessions/${encodeURIComponent(sessionId)}/profile`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  state.skillMessage = "";
+  renderAgentSession(session);
+  await loadAgentSessions().catch(() => {});
+  return session;
 }
 
 async function loadChannels() {
@@ -6253,6 +6928,10 @@ function setActiveTab(tab) {
   if (next === "logs") loadRuntimeLogs().catch(showError);
   if (next === "graph") loadGraph().catch(showError);
   if (next === "sessions") loadAgentSessions().catch(showError);
+  if (next === "agents") {
+    loadAgentRuntimeOverview().catch(showError);
+    loadAgentSession().catch(showError);
+  }
   if (next === "settings") loadRuntimeMeta().catch(showError);
 }
 
@@ -6359,8 +7038,9 @@ async function refreshAll(options = {}) {
     loadHealth(),
     loadChannels(),
     loadRuntimeMeta(),
-    loadAgentSession(),
+    loadAgentRuntimeOverview(),
     loadAgentSessions(),
+    loadAgentSession(),
     loadMessages(),
     loadLifecycleAudit(),
     loadMemoryStatus(),
@@ -6404,12 +7084,8 @@ function bindAgentSkillInputs() {
       }
 
       try {
-        const session = await requestJson("/api/channels/wechat/agent/skills", {
-          method: "POST",
-          body: JSON.stringify({
-            senderId: UI_AGENT_SENDER_ID,
-            skillIds: selected
-          })
+        const session = await patchSelectedAgentProfile({
+          skillIds: selected
         });
         state.skillMessage = `Updated enabled skills: ${session.skillLabels.join(", ")}`;
         renderAgentSession(session);
@@ -6422,8 +7098,21 @@ function bindAgentSkillInputs() {
 }
 
 document.querySelector("#refresh-overview").addEventListener("click", () => refreshAll().catch(showError));
+
+els.agentSessionsFilterSource?.addEventListener("change", () => {
+  state.agentSessionsFilterSource = els.agentSessionsFilterSource.value;
+  renderAgentSessionsList(state.agentSessions);
+});
+
+els.agentSessionsFilterStatus?.addEventListener("change", () => {
+  state.agentSessionsFilterStatus = els.agentSessionsFilterStatus.value;
+  renderAgentSessionsList(state.agentSessions);
+});
 document.querySelector("#refresh-wechat").addEventListener("click", () => refreshAll().catch(showError));
-document.querySelector("#refresh-sessions").addEventListener("click", () => loadAgentSessions().catch(showError));
+document.querySelector("#refresh-sessions").addEventListener("click", async () => {
+  await loadAgentSessions().catch(showError);
+  await loadAgentSession().catch(showError);
+});
 document.querySelector("#refresh-logs").addEventListener("click", () => {
   state.runtimeLogsBaseline = null;
   loadRuntimeLogs().catch(showError);
@@ -6775,13 +7464,7 @@ els.agentRoleSelect?.addEventListener("change", async () => {
   if (!roleId) return;
 
   try {
-    const session = await requestJson("/api/channels/wechat/agent/role", {
-      method: "POST",
-      body: JSON.stringify({
-        senderId: UI_AGENT_SENDER_ID,
-        roleId
-      })
-    });
+    const session = await patchSelectedAgentProfile({ roleId });
     state.skillMessage = `Active role set to ${session.roleLabel} (${session.roleId}).`;
     renderAgentSession(session);
   } catch (error) {
@@ -6795,19 +7478,10 @@ els.agentModelSelect?.addEventListener("change", async () => {
 
   try {
     const session = !value
-      ? await requestJson("/api/channels/wechat/agent/model", {
-          method: "POST",
-          body: JSON.stringify({
-            senderId: UI_AGENT_SENDER_ID
-          })
-        })
-      : await requestJson("/api/channels/wechat/agent/model", {
-          method: "POST",
-          body: JSON.stringify({
-            senderId: UI_AGENT_SENDER_ID,
-            providerId: value.split("::")[0],
-            modelId: value.split("::")[1]
-          })
+      ? await patchSelectedAgentProfile({ clearModel: true })
+      : await patchSelectedAgentProfile({
+          providerId: value.split("::")[0],
+          modelId: value.split("::")[1]
         });
     state.skillMessage = `Active model route: ${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}${session.wireApi ? ` via ${session.wireApi}` : ""}.`;
     renderAgentSession(session);
@@ -6819,12 +7493,7 @@ els.agentModelSelect?.addEventListener("change", async () => {
 
 els.agentModelReset?.addEventListener("click", async () => {
   try {
-    const session = await requestJson("/api/channels/wechat/agent/model", {
-      method: "POST",
-      body: JSON.stringify({
-        senderId: UI_AGENT_SENDER_ID
-      })
-    });
+    const session = await patchSelectedAgentProfile({ clearModel: true });
     state.skillMessage = `Model route reset to default: ${session.providerLabel || session.providerId}/${session.modelLabel || session.modelId}${session.wireApi ? ` via ${session.wireApi}` : ""}.`;
     renderAgentSession(session);
   } catch (error) {
@@ -6854,12 +7523,8 @@ els.agentFallbacksAdd?.addEventListener("click", async () => {
         [...currentRoutes, { providerId, modelId }].map((route) => [`${route.providerId}::${route.modelId}`, route])
       ).values()
     ];
-    const session = await requestJson("/api/channels/wechat/agent/fallbacks", {
-      method: "POST",
-      body: JSON.stringify({
-        senderId: UI_AGENT_SENDER_ID,
-        routes
-      })
+    const session = await patchSelectedAgentProfile({
+      fallbackRoutes: routes
     });
     state.skillMessage = routes.length
       ? `Fallback routes updated: ${routes.map((route) => `${route.providerId}/${route.modelId}`).join(", ")}.`
@@ -6873,12 +7538,8 @@ els.agentFallbacksAdd?.addEventListener("click", async () => {
 
 els.agentFallbacksClear?.addEventListener("click", async () => {
   try {
-    const session = await requestJson("/api/channels/wechat/agent/fallbacks", {
-      method: "POST",
-      body: JSON.stringify({
-        senderId: UI_AGENT_SENDER_ID,
-        routes: []
-      })
+    const session = await patchSelectedAgentProfile({
+      fallbackRoutes: []
     });
     state.skillMessage = "Fallback routes cleared.";
     renderAgentSession(session);
@@ -6890,12 +7551,8 @@ els.agentFallbacksClear?.addEventListener("click", async () => {
 
 els.agentReasoningSelect?.addEventListener("change", async () => {
   try {
-    const session = await requestJson("/api/channels/wechat/agent/reasoning", {
-      method: "POST",
-      body: JSON.stringify({
-        senderId: UI_AGENT_SENDER_ID,
-        reasoningEffort: els.agentReasoningSelect.value || "default"
-      })
+    const session = await patchSelectedAgentProfile({
+      reasoningEffort: els.agentReasoningSelect.value || "default"
     });
     state.skillMessage = `Reasoning effort set to ${session.reasoningEffort || "default"}.`;
     renderAgentSession(session);
@@ -7047,6 +7704,7 @@ window.addEventListener("reagent-language-change", () => {
   else if (state.selectedModuleAsset) renderModuleAsset(state.selectedModuleAsset);
   else if (state.selectedResearchTask) renderResearchTaskDetail(state.selectedResearchTask);
   else renderResearchReport(state.latestReport);
+  renderResearchBriefTemplates();
   renderResearchBriefList(state.researchBriefs);
   renderDiscoveryScheduler(state.discoveryScheduler);
   renderDiscoveryRuns();
@@ -7074,6 +7732,7 @@ if (els.graphDateRange) {
 }
 adjustTextareaHeight();
 closePalette();
+renderResearchBriefTemplates();
 syncTabFromHash();
 refreshAll({ hydrateLatest: true }).catch(showError);
 setInterval(() => refreshAll().catch(showError), 10000);

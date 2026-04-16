@@ -27,6 +27,9 @@ import { OpenClawRuntimeStateService } from "./openClawRuntimeStateService.js";
 import { ResearchDirectionService } from "./researchDirectionService.js";
 import { ResearchDiscoveryService } from "./researchDiscoveryService.js";
 import { ResearchFeedbackService } from "./researchFeedbackService.js";
+import type { AgentRuntimeOverview } from "../agents/runtime.js";
+import type { AgentSessionHooks } from "../agents/runtime.js";
+import type { AgentSessionHistory } from "../agents/runtime.js";
 import type { MemoryRecallHit } from "../types/memory.js";
 import type {
   ChannelsStatusSnapshot,
@@ -391,14 +394,33 @@ function buildCommandAuthorizationBlockedReply(input: {
 
 type AgentRuntimeSummaryShape = SessionControlSummary;
 
+type AgentHostSessionHistory = {
+  sessionKey: string;
+  items: Array<{
+    id: string;
+    role?: string | undefined;
+    text: string;
+    createdAt: string;
+  }>;
+};
+
 function hasAgentRuntimeControls(
   chatService: ChatServiceLike
 ): chatService is ChatServiceLike & {
+  describeRuntime(): Promise<AgentRuntimeOverview>;
+  findSession(reference: string): Promise<AgentRuntimeSummaryShape | null>;
+  findSessionHistory(reference: string, limit?: number): Promise<AgentSessionHistory | null>;
+  findSessionHooks(
+    reference: string,
+    limit?: number,
+    event?: "llm_call" | "tool_call" | "tool_error" | "tool_blocked" | "reply_emit",
+  ): Promise<AgentSessionHooks | null>;
   listSessions(): Promise<
     Array<{
       sessionId: string;
       channel: string;
       senderId: string;
+      entrySource: "direct" | "ui" | "wechat" | "openclaw";
       roleId: string;
       roleLabel: string;
       skillIds: string[];
@@ -416,6 +438,10 @@ function hasAgentRuntimeControls(
   describeSession(senderId: string): Promise<AgentRuntimeSummaryShape>;
 } {
   return (
+    typeof (chatService as { describeRuntime?: unknown }).describeRuntime === "function" &&
+    typeof (chatService as { findSession?: unknown }).findSession === "function" &&
+    typeof (chatService as { findSessionHistory?: unknown }).findSessionHistory === "function" &&
+    typeof (chatService as { findSessionHooks?: unknown }).findSessionHooks === "function" &&
     typeof (chatService as { listSessions?: unknown }).listSessions === "function" &&
     typeof (chatService as { setRole?: unknown }).setRole === "function" &&
     typeof (chatService as { setSkills?: unknown }).setSkills === "function" &&
@@ -1992,7 +2018,89 @@ export class ChannelService {
       throw new Error("Agent session controls are unavailable in the current chat backend.");
     }
 
-    return this.chatService.describeSession(senderId);
+    return this.attachHostLinkage(await this.chatService.describeSession(senderId));
+  }
+
+  async getAgentRuntimeOverview(): Promise<AgentRuntimeOverview> {
+    if (!hasAgentRuntimeControls(this.chatService)) {
+      throw new Error("Agent runtime overview is unavailable in the current chat backend.");
+    }
+
+    return this.chatService.describeRuntime();
+  }
+
+  async findAgentSession(sessionId: string): Promise<AgentRuntimeSummaryShape | null> {
+    if (!hasAgentRuntimeControls(this.chatService)) {
+      throw new Error("Agent session controls are unavailable in the current chat backend.");
+    }
+
+    const session = await this.chatService.findSession(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    return this.attachHostLinkage(session);
+  }
+
+  async updateAgentSessionProfile(input: {
+    sessionId: string;
+    roleId?: string | undefined;
+    skillIds?: string[] | undefined;
+    providerId?: string | undefined;
+    modelId?: string | undefined;
+    clearModel?: boolean | undefined;
+    fallbackRoutes?: Array<{ providerId: string; modelId: string }> | undefined;
+    reasoningEffort?: string | undefined;
+  }): Promise<AgentRuntimeSummaryShape | null> {
+    if (!hasAgentRuntimeControls(this.chatService)) {
+      throw new Error("Agent session controls are unavailable in the current chat backend.");
+    }
+
+    const existing = await this.chatService.findSession(input.sessionId);
+    if (!existing) {
+      return null;
+    }
+
+    if (input.roleId) {
+      await this.chatService.setRole(input.sessionId, input.roleId);
+    }
+    if (input.skillIds) {
+      await this.chatService.setSkills(input.sessionId, input.skillIds);
+    }
+    if (input.clearModel) {
+      await this.chatService.clearModel(input.sessionId);
+    } else if (input.providerId && input.modelId) {
+      await this.chatService.setModel(input.sessionId, input.providerId, input.modelId);
+    }
+    if (input.fallbackRoutes) {
+      await this.chatService.setFallbacks(input.sessionId, input.fallbackRoutes);
+    }
+    if (input.reasoningEffort) {
+      await this.chatService.setReasoning(input.sessionId, input.reasoningEffort);
+    }
+
+    const updated = await this.chatService.findSession(input.sessionId);
+    return updated ? this.attachHostLinkage(updated) : null;
+  }
+
+  async getAgentSessionHistory(sessionId: string, limit?: number): Promise<AgentSessionHistory | null> {
+    if (!hasAgentRuntimeControls(this.chatService)) {
+      throw new Error("Agent session controls are unavailable in the current chat backend.");
+    }
+
+    return this.chatService.findSessionHistory(sessionId, limit);
+  }
+
+  async getAgentSessionHooks(
+    sessionId: string,
+    limit?: number,
+    event?: "llm_call" | "tool_call" | "tool_error" | "tool_blocked" | "reply_emit",
+  ): Promise<AgentSessionHooks | null> {
+    if (!hasAgentRuntimeControls(this.chatService)) {
+      throw new Error("Agent session controls are unavailable in the current chat backend.");
+    }
+
+    return this.chatService.findSessionHooks(sessionId, limit, event);
   }
 
   async listAgentSessions(): Promise<
@@ -2000,6 +2108,7 @@ export class ChannelService {
       sessionId: string;
       channel: string;
       senderId: string;
+      entrySource: "direct" | "ui" | "wechat" | "openclaw";
       roleId: string;
       roleLabel: string;
       skillIds: string[];
@@ -2022,6 +2131,36 @@ export class ChannelService {
     }
 
     return this.chatService.listSessions();
+  }
+
+  async listAgentHostSessions(limit = 100): Promise<OpenClawSessionRegistryEntry[]> {
+    return this.listOpenClawSessionRegistry(limit);
+  }
+
+  async getAgentHostSessionHistory(sessionKey: string, limit = 50): Promise<AgentHostSessionHistory | null> {
+    const normalizedSessionKey = sessionKey.trim();
+    if (!normalizedSessionKey) {
+      return null;
+    }
+
+    const entry = await this.getOpenClawSessionRegistryEntry(normalizedSessionKey);
+    if (!entry) {
+      return null;
+    }
+
+    const items = (await this.openClawRuntimeStateService.readSessionMessages(normalizedSessionKey))
+      .slice(-Math.max(1, Math.min(limit, 200)))
+      .map((message) => ({
+        id: message.id,
+        ...(message.role ? { role: message.role } : {}),
+        text: message.text,
+        createdAt: message.createdAt,
+      }));
+
+    return {
+      sessionKey: normalizedSessionKey,
+      items,
+    };
   }
 
   async setAgentRole(senderId: string, roleId: string): Promise<{
@@ -2556,6 +2695,26 @@ export class ChannelService {
     return {
       ...outbound,
       researchTaskId: result.researchTaskId
+    };
+  }
+
+  private async attachHostLinkage<T extends AgentRuntimeSummaryShape>(summary: T): Promise<T> {
+    const senderId = summary.senderId?.trim();
+    if (!senderId) {
+      return summary;
+    }
+
+    const linkedSession = await this.findOpenClawSessionRegistryEntryByTarget({ senderId }).catch(() => null);
+    if (!linkedSession) {
+      return summary;
+    }
+
+    return {
+      ...summary,
+      hostSessionKey: linkedSession.sessionKey,
+      ...(linkedSession.accountId ? { accountId: linkedSession.accountId } : {}),
+      ...(linkedSession.threadId != null ? { threadId: linkedSession.threadId } : {}),
+      lastHostSyncAt: linkedSession.lastSyncedAt,
     };
   }
 }

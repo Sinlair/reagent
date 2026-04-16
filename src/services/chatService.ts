@@ -1,6 +1,9 @@
 import {
   AgentRuntime,
+  type AgentRuntimeOverview,
   type AgentChatInput,
+  type AgentSessionHooks,
+  type AgentSessionHistory,
   type AgentSessionListEntry,
   type AgentSessionSummary
 } from "../agents/runtime.js";
@@ -21,6 +24,10 @@ interface ChatServiceOptions {
 export interface ChatServiceLike {
   reply(input: AgentChatInput): Promise<string>;
   plainReply?(input: AgentChatInput): Promise<string>;
+  describeRuntime?(): Promise<AgentRuntimeOverview>;
+  findSession?(reference: string): Promise<AgentSessionSummary | null>;
+  findSessionHistory?(reference: string, limit?: number): Promise<AgentSessionHistory | null>;
+  findSessionHooks?(reference: string, limit?: number, event?: "llm_call" | "tool_call" | "tool_error" | "tool_blocked" | "reply_emit"): Promise<AgentSessionHooks | null>;
   listSessions?(): Promise<AgentSessionListEntry[]>;
   setRole?(senderId: string, roleId: string): Promise<AgentSessionSummary>;
   setSkills?(senderId: string, skillIds: string[]): Promise<AgentSessionSummary>;
@@ -55,6 +62,26 @@ export class ChatService implements ChatServiceLike {
 
   async plainReply(input: AgentChatInput): Promise<string> {
     return this.runtime.replyPlain(input);
+  }
+
+  async describeRuntime(): Promise<AgentRuntimeOverview> {
+    return this.runtime.describeRuntime();
+  }
+
+  async findSession(reference: string): Promise<AgentSessionSummary | null> {
+    return this.runtime.findSession(reference);
+  }
+
+  async findSessionHistory(reference: string, limit?: number): Promise<AgentSessionHistory | null> {
+    return this.runtime.findSessionHistory(reference, limit);
+  }
+
+  async findSessionHooks(
+    reference: string,
+    limit?: number,
+    event?: "llm_call" | "tool_call" | "tool_error" | "tool_blocked" | "reply_emit",
+  ): Promise<AgentSessionHooks | null> {
+    return this.runtime.findSessionHooks(reference, limit, event);
   }
 
   async listSessions(): Promise<AgentSessionListEntry[]> {

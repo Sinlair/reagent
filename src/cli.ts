@@ -30,6 +30,7 @@ import {
   type ParsedOptions,
 } from "./cli/args.js";
 import { createChannelsCli } from "./cli/channels.js";
+import { createAgentCli } from "./cli/agent.js";
 import {
   OPENCLAW_COMMAND_FAMILIES,
   dispatchResearchCommand as runResearchCommandDispatch,
@@ -214,6 +215,28 @@ type ResearchTasksPayload = {
   tasks: ResearchTaskSummary[];
 };
 
+type ResearchDirectionsPayload = {
+  profiles: ResearchDirectionProfile[];
+};
+
+type HomeChecklistItem = {
+  id: "brief" | "run" | "output" | "memory";
+  done: boolean;
+  title: string;
+  summary: string;
+  action: {
+    kind: "command" | "report";
+    label: string;
+    target: string;
+  };
+};
+
+type HomeChecklistPayload = {
+  completedCount: number;
+  totalCount: number;
+  items: HomeChecklistItem[];
+};
+
 type HomePayload = {
   url: string;
   version: string;
@@ -236,9 +259,47 @@ type HomePayload = {
     recentReports: ResearchReportSummary[];
     recentTasks: ResearchTaskSummary[];
     activeTaskCount: number;
+    briefCount?: number;
   };
+  checklist: HomeChecklistPayload;
   nextSteps: string[];
   dashboardUrl: string;
+};
+
+type OnboardReadinessStatus = "ready" | "needs-action" | "starter-profile" | "optional";
+type OnboardReadinessGroup = "required" | "optional";
+
+type OnboardReadinessItem = {
+  id: string;
+  label: string;
+  group: OnboardReadinessGroup;
+  required: boolean;
+  blocking: boolean;
+  status: OnboardReadinessStatus;
+  summary: string;
+  nextStep?: string;
+};
+
+type OnboardReadinessBucket = {
+  itemCount: number;
+  blockingCount: number;
+  statusCounts: Record<OnboardReadinessStatus, number>;
+  items: OnboardReadinessItem[];
+};
+
+type OnboardStarterProfile = {
+  mode: "fallback-mock";
+  wouldApply: boolean;
+  applied: boolean;
+  reason: string;
+  changes: string[];
+  preservesExistingProviders: boolean;
+  activeProviders: {
+    llm: string;
+    wechat: string;
+  };
+  intendedUse: string;
+  surfaceGuidance: string;
 };
 
 type OnboardPayload = {
@@ -260,7 +321,20 @@ type OnboardPayload = {
     gatewayUrl: string;
     gatewayInstalled: boolean;
     gatewayReachable: boolean;
+    configuredPort: number;
+    inspectPort: number;
+    defaultPort: number;
   };
+  readiness: {
+    status: "ready" | "needs-action";
+    itemCount: number;
+    blockingCount: number;
+    statusCounts: Record<OnboardReadinessStatus, number>;
+    required: OnboardReadinessBucket;
+    optional: OnboardReadinessBucket;
+    items: OnboardReadinessItem[];
+  };
+  starterProfile: OnboardStarterProfile;
   actions: {
     apply: boolean;
     skipDb: boolean;
@@ -293,6 +367,64 @@ async function readPackageVersion(): Promise<string> {
   return typeof pkg.version === "string" ? pkg.version : "0.0.0";
 }
 
+function createOnboardReadinessStatusCounts(): Record<OnboardReadinessStatus, number> {
+  return {
+    ready: 0,
+    "needs-action": 0,
+    "starter-profile": 0,
+    optional: 0,
+  };
+}
+
+function buildOnboardReadinessBucket(items: OnboardReadinessItem[]): OnboardReadinessBucket {
+  const statusCounts = createOnboardReadinessStatusCounts();
+  let blockingCount = 0;
+  for (const item of items) {
+    statusCounts[item.status] += 1;
+    if (item.blocking) {
+      blockingCount += 1;
+    }
+  }
+
+  return {
+    itemCount: items.length,
+    blockingCount,
+    statusCounts,
+    items,
+  };
+}
+
+function buildOnboardReadiness(items: OnboardReadinessItem[]): OnboardPayload["readiness"] {
+  for (const item of items) {
+    if (item.blocking && !item.nextStep?.trim()) {
+      throw new Error(`Blocking onboarding readiness item "${item.id}" is missing a next step.`);
+    }
+  }
+
+  const requiredItems = items.filter((item) => item.group === "required");
+  const optionalItems = items.filter((item) => item.group === "optional");
+  const required = buildOnboardReadinessBucket(requiredItems);
+  const optional = buildOnboardReadinessBucket(optionalItems);
+  const statusCounts = createOnboardReadinessStatusCounts();
+
+  for (const [status, count] of Object.entries(required.statusCounts)) {
+    statusCounts[status as OnboardReadinessStatus] += count;
+  }
+  for (const [status, count] of Object.entries(optional.statusCounts)) {
+    statusCounts[status as OnboardReadinessStatus] += count;
+  }
+
+  return {
+    status: required.blockingCount > 0 ? "needs-action" : "ready",
+    itemCount: items.length,
+    blockingCount: required.blockingCount,
+    statusCounts,
+    required,
+    optional,
+    items,
+  };
+}
+
 function printHelp(): void {
   console.log(`ReAgent CLI
 
@@ -309,6 +441,7 @@ Core:
   reagent wait        Wait for channel login completion
   reagent logout      Log out the active channel session
   reagent send        Send through the active OpenClaw/WeChat host path
+  reagent agent       Inspect or manage the canonical agent runtime surface
   reagent inspect     Inspect one OpenClaw plugin across snapshot and host state
   reagent install     Install an OpenClaw plugin through the host path
   reagent uninstall   Uninstall an OpenClaw plugin through the host path
@@ -786,6 +919,128 @@ async function pathExists(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function readEnvAssignments(raw: string): Map<string, string> {
+  const assignments = new Map<string, string>();
+  for (const line of raw.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    assignments.set(trimmed.slice(0, separatorIndex).trim(), trimmed.slice(separatorIndex + 1).trim());
+  }
+  return assignments;
+}
+
+function ensureEnvAssignment(raw: string, key: string, value: string): { raw: string; changed: boolean } {
+  const normalized = raw.replace(/\r\n/gu, "\n");
+  const lines = normalized.length > 0 ? normalized.replace(/\n$/u, "").split("\n") : [];
+  let found = false;
+  let changed = false;
+
+  const nextLines = lines.map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      return line;
+    }
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) {
+      return line;
+    }
+    const currentKey = line.slice(0, separatorIndex).trim();
+    if (currentKey !== key || found) {
+      return line;
+    }
+    found = true;
+    const currentValue = line.slice(separatorIndex + 1).trim();
+    if (currentValue.length > 0) {
+      return line;
+    }
+    changed = true;
+    return `${key}=${value}`;
+  });
+
+  if (!found) {
+    nextLines.push(`${key}=${value}`);
+    changed = true;
+  }
+
+  const nextRaw = nextLines.join("\n").replace(/\n*$/u, "\n");
+  return {
+    raw: nextRaw,
+    changed,
+  };
+}
+
+async function readEnvFileAnalysis(envTargetPath: string): Promise<{
+  exists: boolean;
+  raw: string;
+  assignments: Map<string, string>;
+}> {
+  try {
+    const raw = await readFile(envTargetPath, "utf8");
+    return {
+      exists: true,
+      raw,
+      assignments: readEnvAssignments(raw),
+    };
+  } catch {
+    return {
+      exists: false,
+      raw: "",
+      assignments: new Map(),
+    };
+  }
+}
+
+async function applyStarterProfileToEnvFile(envTargetPath: string): Promise<{
+  applied: boolean;
+  changes: string[];
+}> {
+  const analysis = await readEnvFileAnalysis(envTargetPath);
+  if (!analysis.exists) {
+    return {
+      applied: false,
+      changes: [],
+    };
+  }
+
+  let nextRaw = analysis.raw;
+  const additions: string[] = [];
+  const llmProvider = analysis.assignments.get("LLM_PROVIDER")?.trim();
+  if (!llmProvider) {
+    const result = ensureEnvAssignment(nextRaw, "LLM_PROVIDER", "fallback");
+    nextRaw = result.raw;
+    if (result.changed) {
+      additions.push("LLM_PROVIDER=fallback");
+    }
+  }
+  const wechatProvider = analysis.assignments.get("WECHAT_PROVIDER")?.trim();
+  if (!wechatProvider) {
+    const result = ensureEnvAssignment(nextRaw, "WECHAT_PROVIDER", "mock");
+    nextRaw = result.raw;
+    if (result.changed) {
+      additions.push("WECHAT_PROVIDER=mock");
+    }
+  }
+
+  if (additions.length === 0) {
+    return {
+      applied: false,
+      changes: [],
+    };
+  }
+
+  await writeFile(envTargetPath, nextRaw, "utf8");
+  return {
+    applied: true,
+    changes: additions,
+  };
 }
 
 function resolvePrismaCliPath(): string {
@@ -2660,18 +2915,25 @@ async function initCommand(options: ParsedOptions): Promise<void> {
   const envTargetPath = path.join(process.cwd(), ".env");
   const overwriteEnv = getBooleanFlag(options, "force");
   const skipDbPush = getBooleanFlag(options, "skip-db");
+  const silent = getBooleanFlag(options, "json");
 
   try {
     await access(envTargetPath, fsConstants.F_OK);
     if (overwriteEnv) {
       await copyFile(resolvePackagePath(".env.example"), envTargetPath);
-      console.log(`Overwrote ${envTargetPath}`);
+      if (!silent) {
+        console.log(`Overwrote ${envTargetPath}`);
+      }
     } else {
-      console.log(`Keeping existing ${envTargetPath}`);
+      if (!silent) {
+        console.log(`Keeping existing ${envTargetPath}`);
+      }
     }
   } catch {
     await copyFile(resolvePackagePath(".env.example"), envTargetPath);
-    console.log(`Created ${envTargetPath}`);
+    if (!silent) {
+      console.log(`Created ${envTargetPath}`);
+    }
   }
 
   applyRuntimeOverrides(options);
@@ -2688,9 +2950,11 @@ async function initCommand(options: ParsedOptions): Promise<void> {
     await runDbPush(runtimeEnv);
   }
 
-  console.log(`Workspace directory: ${workspacePath}`);
-  console.log(`Package assets: ${packageRootDir}`);
-  console.log(`Next step: reagent service run --port ${DEFAULT_GATEWAY_PORT}`);
+  if (!silent) {
+    console.log(`Workspace directory: ${workspacePath}`);
+    console.log(`Package assets: ${packageRootDir}`);
+    console.log(`Next step: reagent service run --port ${DEFAULT_GATEWAY_PORT}`);
+  }
 }
 
 async function onboardCommand(options: ParsedOptions): Promise<void> {
@@ -2703,14 +2967,13 @@ async function onboardCommand(options: ParsedOptions): Promise<void> {
   const envTargetPath = path.join(process.cwd(), ".env");
   const workspacePath = path.resolve(process.cwd(), context.runtimeEnv.PLATFORM_WORKSPACE_DIR);
   const sqlitePath = resolveSqlitePath(context.runtimeEnv.DATABASE_URL, process.cwd());
+  const sqliteReady = sqlitePath ? await pathExists(sqlitePath) : true;
 
-  let envExists = false;
-  try {
-    await access(envTargetPath, fsConstants.F_OK);
-    envExists = true;
-  } catch {
-    envExists = false;
-  }
+  let envAnalysis = await readEnvFileAnalysis(envTargetPath);
+  const initialExplicitLlmProvider = envAnalysis.assignments.get("LLM_PROVIDER")?.trim();
+  const initialExplicitWechatProvider = envAnalysis.assignments.get("WECHAT_PROVIDER")?.trim();
+  const initialStarterProfileWouldApply = !initialExplicitLlmProvider || !initialExplicitWechatProvider;
+  let envExists = envAnalysis.exists;
 
   let workspaceExists = false;
   try {
@@ -2720,12 +2983,16 @@ async function onboardCommand(options: ParsedOptions): Promise<void> {
     workspaceExists = false;
   }
 
+  let starterProfileChanges: string[] = [];
   if (apply) {
     const initOptions: ParsedOptions = {
       flags: new Map(options.flags),
       positionals: [...options.positionals],
     };
     await initCommand(initOptions);
+    const starterProfileUpdate = await applyStarterProfileToEnvFile(envTargetPath);
+    starterProfileChanges = starterProfileUpdate.changes;
+    envAnalysis = await readEnvFileAnalysis(envTargetPath);
     envExists = true;
     workspaceExists = true;
 
@@ -2735,25 +3002,168 @@ async function onboardCommand(options: ParsedOptions): Promise<void> {
         positionals: [],
       });
     }
+
+    if (starterProfileUpdate.applied && !getBooleanFlag(options, "json")) {
+      console.log(`Starter profile applied: ${starterProfileUpdate.changes.join(", ")}`);
+    }
   }
 
   const gateway = await maybeReadLocalGatewayStatus(context.baseUrl, context.runtimeEnv.PORT, false);
-  const nextSteps: string[] = [];
+  const explicitLlmProvider = envAnalysis.assignments.get("LLM_PROVIDER")?.trim();
+  const explicitWechatProvider = envAnalysis.assignments.get("WECHAT_PROVIDER")?.trim();
+  const explicitPortValue = envAnalysis.assignments.get("PORT")?.trim();
+  const hasOpenAiKey = Boolean(envAnalysis.assignments.get("OPENAI_API_KEY")?.trim());
+  const starterProfileWouldApply = initialStarterProfileWouldApply;
+  const starterProfileApplied = apply && initialStarterProfileWouldApply;
+  const starterProfile: OnboardStarterProfile = {
+    mode: "fallback-mock",
+    wouldApply: starterProfileWouldApply,
+    applied: starterProfileApplied,
+    reason:
+      starterProfileWouldApply
+        ? "One or more first-use provider keys are missing, so the safe starter profile is applicable."
+        : "Provider keys are already explicitly configured.",
+    changes: starterProfileChanges,
+    preservesExistingProviders: true,
+    activeProviders: {
+      llm: explicitLlmProvider || "fallback",
+      wechat: explicitWechatProvider || "mock",
+    },
+    intendedUse:
+      "Use the fallback + mock starter profile for first-run evaluation and product walkthroughs, not as the final research-quality configuration.",
+    surfaceGuidance:
+      "This starter profile is sufficient to open `reagent home` immediately and the Web console once the runtime is running.",
+  };
+  const explicitGatewayUrl = getStringFlag(options, "url", "gateway-url");
+  const explicitGatewayPort = getIntegerFlag(options, "port");
+  const inspectPort = resolveInspectPort(context.baseUrl, context.runtimeEnv.PORT);
+  const databaseReady = skipDbPush || apply || sqliteReady;
+  const runtimePortNeedsAction =
+    Boolean(explicitPortValue) &&
+    explicitGatewayUrl === undefined &&
+    explicitGatewayPort === undefined &&
+    inspectPort !== context.runtimeEnv.PORT;
+  const readinessItems: OnboardPayload["readiness"]["items"] = [
+    {
+      id: "env-file",
+      label: "Env file",
+      group: "required",
+      required: true,
+      blocking: !envExists,
+      status: envExists ? "ready" : "needs-action",
+      summary: envExists ? "Local environment file exists." : "The local environment file is missing.",
+      ...(envExists ? {} : { nextStep: "Run `reagent onboard --apply` to create .env." }),
+    },
+    {
+      id: "workspace",
+      label: "Workspace",
+      group: "required",
+      required: true,
+      blocking: !workspaceExists,
+      status: workspaceExists ? "ready" : "needs-action",
+      summary: workspaceExists ? "Workspace directory exists." : "Workspace directory has not been created yet.",
+      ...(workspaceExists ? {} : { nextStep: "Run `reagent onboard --apply` to create the workspace." }),
+    },
+    {
+      id: "database",
+      label: "Database",
+      group: "required",
+      required: true,
+      blocking: !databaseReady,
+      status: databaseReady ? "ready" : "needs-action",
+      summary:
+        databaseReady
+          ? "Database bootstrap is ready for local use."
+          : "Local database bootstrap has not been applied yet.",
+      ...(databaseReady ? {} : { nextStep: "Run `reagent onboard --apply` to push the initial schema." }),
+    },
+    {
+      id: "runtime-port",
+      label: "Runtime port",
+      group: "required",
+      required: true,
+      blocking: runtimePortNeedsAction,
+      status: runtimePortNeedsAction ? "needs-action" : "ready",
+      summary:
+        explicitGatewayUrl !== undefined
+          ? `Inspecting runtime port ${inspectPort} from the explicit --url target.`
+          : explicitGatewayPort !== undefined
+            ? `Inspecting runtime port ${inspectPort} from the explicit --port override.`
+            : explicitPortValue
+              ? inspectPort === context.runtimeEnv.PORT
+                ? `Configured runtime port ${context.runtimeEnv.PORT} matches the CLI inspection target.`
+                : `The env file configures PORT=${context.runtimeEnv.PORT}, but onboarding is inspecting port ${inspectPort}.`
+              : `No explicit PORT is configured. CLI service commands default to port ${DEFAULT_GATEWAY_PORT}.`,
+      ...(runtimePortNeedsAction
+        ? {
+            nextStep: `Pass \`--port ${context.runtimeEnv.PORT}\` or update the target URL so onboarding checks the configured runtime port.`,
+          }
+        : {}),
+    },
+    explicitLlmProvider === "openai" && !hasOpenAiKey
+      ? {
+          id: "llm-route",
+          label: "LLM route",
+          group: "required",
+          required: true,
+          blocking: true,
+          status: "needs-action" as const,
+          summary: "OpenAI is selected, but OPENAI_API_KEY is missing.",
+          nextStep: "Set OPENAI_API_KEY or switch LLM_PROVIDER back to fallback.",
+        }
+      : {
+          id: "llm-route",
+          label: "LLM route",
+          group: "required",
+          required: true,
+          blocking: false,
+          status: explicitLlmProvider ? "ready" : "starter-profile",
+          summary: explicitLlmProvider
+            ? `Configured LLM provider: ${explicitLlmProvider}.`
+            : "No explicit LLM provider is configured. The starter profile uses fallback.",
+          ...(!explicitLlmProvider ? { nextStep: "Use `reagent onboard --apply` to persist the fallback starter profile." } : {}),
+        },
+    {
+      id: "channel-mode",
+      label: "Channel mode",
+      group: "optional",
+      required: false,
+      blocking: false,
+      status: explicitWechatProvider ? "ready" : "starter-profile",
+      summary: explicitWechatProvider
+        ? `Configured channel mode: ${explicitWechatProvider}.`
+        : "No explicit channel mode is configured. The starter profile uses mock.",
+      ...(!explicitWechatProvider ? { nextStep: "Use `reagent onboard --apply` to persist the mock starter profile." } : {}),
+    },
+    {
+      id: "runtime-service",
+      label: "Runtime service",
+      group: "optional",
+      required: false,
+      blocking: false,
+      status: gateway?.healthReachable ? "ready" : gateway?.installed ? "needs-action" : "optional",
+      summary: gateway?.healthReachable
+        ? "The runtime is reachable."
+        : gateway?.installed
+          ? "The supervised runtime is installed but not running."
+          : "No supervised runtime is installed yet.",
+      ...(gateway?.healthReachable
+        ? {}
+        : gateway?.installed
+          ? { nextStep: "Run `reagent service start`." }
+          : { nextStep: "Use `reagent service run` now, or `reagent service install` for always-on startup." }),
+    },
+  ];
+  const readiness = buildOnboardReadiness(readinessItems);
+  const nextSteps = [
+    ...new Set(
+      readinessItems
+        .filter((item) => item.status !== "ready")
+        .map((item) => item.nextStep)
+        .filter((item): item is string => Boolean(item?.trim())),
+    ),
+  ];
 
-  if (!envExists) {
-    nextSteps.push("Create the local environment file with `reagent onboard --apply`.");
-  }
-  if (!skipDbPush && !apply) {
-    nextSteps.push("Apply the initial database and workspace bootstrap with `reagent onboard --apply`.");
-  }
-  if (gateway?.installed) {
-    if (!gateway.healthReachable) {
-      nextSteps.push("Start the supervised runtime with `reagent service start`.");
-    }
-  } else {
-    nextSteps.push("Run the runtime in the foreground with `reagent service run`.");
-    nextSteps.push("Install the supervised service with `reagent service install` when you want always-on startup.");
-  }
   nextSteps.push("Inspect the runtime overview with `reagent home`.");
   nextSteps.push("Start the first research task with `reagent research enqueue \"topic\" --question \"...\"`.");
 
@@ -2770,13 +3180,18 @@ async function onboardCommand(options: ParsedOptions): Promise<void> {
     database: {
       url: context.runtimeEnv.DATABASE_URL,
       sqlitePath,
-      ready: skipDbPush || apply,
+      ready: databaseReady,
     },
     runtime: {
       gatewayUrl: context.baseUrl,
       gatewayInstalled: Boolean(gateway?.installed),
       gatewayReachable: Boolean(gateway?.healthReachable),
+      configuredPort: context.runtimeEnv.PORT,
+      inspectPort,
+      defaultPort: DEFAULT_GATEWAY_PORT,
     },
+    readiness,
+    starterProfile,
     actions: {
       apply,
       skipDb: skipDbPush,
@@ -2796,8 +3211,41 @@ async function onboardCommand(options: ParsedOptions): Promise<void> {
   console.log(`Workspace: ${payload.workspace.path} (${payload.workspace.exists ? "ready" : "missing"})`);
   console.log(`Database: ${payload.database.sqlitePath ?? payload.database.url} (${payload.database.ready ? "ready" : "pending"})`);
   console.log(`Gateway URL: ${payload.runtime.gatewayUrl}`);
+  console.log(
+    `Runtime ports: configured=${payload.runtime.configuredPort} inspect=${payload.runtime.inspectPort} default=${payload.runtime.defaultPort}`,
+  );
   console.log(`Gateway installed: ${formatYesNo(payload.runtime.gatewayInstalled)}`);
   console.log(`Gateway reachable: ${formatYesNo(payload.runtime.gatewayReachable)}`);
+  console.log(`Starter profile: ${payload.starterProfile.applied ? "applied" : payload.starterProfile.wouldApply ? "available" : "not needed"}`);
+  console.log(
+    `Starter profile providers: llm=${payload.starterProfile.activeProviders.llm} wechat=${payload.starterProfile.activeProviders.wechat}`,
+  );
+  console.log(`Starter profile use: ${payload.starterProfile.intendedUse}`);
+  console.log(`Starter profile surfaces: ${payload.starterProfile.surfaceGuidance}`);
+  console.log("");
+  console.log(`Readiness: ${payload.readiness.status} (${payload.readiness.blockingCount} blocking of ${payload.readiness.itemCount})`);
+  for (const [label, bucket] of [
+    ["Required", payload.readiness.required],
+    ["Optional", payload.readiness.optional],
+  ] as const) {
+    console.log(`${label}:`);
+    for (const item of bucket.items) {
+      console.log(`  - ${item.label}: ${item.status}`);
+      console.log(`    ${item.summary}`);
+      if (item.nextStep) {
+        console.log(`    next: ${item.nextStep}`);
+      }
+    }
+  }
+  console.log("");
+  console.log("All readiness items:");
+  for (const item of payload.readiness.items) {
+    console.log(`  - ${item.group} ${item.id}: ${item.status}`);
+    console.log(`    ${item.summary}`);
+    if (item.nextStep) {
+      console.log(`    next: ${item.nextStep}`);
+    }
+  }
   console.log("");
   console.log("Next steps:");
   for (const step of payload.nextSteps) {
@@ -2936,6 +3384,7 @@ function buildHomeNextSteps(input: {
   memory: MemoryStatus;
   recentReports: ResearchReportSummary[];
   recentTasks: ResearchTaskSummary[];
+  briefCount: number;
 }): string[] {
   const steps: string[] = [];
 
@@ -2962,7 +3411,9 @@ function buildHomeNextSteps(input: {
   }
 
   const activeTask = input.recentTasks.find((task) => task.state !== "completed" && task.state !== "failed");
-  if (activeTask) {
+  if (input.briefCount === 0) {
+    steps.push("Create the first research brief from the Web console Research page or with `reagent research direction upsert <file>`.");
+  } else if (activeTask) {
     steps.push(`Inspect the active research task with \`reagent research task ${activeTask.taskId}\`.`);
   } else if (input.recentReports.length === 0) {
     steps.push("Start the next research run with `reagent research enqueue \"topic\" --question \"...\"`.");
@@ -2972,6 +3423,84 @@ function buildHomeNextSteps(input: {
 
   steps.push("Open the dashboard when needed with `reagent dashboard --no-open`.");
   return steps;
+}
+
+function buildHomeChecklist(input: {
+  recentReports: ResearchReportSummary[];
+  recentTasks: ResearchTaskSummary[];
+  briefCount: number;
+  memory: MemoryStatus;
+}): HomeChecklistPayload {
+  const latestReport = input.recentReports[0] ?? null;
+  const items: HomeChecklistItem[] = [
+    {
+      id: "brief",
+      done: input.briefCount > 0,
+      title: "Create the first research brief",
+      summary:
+        input.briefCount > 0
+          ? `${input.briefCount} brief${input.briefCount === 1 ? "" : "s"} are already available for scoped runs.`
+          : "Lock scope, baselines, and evaluation criteria before running discovery.",
+      action: {
+        kind: "command",
+        label: "Create or update a brief",
+        target: "reagent research direction upsert <file>",
+      },
+    },
+    {
+      id: "run",
+      done: input.recentTasks.length > 0,
+      title: "Launch the first research run",
+      summary:
+        input.recentTasks.length > 0
+          ? `${input.recentTasks.length} task${input.recentTasks.length === 1 ? "" : "s"} have already been queued.`
+          : "Start with one scoped topic and generate the first evidence pipeline.",
+      action: {
+        kind: "command",
+        label: "Queue research",
+        target: "reagent research enqueue \"topic\" --question \"...\"",
+      },
+    },
+    {
+      id: "output",
+      done: Boolean(latestReport),
+      title: "Open the first report",
+      summary: latestReport
+        ? `${latestReport.topic} is ready for review.`
+        : "Aim for a report or synthesis, not only a chat exchange.",
+      action: latestReport
+        ? {
+            kind: "report",
+            label: "Open report",
+            target: latestReport.taskId,
+          }
+        : {
+            kind: "command",
+            label: "Review research progress",
+            target: "reagent research tasks",
+          },
+    },
+    {
+      id: "memory",
+      done: input.memory.files > 0,
+      title: "Save working memory",
+      summary:
+        input.memory.files > 0
+          ? `${input.memory.files} memory file${input.memory.files === 1 ? "" : "s"} are preserving context across runs.`
+          : "Capture judgments, notes, and next actions inside the workspace.",
+      action: {
+        kind: "command",
+        label: "Write memory",
+        target: "reagent memory remember \"...\" --title \"...\"",
+      },
+    },
+  ];
+
+  return {
+    completedCount: items.filter((item) => item.done).length,
+    totalCount: items.length,
+    items,
+  };
 }
 
 function buildHomeState(input: {
@@ -3038,7 +3567,7 @@ function buildHomeState(input: {
 
 async function homeCommand(options: ParsedOptions): Promise<void> {
   const context = await resolveGatewayContext(options);
-  const [version, runtimeResult, channelsResult, memoryResult, recentReportsResult, recentTasksResult, localGateway] =
+  const [version, runtimeResult, channelsResult, memoryResult, recentReportsResult, recentTasksResult, directionsResult, localGateway] =
     await Promise.all([
       readPackageVersion(),
       settleCliRequest(
@@ -3070,6 +3599,11 @@ async function homeCommand(options: ParsedOptions): Promise<void> {
           { timeoutMs: context.timeoutMs },
         ),
       ),
+      settleCliRequest(
+        requestGatewayJson<ResearchDirectionsPayload>(context.baseUrl, "/api/research/directions", {
+          timeoutMs: context.timeoutMs,
+        }),
+      ),
       maybeReadLocalGatewayStatus(context.baseUrl, context.runtimeEnv.PORT, false),
     ]);
 
@@ -3092,15 +3626,23 @@ async function homeCommand(options: ParsedOptions): Promise<void> {
   const memory = memoryResult.ok ? memoryResult.value : buildFallbackMemoryStatus(context.runtimeEnv);
   const recentReports = recentReportsResult.ok ? recentReportsResult.value.reports : [];
   const recentTasks = recentTasksResult.ok ? recentTasksResult.value.tasks : [];
+  const briefCount = directionsResult.ok ? directionsResult.value.profiles.length : 0;
   const warnings = summarizeCliWarnings([
     runtimeResult,
     channelsResult,
     memoryResult,
     recentReportsResult,
     recentTasksResult,
+    directionsResult,
   ]);
   const dashboardUrl = `${context.baseUrl}/`;
   const activeTaskCount = recentTasks.filter((task) => task.state !== "completed" && task.state !== "failed").length;
+  const checklist = buildHomeChecklist({
+    recentReports,
+    recentTasks,
+    briefCount,
+    memory,
+  });
   const homeState = buildHomeState({
     gateway,
     runtime,
@@ -3126,7 +3668,9 @@ async function homeCommand(options: ParsedOptions): Promise<void> {
       recentReports,
       recentTasks,
       activeTaskCount,
+      briefCount,
     },
+    checklist,
     nextSteps: buildHomeNextSteps({
       gateway,
       runtime,
@@ -3134,6 +3678,7 @@ async function homeCommand(options: ParsedOptions): Promise<void> {
       memory,
       recentReports,
       recentTasks,
+      briefCount,
     }),
     dashboardUrl,
   };
@@ -3183,9 +3728,18 @@ async function homeCommand(options: ParsedOptions): Promise<void> {
     `Recent reports: ${recentReports.length}`,
     `Recent tasks: ${recentTasks.length}`,
     `Active tasks: ${payload.research.activeTaskCount}`,
+    `Research briefs: ${briefCount}`,
     `Latest report: ${recentReports[0] ? `${recentReports[0].topic} (${recentReports[0].generatedAt})` : "-"}`,
     `Latest task: ${recentTasks[0] ? `${recentTasks[0].topic} | state=${recentTasks[0].state} | progress=${recentTasks[0].progress}%` : "-"}`,
   ]);
+
+  console.log("");
+  console.log(`First Useful Report Checklist (${payload.checklist.completedCount}/${payload.checklist.totalCount} complete):`);
+  for (const item of payload.checklist.items) {
+    console.log(`  - ${item.done ? "[done]" : "[next]"} ${item.title}`);
+    console.log(`    ${item.summary}`);
+    console.log(`    action: ${item.action.label} -> ${item.action.kind === "report" ? `report ${item.action.target}` : item.action.target}`);
+  }
 
   printHomeSection("Memory", [
     `Files: ${memory.files}`,
@@ -3589,6 +4143,19 @@ const {
 });
 
 const {
+  agentCommand,
+} = createAgentCli({
+  resolveGatewayContext,
+  requestGatewayJson,
+  buildQueryString,
+  printJson,
+  formatWhen,
+  printOpenClawSessions,
+  printOpenClawHistory,
+  openClawWatchCommand,
+});
+
+const {
   gatewayInstallCommand,
   gatewayCommand,
   healthCommand,
@@ -3837,6 +4404,7 @@ const ROOT_PLUGIN_DELEGATE_HANDLERS = Object.fromEntries(
 
 const ROOT_COMMAND_HANDLERS: Record<string, CliCommandHandler> = {
   health: healthCommand,
+  agent: agentCommand,
   login: channelsLoginCommand,
   wait: channelsWaitCommand,
   logout: channelsLogoutCommand,

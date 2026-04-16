@@ -1,0 +1,46 @@
+# Ralph Progress
+
+Project: ReAgent
+Branch: ralph/reagent-personal-researcher-v1
+Started: 2026-04-15
+
+Completed
+- US-001: Add onboarding readiness summary
+  - Expanded `reagent onboard --json` with stable readiness buckets for required and optional checks.
+  - Added explicit readiness coverage for `.env`, workspace, database, runtime port, LLM route, channel mode, and runtime service.
+  - Marked blocking readiness items with explicit `nextStep` guidance and surfaced runtime port metadata in the payload.
+  - Updated text output to print grouped readiness sections and runtime port details.
+  - Added CLI regression coverage for readiness grouping and explicit runtime port mismatch guidance.
+- US-002: Apply a safe starter profile during onboarding
+  - Hardened starter-profile persistence so missing or blank provider assignments are set to `fallback + mock` without overwriting explicit provider selections.
+  - Extended onboarding payload and text output with starter-profile active providers, intended-use guidance, and product-surface guidance for `reagent home` and the Web console.
+  - Added CLI regression coverage for preserving explicit provider values and for keeping `reagent home` usable after `reagent onboard --apply`.
+  - Documented the starter profile in the main README as a first-run evaluation path rather than a final research-quality configuration.
+- US-003: Add first-use checklist to the home and landing surfaces
+  - Added a structured `checklist` payload to `reagent home --json` covering brief creation, first run, first report, and memory capture.
+  - Updated text-mode `reagent home` output to print a first-use checklist with done state and direct actions.
+  - Reused the existing landing launch checklist as the browser-side counterpart instead of introducing a second checklist model.
+  - Added CLI regression coverage for completed and empty-workspace checklist states.
+  - Browser verification was not rerun here because no browser automation tool is available in this environment.
+- US-004: Add brief starter templates for individual researchers
+  - Verified the existing Web brief template catalog exposes at least three starter templates with topic framing, target problem, success criteria, known baselines, and evaluation priorities.
+  - Verified the template flow still wires template loading into the editable research brief form.
+  - Kept the existing markdown import/export flow as the durable save and reopen path, with service coverage and CLI coverage still passing.
+  - Added a dedicated regression test for the Web starter template catalog and wiring, and included it in the root test suite.
+  - Browser verification was not rerun here because no browser automation tool is available in this environment.
+- US-005: Improve discovery normalization and candidate deduplication
+  - Added normalized DOI, URL, and title keys for discovery candidate aggregation instead of relying on raw lowercase strings only.
+  - Added near-duplicate title detection with a publication-window guard so punctuation and minor title variants collapse into one candidate.
+  - Split merge preference from rank sorting so deduplicated candidates keep richer metadata for later UI display while final ordering stays deterministic.
+  - Added regression coverage for normalized duplicate collapse and deterministic ordering after deduplication.
+
+Verification
+- `node --import tsx/esm tests/cli.test.mjs`
+- `npm.cmd run check`
+- `node tests/researchBriefTemplates.test.mjs`
+- `node tests/researchDirectionService.test.mjs`
+- `npm.cmd run build`
+- `node tests/researchDiscoveryService.test.mjs`
+
+Next
+- US-006: Show discovery ranking reasons and candidate context in the UI

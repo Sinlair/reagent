@@ -3,6 +3,7 @@ import path from "node:path";
 import Fastify from "fastify";
 
 import { env } from "./config/env.js";
+import { registerAgentRoutes } from "./routes/agent.js";
 import { registerChannelRoutes } from "./routes/channels.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerMemoryRoutes } from "./routes/memory.js";
@@ -82,6 +83,7 @@ export async function createApp() {
     memoryCompactionSchedulerService,
     async () => memoryCompactionSchedulerService.refresh(),
   );
+  await registerAgentRoutes(app, channelService, { workspaceDir });
   await registerChannelRoutes(app, channelService);
   await registerUiRoutes(app);
 

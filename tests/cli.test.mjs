@@ -41,6 +41,13 @@ function readRequestBody(req) {
 async function createFixtureServer() {
   let runtimeLogCallCount = 0;
   const agentSession = {
+    sessionId: "wechat:wx-user-1",
+    senderId: "wx-user-1",
+    entrySource: "wechat",
+    activeEntrySource: "wechat",
+    activeEntryLabel: "WeChat",
+    enabledToolsets: ["workspace", "memory", "research-core"],
+    availableToolsets: ["workspace", "memory", "research-core", "research-admin", "research-heavy", "mcp"],
     roleId: "operator",
     roleLabel: "Operator",
     skillIds: ["workspace-control", "memory-ops"],
@@ -85,6 +92,29 @@ async function createFixtureServer() {
       },
     ],
     availableReasoningEfforts: ["default", "low", "medium", "high"],
+    hostSessionKey: "agent:main:thread:wx-user-host-1",
+    accountId: "wx-test-1",
+    threadId: "thread-host-1",
+    lastHostSyncAt: "2026-04-08T08:29:00.000Z",
+  };
+  let agentDelegation = {
+    delegationId: "dlg_fixture_1",
+    sessionId: "wechat:wx-user-1",
+    taskId: "11111111-1111-1111-1111-111111111111",
+    kind: "search",
+    status: "running",
+    input: {
+      prompt: "Find strong browser-agent baselines",
+      scope: "research-only",
+      allowRecursiveDelegation: false,
+    },
+    artifact: {
+      path: "research/rounds/11111111-1111-1111-1111-111111111111/workstreams/search.md",
+      type: "workstream-memo",
+    },
+    createdAt: "2026-04-08T08:20:00.000Z",
+    updatedAt: "2026-04-08T08:29:00.000Z",
+    error: null,
   };
 
   const researchTaskId = "11111111-1111-1111-1111-111111111111";
@@ -874,6 +904,8 @@ async function createFixtureServer() {
             sessionId: "wechat:wx-user-1",
             channel: "wechat",
             senderId: "wx-user-1",
+            entrySource: "wechat",
+            activeEntrySource: "wechat",
             roleId: "operator",
             roleLabel: "Operator",
             skillIds: ["workspace-control", "memory-ops"],
@@ -891,6 +923,243 @@ async function createFixtureServer() {
           },
         ],
       });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/agent/runtime") {
+      sendJson(200, {
+        sessionCount: 1,
+        sessionCountsByEntrySource: {
+          direct: 0,
+          ui: 0,
+          wechat: 1,
+          openclaw: 0,
+        },
+        defaultRoute: agentSession.defaultRoute,
+        availableReasoningEfforts: agentSession.availableReasoningEfforts,
+        audit: {
+          path: "workspace/channels/agent-runtime-audit.jsonl",
+          exists: true,
+          status: "ready",
+        },
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/agent/sessions") {
+      const source = url.searchParams.get("source");
+      const sessions = [
+        {
+          sessionId: agentSession.sessionId,
+          channel: agentSession.entrySource,
+          senderId: agentSession.senderId,
+          entrySource: agentSession.entrySource,
+          activeEntrySource: agentSession.activeEntrySource,
+          roleId: agentSession.roleId,
+          roleLabel: agentSession.roleLabel,
+          skillIds: agentSession.skillIds,
+          skillLabels: agentSession.skillLabels,
+          providerId: agentSession.providerId,
+          providerLabel: agentSession.providerLabel,
+          modelId: agentSession.modelId,
+          modelLabel: agentSession.modelLabel,
+          llmStatus: agentSession.llmStatus,
+          llmSource: agentSession.llmSource,
+          wireApi: agentSession.wireApi,
+          turnCount: 4,
+          lastUserMessage: "hello",
+          lastAssistantMessage: "hi",
+          updatedAt: "2026-04-08T08:21:00.000Z",
+        },
+      ].filter((session) => (source ? session.entrySource === source : true));
+      sendJson(200, { sessions });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === `/api/agent/sessions/${encodeURIComponent(agentSession.sessionId)}`) {
+      sendJson(200, { ...agentSession });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === `/api/agent/sessions/${encodeURIComponent(agentSession.sessionId)}/profile`) {
+      sendJson(200, { ...agentSession });
+      return;
+    }
+
+    if (req.method === "PATCH" && url.pathname === `/api/agent/sessions/${encodeURIComponent(agentSession.sessionId)}/profile`) {
+      const raw = await readRequestBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      if (body.roleId) {
+        agentSession.roleId = body.roleId;
+        agentSession.roleLabel =
+          agentSession.availableRoles.find((role) => role.id === body.roleId)?.label ?? body.roleId;
+      }
+      if (Array.isArray(body.skillIds)) {
+        agentSession.skillIds = body.skillIds;
+        agentSession.skillLabels = agentSession.skillIds.map(
+          (id) => agentSession.availableSkills.find((skill) => skill.id === id)?.label ?? id,
+        );
+      }
+      if (body.clearModel) {
+        agentSession.providerId = agentSession.defaultRoute.providerId;
+        agentSession.providerLabel = agentSession.defaultRoute.providerLabel;
+        agentSession.modelId = agentSession.defaultRoute.modelId;
+        agentSession.modelLabel = agentSession.defaultRoute.modelLabel;
+      } else if (body.providerId && body.modelId) {
+        agentSession.providerId = body.providerId;
+        agentSession.providerLabel =
+          agentSession.availableLlmProviders.find((provider) => provider.id === body.providerId)?.label ?? body.providerId;
+        agentSession.modelId = body.modelId;
+        agentSession.modelLabel =
+          agentSession.availableLlmProviders
+            .flatMap((provider) => provider.models ?? [])
+            .find((model) => model.id === body.modelId)?.label ?? body.modelId;
+      }
+      if (Array.isArray(body.fallbackRoutes)) {
+        agentSession.fallbackRoutes = body.fallbackRoutes.map((route) => ({
+          providerId: route.providerId,
+          providerLabel:
+            agentSession.availableLlmProviders.find((provider) => provider.id === route.providerId)?.label ?? route.providerId,
+          modelId: route.modelId,
+          modelLabel:
+            agentSession.availableLlmProviders
+              .flatMap((provider) => provider.models ?? [])
+              .find((model) => model.id === route.modelId)?.label ?? route.modelId,
+          llmStatus: "ready",
+          llmSource: "env",
+          wireApi: null,
+        }));
+      }
+      if (body.reasoningEffort) {
+        agentSession.reasoningEffort = body.reasoningEffort;
+      }
+      sendJson(200, { ...agentSession });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === `/api/agent/sessions/${encodeURIComponent(agentSession.sessionId)}/history`) {
+      sendJson(200, {
+        sessionId: agentSession.sessionId,
+        senderId: agentSession.senderId,
+        entrySource: agentSession.entrySource,
+        items: [
+          {
+            role: "user",
+            content: "hello",
+            createdAt: "2026-04-08T08:20:00.000Z",
+          },
+          {
+            role: "assistant",
+            content: "hi",
+            createdAt: "2026-04-08T08:21:00.000Z",
+          },
+        ],
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === `/api/agent/sessions/${encodeURIComponent(agentSession.sessionId)}/hooks`) {
+      const event = url.searchParams.get("event");
+      const items = [
+        {
+          ts: "2026-04-08T08:20:10.000Z",
+          event: "llm_call",
+          stage: "tool-start",
+          providerId: agentSession.providerId,
+          modelId: agentSession.modelId,
+          preview: "Started tool turn",
+        },
+        {
+          ts: "2026-04-08T08:20:20.000Z",
+          event: "tool_blocked",
+          toolName: "workspace_write",
+          error: "blocked by policy",
+        },
+      ].filter((item) => (event ? item.event === event : true));
+      sendJson(200, {
+        sessionId: agentSession.sessionId,
+        senderId: agentSession.senderId,
+        entrySource: agentSession.entrySource,
+        items,
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/agent/host/sessions") {
+      sendJson(200, {
+        sessions: [
+          {
+            sessionKey: "agent:main:thread:wx-user-host-1",
+            channel: "openclaw-weixin",
+            to: "wx-user-host-1",
+            accountId: "wx-test-1",
+            threadId: "thread-host-1",
+            displayName: "Host Session",
+            lastMessagePreview: "host preview",
+            lastSyncedAt: "2026-04-08T08:29:00.000Z",
+          },
+        ],
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === `/api/agent/host/sessions/${encodeURIComponent("agent:main:thread:wx-user-host-1")}/history`) {
+      sendJson(200, {
+        sessionKey: "agent:main:thread:wx-user-host-1",
+        items: [
+          {
+            id: "host-msg-1",
+            role: "user",
+            text: "hello history",
+            createdAt: "2026-04-08T08:18:00.000Z",
+          },
+          {
+            id: "host-msg-2",
+            role: "assistant",
+            text: "reply history",
+            createdAt: "2026-04-08T08:19:00.000Z",
+          },
+        ],
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/agent/delegations") {
+      sendJson(200, { items: [agentDelegation] });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/agent/delegations") {
+      const raw = await readRequestBody(req);
+      const body = raw ? JSON.parse(raw) : {};
+      agentDelegation = {
+        ...agentDelegation,
+        sessionId: body.sessionId,
+        taskId: body.taskId,
+        kind: body.kind,
+        status: "completed",
+        input: {
+          ...(body.prompt ? { prompt: body.prompt } : {}),
+          scope: "research-only",
+          allowRecursiveDelegation: false,
+        },
+      };
+      sendJson(201, agentDelegation);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === `/api/agent/delegations/${encodeURIComponent(agentDelegation.delegationId)}`) {
+      sendJson(200, agentDelegation);
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === `/api/agent/delegations/${encodeURIComponent(agentDelegation.delegationId)}/cancel`) {
+      agentDelegation = {
+        ...agentDelegation,
+        status: "cancelled",
+        updatedAt: "2026-04-08T08:31:10.000Z",
+      };
+      sendJson(200, agentDelegation);
       return;
     }
 
@@ -2206,6 +2475,7 @@ async function main() {
     assert.equal(result.stdout.includes("ReAgent CLI"), true);
     assert.equal(result.stdout.includes("reagent runtime"), true);
     assert.equal(result.stdout.includes("reagent system"), true);
+    assert.equal(result.stdout.includes("reagent agent"), true);
     assert.equal(result.stdout.includes("reagent commands"), true);
     assert.equal(result.stdout.includes("reagent models"), true);
     assert.equal(result.stdout.includes("reagent mcp"), true);
@@ -2307,7 +2577,13 @@ async function main() {
         assert.equal(payload.runtime.agent, "ReAgent");
         assert.equal(payload.channels.channels.wechat.connected, true);
         assert.equal(payload.memory.files, 2);
+        assert.equal(typeof payload.research.briefCount, "number");
         assert.equal(payload.research.recentReports[0].taskId, payload.research.recentTasks[0].taskId);
+        assert.equal(payload.checklist.totalCount, 4);
+        assert.equal(payload.checklist.completedCount, 4);
+        assert.deepEqual(payload.checklist.items.map((item) => item.id), ["brief", "run", "output", "memory"]);
+        assert.equal(payload.checklist.items.every((item) => item.done === true), true);
+        assert.equal(payload.checklist.items[2].action.kind, "report");
         assert.equal(Array.isArray(payload.nextSteps), true);
         assert.equal(payload.nextSteps.length > 0, true);
       });
@@ -2322,6 +2598,7 @@ async function main() {
         assert.equal(result.stdout.includes("Runtime:"), true);
         assert.equal(result.stdout.includes("OpenClaw:"), true);
         assert.equal(result.stdout.includes("Research:"), true);
+        assert.equal(result.stdout.includes("First Useful Report Checklist"), true);
         assert.equal(result.stdout.includes("Memory:"), true);
         assert.equal(result.stdout.includes("Next Steps:"), true);
       });
@@ -2362,10 +2639,132 @@ async function main() {
         assert.equal(typeof payload.envFile.exists, "boolean");
         assert.equal(typeof payload.workspace.exists, "boolean");
         assert.equal(payload.runtime.gatewayUrl, fixture.baseUrl);
+        assert.equal(typeof payload.runtime.configuredPort, "number");
+        assert.equal(typeof payload.runtime.inspectPort, "number");
+        assert.equal(typeof payload.runtime.defaultPort, "number");
         assert.equal(payload.actions.apply, false);
         assert.equal(payload.actions.skipDb, true);
+        assert.equal(Array.isArray(payload.readiness.items), true);
+        assert.equal(typeof payload.readiness.status, "string");
+        assert.equal(typeof payload.readiness.blockingCount, "number");
+        assert.equal(Array.isArray(payload.readiness.required.items), true);
+        assert.equal(Array.isArray(payload.readiness.optional.items), true);
+        assert.equal(typeof payload.readiness.statusCounts.ready, "number");
+        assert.equal(typeof payload.readiness.statusCounts["needs-action"], "number");
+        assert.equal(payload.readiness.items.some((item) => item.id === "env-file"), true);
+        assert.equal(payload.readiness.items.some((item) => item.id === "runtime-port"), true);
+        assert.equal(payload.readiness.items.some((item) => item.id === "llm-route"), true);
+        assert.equal(payload.readiness.required.items.every((item) => item.group === "required"), true);
+        assert.equal(payload.readiness.optional.items.every((item) => item.group === "optional"), true);
+        assert.equal(
+          payload.readiness.items.every((item) => (item.blocking ? typeof item.nextStep === "string" && item.nextStep.length > 0 : true)),
+          true,
+        );
+        assert.equal(typeof payload.starterProfile.wouldApply, "boolean");
+        assert.equal(payload.starterProfile.mode, "fallback-mock");
+        assert.equal(typeof payload.starterProfile.activeProviders.llm, "string");
+        assert.equal(typeof payload.starterProfile.activeProviders.wechat, "string");
+        assert.equal(payload.starterProfile.preservesExistingProviders, true);
+        assert.equal(payload.starterProfile.intendedUse.includes("not as the final research-quality configuration"), true);
         assert.equal(Array.isArray(payload.nextSteps), true);
         assert.equal(payload.nextSteps.length > 0, true);
+      });
+
+      await runTest("CLI onboard reports runtime port mismatches with an explicit next step", async () => {
+        const tempDir = await mkdtemp(path.join(cwd, ".tmp-reagent-onboard-port-"));
+        try {
+          await writeFile(
+            path.join(tempDir, ".env"),
+            "PORT=3999\nLLM_PROVIDER=fallback\nWECHAT_PROVIDER=mock\nDATABASE_URL=file:./prisma/dev.db\n",
+            "utf8",
+          );
+          const result = await runCli(["onboard", "--json", "--skip-db"], cwd, {}, tempDir);
+          assert.equal(result.code, 0, result.stderr);
+          const payload = JSON.parse(result.stdout);
+          const runtimePortItem = payload.readiness.items.find((item) => item.id === "runtime-port");
+          assert.notEqual(runtimePortItem, undefined);
+          assert.equal(runtimePortItem.group, "required");
+          assert.equal(runtimePortItem.blocking, true);
+          assert.equal(runtimePortItem.status, "needs-action");
+          assert.equal(runtimePortItem.nextStep.includes("--port 3999"), true);
+          assert.equal(payload.readiness.blockingCount >= 1, true);
+        } finally {
+          await rm(tempDir, { recursive: true, force: true });
+        }
+      });
+
+      await runTest("CLI onboard --apply persists a safe starter profile when provider keys are missing", async () => {
+        const tempDir = await mkdtemp(path.join(cwd, ".tmp-reagent-onboard-"));
+        try {
+          await writeFile(path.join(tempDir, ".env"), "PORT=3999\n", "utf8");
+          const result = await runCli(
+            ["onboard", "--json", "--apply", "--skip-db"],
+            cwd,
+            {},
+            tempDir,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          const payload = JSON.parse(result.stdout);
+          assert.equal(payload.actions.apply, true);
+          assert.equal(payload.starterProfile.applied, true);
+          assert.equal(payload.starterProfile.activeProviders.llm, "fallback");
+          assert.equal(payload.starterProfile.activeProviders.wechat, "mock");
+          assert.equal(payload.starterProfile.intendedUse.includes("first-run evaluation"), true);
+          assert.equal(payload.starterProfile.surfaceGuidance.includes("reagent home"), true);
+          const envRaw = await readFile(path.join(tempDir, ".env"), "utf8");
+          assert.equal(envRaw.includes("LLM_PROVIDER=fallback"), true);
+          assert.equal(envRaw.includes("WECHAT_PROVIDER=mock"), true);
+        } finally {
+          await rm(tempDir, { recursive: true, force: true });
+        }
+      });
+
+      await runTest("CLI onboard --apply preserves explicit provider selections", async () => {
+        const tempDir = await mkdtemp(path.join(cwd, ".tmp-reagent-onboard-preserve-"));
+        try {
+          await writeFile(
+            path.join(tempDir, ".env"),
+            "PORT=3999\nLLM_PROVIDER=openai\nOPENAI_API_KEY=test-key\nWECHAT_PROVIDER=native\n",
+            "utf8",
+          );
+          const result = await runCli(["onboard", "--json", "--apply", "--skip-db"], cwd, {}, tempDir);
+          assert.equal(result.code, 0, result.stderr);
+          const payload = JSON.parse(result.stdout);
+          assert.equal(payload.starterProfile.applied, false);
+          assert.deepEqual(payload.starterProfile.changes, []);
+          assert.equal(payload.starterProfile.activeProviders.llm, "openai");
+          assert.equal(payload.starterProfile.activeProviders.wechat, "native");
+          const envRaw = await readFile(path.join(tempDir, ".env"), "utf8");
+          assert.equal(envRaw.includes("LLM_PROVIDER=openai"), true);
+          assert.equal(envRaw.includes("WECHAT_PROVIDER=native"), true);
+          assert.equal(envRaw.includes("LLM_PROVIDER=fallback"), false);
+          assert.equal(envRaw.includes("WECHAT_PROVIDER=mock"), false);
+        } finally {
+          await rm(tempDir, { recursive: true, force: true });
+        }
+      });
+
+      await runTest("CLI home remains usable after onboard --apply sets the starter profile", async () => {
+        const tempDir = await mkdtemp(path.join(cwd, ".tmp-reagent-home-starter-"));
+        try {
+          let result = await runCli(["onboard", "--json", "--apply", "--skip-db"], cwd, {}, tempDir);
+          assert.equal(result.code, 0, result.stderr);
+          result = await runCli(["home", "--json", "--port", "3000"], cwd, {}, tempDir);
+          assert.equal(result.code, 0, result.stderr);
+          const payload = JSON.parse(result.stdout);
+          assert.equal(payload.runtime.llmProvider, "fallback");
+          assert.equal(payload.runtime.wechatProvider, "mock");
+          assert.equal(payload.checklist.totalCount, 4);
+          assert.equal(payload.checklist.completedCount, 0);
+          assert.equal(payload.checklist.items[0].action.target, "reagent research direction upsert <file>");
+          assert.equal(payload.checklist.items[1].action.target.includes("reagent research enqueue"), true);
+          assert.equal(payload.checklist.items[3].action.target.includes("reagent memory remember"), true);
+          assert.equal(payload.headline.length > 0, true);
+          assert.equal(Array.isArray(payload.nextSteps), true);
+          assert.equal(payload.nextSteps.length > 0, true);
+        } finally {
+          await rm(tempDir, { recursive: true, force: true });
+        }
       });
 
       await runTest("CLI doctor --fix applies safe local repairs in an isolated workspace", async () => {
@@ -2583,6 +2982,112 @@ async function main() {
         assert.equal(result.code, 0, result.stderr);
         payload = JSON.parse(result.stdout);
         assert.equal(payload.fallbackRoutes.length, 0);
+      });
+
+      await runTest("CLI root agent read commands expose canonical runtime, session, history, hooks, and host surfaces", async () => {
+        let result = await runCli(["agent", "runtime", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        let payload = JSON.parse(result.stdout);
+        assert.equal(payload.sessionCount, 1);
+        assert.equal(payload.defaultRoute.modelId, "gpt-4.1-mini");
+
+        result = await runCli(["agent", "session", "wx-user-1", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.sessionId, "wechat:wx-user-1");
+        assert.equal(payload.hostSessionKey, "agent:main:thread:wx-user-host-1");
+
+        result = await runCli(["agent", "profile", "wechat:wx-user-1", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.senderId, "wx-user-1");
+        assert.equal(payload.entrySource, "wechat");
+
+        result = await runCli(["agent", "history", "wx-user-1", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.items.length, 2);
+        assert.equal(payload.items[0].role, "user");
+
+        result = await runCli(
+          ["agent", "hooks", "wx-user-1", "--event", "tool_blocked", "--url", fixture.baseUrl, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.items.length, 1);
+        assert.equal(payload.items[0].event, "tool_blocked");
+
+        result = await runCli(["agent", "host", "sessions", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.sessions[0].sessionKey, "agent:main:thread:wx-user-host-1");
+
+        result = await runCli(
+          ["agent", "host", "history", "agent:main:thread:wx-user-host-1", "--url", fixture.baseUrl, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.items[1].text, "reply history");
+      });
+
+      await runTest("CLI root agent mutations and delegations use the canonical agent API", async () => {
+        let result = await runCli(
+          ["agent", "role", "wx-user-1", "researcher", "--url", fixture.baseUrl, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        let payload = JSON.parse(result.stdout);
+        assert.equal(payload.roleId, "researcher");
+
+        result = await runCli(
+          ["agent", "skills", "wx-user-1", "workspace-control,research-ops", "--url", fixture.baseUrl, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.deepEqual(payload.skillIds, ["workspace-control", "research-ops"]);
+
+        result = await runCli(
+          ["agent", "model", "wx-user-1", "proxy-a", "gpt-4o", "--url", fixture.baseUrl, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.providerId, "proxy-a");
+        assert.equal(payload.modelId, "gpt-4o");
+
+        result = await runCli(
+          ["agent", "fallbacks", "wx-user-1", "proxy-a/gpt-4o", "--url", fixture.baseUrl, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.fallbackRoutes.length, 1);
+
+        result = await runCli(
+          ["agent", "reasoning", "wx-user-1", "high", "--url", fixture.baseUrl, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.reasoningEffort, "high");
+
+        result = await runCli(
+          ["agent", "delegate", "wx-user-1", "search", "--task", "11111111-1111-1111-1111-111111111111", "--prompt", "Find strong browser-agent baselines", "--url", fixture.baseUrl, "--json"],
+          cwd,
+        );
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.status, "completed");
+        assert.equal(payload.kind, "search");
+
+        result = await runCli(["agent", "delegates", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.items.length, 1);
+        assert.equal(payload.items[0].delegationId, "dlg_fixture_1");
       });
 
       await runTest("CLI channels chat, inbound, and push commands send message payloads", async () => {

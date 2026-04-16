@@ -1,0 +1,102 @@
+# Ralph Progress
+
+Project: ReAgent
+Branch: ralph/hermes-agent-retrofit
+Started: 2026-04-14
+
+Completed
+- US-001: Canonicalize agent session identity
+  - Added canonical `sessionId`, `senderId`, and `entrySource` to runtime session summaries.
+  - Stored explicit `wechat:` and `ui:` entry sessions separately when `source` is provided.
+  - Kept legacy bare `senderId` lookups working by resolving to the latest matching session or defaulting to `wechat:<senderId>`.
+  - Normalized persisted session keys when reading `workspace/channels/agent-runtime.json`.
+  - Added regression coverage in `tests/agentRuntimeSessionIdentity.test.mjs`.
+- US-002: Expose agent runtime overview API
+  - Added `AgentRuntime.describeRuntime()` for aggregated runtime overview data.
+  - Added `ChannelService.getAgentRuntimeOverview()` passthrough.
+  - Added canonical `GET /api/agent/runtime` in `src/routes/agent.ts`.
+  - Registered the new agent route surface in `src/app.ts`.
+  - Added route coverage in `tests/agentRoutes.test.mjs`.
+- US-003: Expose canonical agent session list and detail APIs
+  - Added runtime-side read-only session lookup without creating default sessions.
+  - Added canonical `GET /api/agent/sessions` and `GET /api/agent/sessions/:sessionId`.
+  - Added canonical `entrySource` in session list payloads while keeping existing `channel` compatibility field.
+  - Added route coverage for list, detail, invalid id, and missing session cases.
+- US-004: Expose runtime history API
+  - Added runtime-side session history lookup with limit support.
+  - Added canonical `GET /api/agent/sessions/:sessionId/history`.
+  - Added route coverage for history reads and missing-session 404 behavior.
+- US-005: Expose hooks audit API
+  - Added runtime-side hook lookup by canonical session, with `limit` and `event` filtering.
+  - Added canonical `GET /api/agent/sessions/:sessionId/hooks`.
+  - Reused `workspace/channels/agent-runtime-audit.jsonl` instead of adding a new audit store.
+- US-006: Expose canonical profile read and update API
+  - Added canonical `GET /api/agent/sessions/:sessionId/profile`.
+  - Added canonical `PATCH /api/agent/sessions/:sessionId/profile`.
+  - Added `ChannelService.updateAgentSessionProfile()` to aggregate role, skills, model, fallbacks, and reasoning updates.
+  - Added body validation for provider/model pairing and `clearModel` exclusivity.
+  - Added route coverage for profile read, patch success, invalid patch body, and missing-session 404 behavior.
+- US-007: Add root CLI read commands for the agent surface
+  - Added root `reagent agent` command family with canonical read commands for runtime, sessions, session, profile, history, and hooks.
+  - Added sender-id to canonical-session resolution in the CLI so `wx-user-1` style references still work.
+  - Added CLI coverage for canonical root agent reads.
+- US-008: Add root CLI mutation commands for the agent surface
+  - Added root `reagent agent role|skills|model|fallbacks|reasoning`.
+  - Root mutations now use canonical `PATCH /api/agent/sessions/:sessionId/profile`.
+  - Added CLI coverage for canonical root agent mutations.
+- US-009: Keep channel agent compatibility wrappers working
+  - Existing `reagent channels agent ...` commands continue to pass with regression coverage in `tests/cli.test.mjs`.
+  - Existing channel-specific routes still share the same `ChannelService` business logic as the canonical surface.
+- US-010: Add host linkage fields to agent session detail
+  - Added host linkage enrichment in `ChannelService.findAgentSession()` and `ChannelService.getAgentSession()`.
+  - Canonical session detail/profile responses can now include `hostSessionKey`, `accountId`, `threadId`, and `lastHostSyncAt`.
+  - Added route coverage for host linkage fields in session detail.
+- US-011: Expose canonical host session APIs under the agent namespace
+  - Added canonical `GET /api/agent/host/sessions`.
+  - Added canonical `GET /api/agent/host/sessions/:sessionKey/history`.
+  - Reused the OpenClaw runtime state service for cached host registry and transcript reads.
+- US-012: Add root CLI host commands under the agent surface
+  - Added `reagent agent host sessions`, `reagent agent host history <sessionKey>`, and `reagent agent host watch <sessionKey>`.
+  - Added CLI coverage for canonical root agent host commands.
+- US-013: Persist delegation records for research-only subflows
+  - Added `src/services/agentDelegationService.ts`.
+  - Added durable delegation storage in `workspace/channels/agent-delegations.json`.
+  - Delegations reuse research handoff/workstream artifacts instead of inventing a second artifact system.
+- US-014: Expose delegation APIs
+  - Added canonical `GET /api/agent/delegations`.
+  - Added canonical `POST /api/agent/delegations`.
+  - Added canonical `GET /api/agent/delegations/:delegationId`.
+  - Added canonical `POST /api/agent/delegations/:delegationId/cancel`.
+  - Added route coverage for delegation list/create/detail/cancel.
+- US-015: Add delegation CLI commands
+  - Added `reagent agent delegates`.
+  - Added `reagent agent delegate <sessionId|senderId> <search|reading|synthesis> --task <taskId>`.
+  - Added CLI coverage for canonical delegation commands.
+- US-016: Add web console agent session list view
+  - Switched the sessions page to canonical `/api/agent/sessions`.
+  - Added session filters for `entrySource` and `llmStatus`.
+  - Added click-through from session list to the agent runtime detail page.
+- US-017: Add web console profile and history panels
+  - Switched the agent detail view to canonical `/api/agent/sessions/:sessionId/profile`.
+  - Added history loading from canonical `/api/agent/sessions/:sessionId/history`.
+  - Web mutation controls now patch canonical agent profile routes instead of channel-specific routes.
+- US-018: Add web console hooks and delegations panels
+  - Added hook loading from canonical `/api/agent/sessions/:sessionId/hooks`.
+  - Added delegation loading from canonical `/api/agent/delegations`.
+  - Updated the agent runtime panel layout to expose profile/history/hooks/delegations/runtime tabs.
+  - Browser automation verification was not available in this environment; validated with JS syntax checks instead.
+
+Verification
+- `npm.cmd run check`
+- `npm.cmd run build`
+- `node tests/provider.test.mjs`
+- `node tests/agentRoutes.test.mjs`
+- `node tests/agentRuntimeDigest.test.mjs`
+- `node tests/agentRuntimeHooks.test.mjs`
+- `node tests/agentRuntimeSessionIdentity.test.mjs`
+- `node tests/cli.test.mjs`
+- `node tests/platform.test.mjs`
+- `node --check web/app.js`
+
+Next
+- All stories in `ralph/prd.json` are implemented in code. Browser automation verification is still pending if a browser-driving tool becomes available.

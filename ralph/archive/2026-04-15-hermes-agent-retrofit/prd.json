@@ -1,0 +1,286 @@
+{
+  "project": "ReAgent",
+  "branchName": "ralph/hermes-agent-retrofit",
+  "description": "Retrofit ReAgent with a first-class Hermes-style agent runtime surface across CLI, API, and web while keeping existing channel and host compatibility paths.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Canonicalize agent session identity",
+      "description": "As an operator, I want every agent entry surface to map to a canonical session id so that runtime state is inspectable across direct, UI, WeChat, and OpenClaw.",
+      "acceptanceCriteria": [
+        "Define a canonical session id format that supports direct, ui, wechat, and openclaw entry sources",
+        "Read existing `wechat:<senderId>` records from `workspace/channels/agent-runtime.json` without manual migration",
+        "Persist `sessionId`, `entrySource`, and `senderId` in the session model used by the new agent surface",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Expose agent runtime overview API",
+      "description": "As an operator, I want a single `/api/agent/runtime` endpoint so that the web console and CLI can read agent runtime summary data from one canonical source.",
+      "acceptanceCriteria": [
+        "Add `GET /api/agent/runtime`",
+        "Response includes session counts by entry source, configured default route, available reasoning efforts, and audit file health",
+        "Return JSON without mutating runtime or host session state",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Expose canonical agent session list and detail APIs",
+      "description": "As an operator, I want canonical session list and detail endpoints so that all agent clients read the same runtime session shape.",
+      "acceptanceCriteria": [
+        "Add `GET /api/agent/sessions` and `GET /api/agent/sessions/:sessionId`",
+        "Session responses include `sessionId`, `entrySource`, `senderId`, `updatedAt`, `turnCount`, `digest`, `enabledToolsets`, and `availableToolsets`",
+        "Invalid session ids return `400` and unknown session ids return `404`",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Expose runtime history API",
+      "description": "As an operator, I want runtime conversation history through the canonical agent namespace so that I can inspect stored turns without mixing them with host history.",
+      "acceptanceCriteria": [
+        "Add `GET /api/agent/sessions/:sessionId/history`",
+        "Support a `limit` query parameter on the history endpoint",
+        "Return `user`, `assistant`, and `tool` turns in stored order",
+        "Unknown session ids return `404`",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Expose hooks audit API",
+      "description": "As an operator, I want canonical hook and audit endpoints so that I can inspect why the runtime called a model, executed a tool, or blocked an action.",
+      "acceptanceCriteria": [
+        "Add `GET /api/agent/sessions/:sessionId/hooks`",
+        "Support `limit` and `event` filters on the hooks endpoint",
+        "Return `llm_call`, `tool_call`, `tool_blocked`, `tool_error`, and `reply_emit` events from `workspace/channels/agent-runtime-audit.jsonl`",
+        "Each event includes `ts`, `stage`, `providerId`, `modelId`, `toolName`, and `error` or `preview` when available",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Expose canonical profile read and update API",
+      "description": "As an operator, I want a canonical profile API so that role, skills, model route, fallbacks, and reasoning can be managed from one place.",
+      "acceptanceCriteria": [
+        "Add `GET /api/agent/sessions/:sessionId/profile` and `PATCH /api/agent/sessions/:sessionId/profile`",
+        "PATCH supports `roleId`, `skillIds`, `providerId` plus `modelId`, `clearModel`, `fallbackRoutes`, and `reasoningEffort`",
+        "Invalid provider or model selections and invalid reasoning values return `400` with structured error details",
+        "Successful updates return the full updated session profile",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Add root CLI read commands for the agent surface",
+      "description": "As an operator, I want a root `reagent agent` read surface so that I can inspect runtime state without remembering scattered command families.",
+      "acceptanceCriteria": [
+        "Add `reagent agent runtime`",
+        "Add `reagent agent sessions`, `reagent agent session <sessionId|senderId>`, `reagent agent history <sessionId|senderId>`, `reagent agent hooks <sessionId|senderId>`, and `reagent agent profile <sessionId|senderId>`",
+        "Commands support `--json` and print canonical field names from the new agent API",
+        "CLI help marks `agent` as the primary runtime control surface",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Add root CLI mutation commands for the agent surface",
+      "description": "As an operator, I want root CLI mutation commands so that I can change session role, skills, model, fallbacks, and reasoning from the canonical agent surface.",
+      "acceptanceCriteria": [
+        "Add `reagent agent role`, `reagent agent skills`, `reagent agent model`, `reagent agent fallbacks`, and `reagent agent reasoning`",
+        "Support `model clear` to reset a session to the default route",
+        "Support `fallbacks clear` to remove stored fallback routes",
+        "Mutation commands support `--json` and return the updated session profile",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Keep channel agent compatibility wrappers working",
+      "description": "As an existing ReAgent user, I want current `channels agent` flows to keep working so that scripts and habits do not break during the retrofit.",
+      "acceptanceCriteria": [
+        "Refactor `/api/channels/wechat/agent*` routes to reuse the canonical agent surface service instead of duplicating business logic",
+        "Existing `reagent channels agent session|role|skills|model|fallbacks|reasoning` commands continue to work",
+        "Compatibility commands return the same core fields as the canonical `reagent agent` commands",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Add host linkage fields to agent session detail",
+      "description": "As an operator, I want runtime session detail to include explicit host linkage fields so that I can tell whether a session maps to OpenClaw host state.",
+      "acceptanceCriteria": [
+        "Session detail and profile responses can include `hostSessionKey`, `accountId`, `threadId`, and `lastHostSyncAt`",
+        "When no host mapping exists, host linkage fields are `null` or omitted rather than guessed",
+        "Reading runtime session detail does not write to `workspace/channels/openclaw-sessions.json`",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Expose canonical host session APIs under the agent namespace",
+      "description": "As an operator, I want canonical host session endpoints under `/api/agent/host` so that host inspection sits beside runtime inspection without merging the two models.",
+      "acceptanceCriteria": [
+        "Add `GET /api/agent/host/sessions`",
+        "Add `GET /api/agent/host/sessions/:sessionKey/history`",
+        "Reuse existing host registry or live bridge behavior instead of inventing a new host session source",
+        "Responses are read-only and preserve existing `sessionKey` values",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Add root CLI host commands under the agent surface",
+      "description": "As an operator, I want host session inspection under `reagent agent host` so that the canonical agent surface also covers host-linked debugging.",
+      "acceptanceCriteria": [
+        "Add `reagent agent host sessions` and `reagent agent host history <sessionKey>`",
+        "Keep top-level `reagent sessions|history|watch` working and mark them as compatibility aliases in help text",
+        "Host commands support `--json` and match canonical host API field names",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Persist delegation records for research-only subflows",
+      "description": "As an operator, I want delegation records persisted so that bounded research subflows can be inspected, resumed, or cancelled without relying on terminal output.",
+      "acceptanceCriteria": [
+        "Create a delegation record model with `delegationId`, `sessionId`, `taskId`, `kind`, `status`, `artifact`, `createdAt`, `updatedAt`, and `error`",
+        "Support statuses `queued`, `running`, `completed`, `failed`, and `cancelled`",
+        "New records store `allowRecursiveDelegation: false` by default",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Expose delegation APIs",
+      "description": "As an operator, I want canonical delegation APIs so that bounded search, reading, and synthesis subflows can be created and inspected from one namespace.",
+      "acceptanceCriteria": [
+        "Add `GET /api/agent/delegations` and `POST /api/agent/delegations`",
+        "Add `GET /api/agent/delegations/:delegationId` and `POST /api/agent/delegations/:delegationId/cancel`",
+        "Only allow delegation kinds `search`, `reading`, and `synthesis`",
+        "Completed delegations return an artifact or memo path instead of stdout-only output",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Add delegation CLI commands",
+      "description": "As an operator, I want delegation commands under `reagent agent` so that I can launch and inspect bounded research subflows from the canonical runtime surface.",
+      "acceptanceCriteria": [
+        "Add `reagent agent delegate <sessionId|senderId> <search|reading|synthesis>`",
+        "Add `reagent agent delegates`",
+        "Support `--task`, `--status`, and `--json` on the new delegation commands",
+        "CLI returns the created delegation id and artifact path when available",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Add web console agent session list view",
+      "description": "As an operator, I want an Agent Runtime list view in the web console so that I can scan active and recent sessions without using the CLI.",
+      "acceptanceCriteria": [
+        "Add an Agent Runtime entry in the web console navigation or home surface",
+        "Session list shows `entrySource`, `senderId`, `role`, `model`, `updatedAt`, and host-link status",
+        "Filters support `entrySource`, `updatedAt`, and `llmStatus`",
+        "Clicking a row opens the agent session detail view",
+        "Verify in browser using dev-browser skill",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Add web console profile and history panels",
+      "description": "As an operator, I want agent session detail panels for profile and history so that I can inspect runtime settings and recent conversation flow in one page.",
+      "acceptanceCriteria": [
+        "Agent session detail shows `role`, `skills`, `model`, `fallbacks`, `reasoning`, and toolsets",
+        "Agent session detail shows runtime history separate from host history",
+        "Session detail reads from `/api/agent/sessions/:sessionId` and `/api/agent/sessions/:sessionId/history`",
+        "Verify in browser using dev-browser skill",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Add web console hooks and delegations panels",
+      "description": "As an operator, I want hooks and delegation panels in session detail so that I can see why the runtime acted and what bounded subflows are doing.",
+      "acceptanceCriteria": [
+        "Agent session detail shows recent hook or audit events with event type and timestamp",
+        "Blocked tool calls display the stored block reason",
+        "Agent session detail shows delegations with `kind`, `status`, and artifact path",
+        "Verify in browser using dev-browser skill",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

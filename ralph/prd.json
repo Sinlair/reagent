@@ -1,0 +1,259 @@
+{
+  "project": "ReAgent",
+  "branchName": "ralph/reagent-personal-researcher-v1",
+  "description": "Productize ReAgent into a usable v1 for individual researchers with a stronger first-use loop, more trustworthy research outputs, durable backup and restore flows, and release-grade browser smoke checks.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add onboarding readiness summary",
+      "description": "As a first-time individual researcher, I want `reagent onboard` to tell me what is blocked and what to do next so that I can start the product without reading the whole repo.",
+      "acceptanceCriteria": [
+        "Classify onboarding checks into required and optional items",
+        "Readiness output covers `.env`, workspace, database, LLM route, channel mode, and runtime port",
+        "Each blocking issue includes one explicit next step",
+        "`--json` output is stable and machine-readable",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Apply a safe starter profile during onboarding",
+      "description": "As a first-time individual researcher, I want onboarding to apply a safe starter profile so that I can reach the product loop before configuring final providers.",
+      "acceptanceCriteria": [
+        "`reagent onboard --apply` can set a safe `fallback + mock` starter profile when provider config is missing",
+        "Existing explicit provider values are not overwritten",
+        "After onboarding apply, `reagent home` can load without additional manual setup",
+        "Onboarding output explains that the starter profile is for evaluation rather than final research quality",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Add first-use checklist to the home and landing surfaces",
+      "description": "As a first-time individual researcher, I want the home and landing pages to tell me the next step so that I can reach my first useful report from an empty workspace.",
+      "acceptanceCriteria": [
+        "Home or landing shows a first useful report checklist",
+        "Checklist includes create brief, run research or discovery, open report, and save memory",
+        "Each checklist item includes a direct action or navigation target",
+        "Checklist reflects completed state when the workspace already has matching artifacts",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Add brief starter templates for individual researchers",
+      "description": "As an individual researcher, I want starter brief templates so that I do not begin every new topic from an empty form.",
+      "acceptanceCriteria": [
+        "Web offers at least three brief starter templates for personal research",
+        "Each template includes topic, target problem, success criteria, known baselines, and evaluation priorities",
+        "A selected template can be edited and saved as a direction or brief",
+        "Brief import and export still work after template support is added",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Improve discovery normalization and candidate deduplication",
+      "description": "As an individual researcher, I want repeated or near-duplicate discovery candidates to be suppressed so that I spend time on distinct papers rather than noisy repeats.",
+      "acceptanceCriteria": [
+        "Discovery candidate generation suppresses exact and near-duplicate paper candidates",
+        "Returned candidates keep stable source metadata for later UI display",
+        "When deduplication removes candidates, the run still returns deterministic ordering",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Show discovery ranking reasons and candidate context in the UI",
+      "description": "As an individual researcher, I want discovery results to explain why each candidate is ranked so that I can quickly decide what to read next.",
+      "acceptanceCriteria": [
+        "Discovery result cards show ranking reasons when available",
+        "Each candidate card shows source, year, and venue or equivalent metadata when available",
+        "Weak-result and empty-result states show explanatory copy rather than a blank list",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Surface evidence, support labels, and warnings in report detail",
+      "description": "As an individual researcher, I want report detail to distinguish evidence-backed claims from inference so that I can judge whether a result is trustworthy.",
+      "acceptanceCriteria": [
+        "Report detail shows evidence items with source type and confidence",
+        "The UI distinguishes paper-supported, code-supported, or inference-backed conclusions when data is available",
+        "Weak evidence coverage or high inference proportion shows an explicit warning state",
+        "No-evidence reports show a clear empty state instead of silently omitting evidence sections",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Add recent artifact reopen flow for personal work loops",
+      "description": "As an individual researcher, I want to reopen my latest report, presentation, module asset, or workstream memo so that prior work stays part of the daily loop.",
+      "acceptanceCriteria": [
+        "Web shows recent artifacts including report, presentation, module asset, and workstream memo when present",
+        "Recent artifact items navigate directly to a detail view or file-backed content view",
+        "`reagent home` surfaces the latest report and latest active task",
+        "Missing artifact targets return a readable error instead of a raw path failure",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Export a single research artifact bundle",
+      "description": "As an individual researcher, I want to export one research result as a reusable bundle so that I can share or archive it outside the workspace.",
+      "acceptanceCriteria": [
+        "Add a command that exports a single artifact bundle",
+        "The bundle can include report, review, related workstream memo, and core metadata",
+        "Successful export returns a concrete local file path",
+        "Export failures explain which required files are missing",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Create workspace backup snapshots",
+      "description": "As an individual researcher, I want one command to back up the whole workspace so that I can safely upgrade, migrate, or experiment without losing work.",
+      "acceptanceCriteria": [
+        "Add a workspace backup snapshot command",
+        "Backup covers file-backed memory, channel runtime state, research rounds, and the database layer",
+        "Backup output returns one snapshot path",
+        "Backup does not overwrite an existing snapshot by default",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Preview workspace restore before applying it",
+      "description": "As an individual researcher, I want to preview a backup before restore so that I do not accidentally replace my current workspace.",
+      "acceptanceCriteria": [
+        "Add a restore preview command",
+        "Preview shows snapshot timestamp, included content, and target workspace path",
+        "Preview does not modify the active workspace",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Apply workspace restore safely",
+      "description": "As an individual researcher, I want to apply a restore with explicit confirmation so that I can recover a workspace without silent data loss.",
+      "acceptanceCriteria": [
+        "Add a restore apply command",
+        "Restore apply requires explicit confirmation or an equivalent safety flag",
+        "After restore, `reagent home`, recent research, and memory files can load restored data",
+        "Restore failures leave the current workspace in a debuggable state with a clear error message",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Add product-facing recovery hints to key surfaces",
+      "description": "As an individual researcher, I want product-facing recovery hints on blocked surfaces so that I know how to recover without reading raw logs first.",
+      "acceptanceCriteria": [
+        "Home, settings, channels, and agents surfaces show product-facing recovery hints for blocking failures",
+        "Recovery hints are actionable and name the next command or setting to check",
+        "Hints do not expose raw internal stack traces by default",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Export a support bundle without leaking secrets",
+      "description": "As an individual researcher, I want to export a support bundle so that I can debug or ask for help without manually collecting logs.",
+      "acceptanceCriteria": [
+        "Add a support bundle export command",
+        "The bundle includes runtime status, doctor summary, recent logs, channel lifecycle, and agent runtime audit",
+        "Plaintext secrets are excluded by default",
+        "Successful export returns one local bundle path",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Add a daily digest preset for individual researchers",
+      "description": "As an individual researcher, I want a daily digest preset so that I can enable routine updates without manually composing scheduler fields.",
+      "acceptanceCriteria": [
+        "Web provides a daily digest preset",
+        "The preset configures sender, time, topK, max papers, and enabled state",
+        "The preset works with the current brief or direction configuration",
+        "Scheduler empty and disabled states explain what is missing",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Add browser smoke verification to release checks",
+      "description": "As a maintainer, I want release verification to run a browser smoke flow so that public beta builds cannot ship with broken core pages.",
+      "acceptanceCriteria": [
+        "Release verification runs a browser smoke flow",
+        "The smoke flow covers Sessions, Agents, session switching, and history, hooks, runtime, and delegations panels",
+        "Smoke failures emit debuggable artifacts such as screenshots or result JSON",
+        "Smoke can run against a mock environment without real WeChat pairing",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

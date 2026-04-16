@@ -1030,6 +1030,21 @@
           </div>
 
           <article class="card panel-card">
+            <div class="inline-form inline-form--equal">
+              <select id="agent-sessions-filter-source">
+                <option value="all">All sources</option>
+                <option value="direct">Direct</option>
+                <option value="ui">UI</option>
+                <option value="wechat">WeChat</option>
+                <option value="openclaw">OpenClaw</option>
+              </select>
+              <select id="agent-sessions-filter-status">
+                <option value="all">All model states</option>
+                <option value="ready">Ready</option>
+                <option value="needs-setup">Needs setup</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
             <div id="agent-sessions-list" class="empty-state">No sessions yet.</div>
           </article>
         </section>
@@ -1110,12 +1125,13 @@
             <article class="card panel-card">
               <div class="card-head">
                 <div>
-                  <div class="card-title" data-i18n="agents.notesTitle">Runtime Notes</div>
+                  <div class="card-title" data-i18n="agents.notesTitle">Agent Runtime</div>
                   <div class="card-sub" data-i18n="agents.notesSub">
-                    Role and enabled skills change what the current chat can do.
+                    Runtime overview, recent history, hook events, and delegation records.
                   </div>
                 </div>
               </div>
+              <div id="agent-runtime-overview" class="detail-list"></div>
               <div id="agent-runtime-notes" class="result-stack"></div>
             </article>
           </div>
@@ -1471,6 +1487,8 @@
                   </div>
 
                   <div id="research-brief-status" class="brief-status" hidden></div>
+
+                  <div id="research-brief-templates" class="result-stack"></div>
 
                   <form id="research-brief-form" class="stack-form research-brief-form">
                     <details class="research-form-group" open>

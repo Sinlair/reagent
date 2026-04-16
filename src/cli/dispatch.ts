@@ -281,6 +281,73 @@ export async function dispatchChannelsCommand(
   });
 }
 
+export async function dispatchAgentHostCommand(
+  options: ParsedOptions,
+  deps: {
+    renderAgentHostHelp(): void;
+    agentHostSessionsCommand: CliCommandHandler;
+    agentHostHistoryCommand: CliCommandHandler;
+    agentHostWatchCommand: CliCommandHandler;
+  },
+): Promise<void> {
+  await dispatchCommandGroup(options, {
+    groupName: "agent host",
+    renderHelp: deps.renderAgentHostHelp,
+    recognizeHelpSubcommand: true,
+    defaultHandler: deps.agentHostSessionsCommand,
+    defaultAliases: ["sessions"],
+    handlers: {
+      history: deps.agentHostHistoryCommand,
+      watch: deps.agentHostWatchCommand,
+    },
+  });
+}
+
+export async function dispatchAgentCommand(
+  options: ParsedOptions,
+  deps: {
+    renderAgentHelp(): void;
+    agentRuntimeCommand: CliCommandHandler;
+    agentSessionsCommand: CliCommandHandler;
+    agentSessionCommand: CliCommandHandler;
+    agentProfileCommand: CliCommandHandler;
+    agentHistoryCommand: CliCommandHandler;
+    agentHooksCommand: CliCommandHandler;
+    agentRoleCommand: CliCommandHandler;
+    agentSkillsCommand: CliCommandHandler;
+    agentModelCommand: CliCommandHandler;
+    agentFallbacksCommand: CliCommandHandler;
+    agentReasoningCommand: CliCommandHandler;
+    agentHostCommand: CliCommandHandler;
+    agentDelegatesCommand: CliCommandHandler;
+    agentDelegateCommand: CliCommandHandler;
+  },
+): Promise<void> {
+  await dispatchCommandGroup(options, {
+    groupName: "agent",
+    renderHelp: deps.renderAgentHelp,
+    recognizeHelpSubcommand: true,
+    defaultHandler: deps.agentRuntimeCommand,
+    defaultAliases: ["runtime"],
+    handlers: {
+      sessions: deps.agentSessionsCommand,
+      session: deps.agentSessionCommand,
+      profile: deps.agentProfileCommand,
+      history: deps.agentHistoryCommand,
+      hooks: deps.agentHooksCommand,
+      role: deps.agentRoleCommand,
+      skills: deps.agentSkillsCommand,
+      model: deps.agentModelCommand,
+      fallbacks: deps.agentFallbacksCommand,
+      reasoning: deps.agentReasoningCommand,
+      host: deps.agentHostCommand,
+      delegates: deps.agentDelegatesCommand,
+      delegations: deps.agentDelegatesCommand,
+      delegate: deps.agentDelegateCommand,
+    },
+  });
+}
+
 export async function dispatchResearchDirectionCommand(
   options: ParsedOptions,
   deps: {

@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { env } from "../config/env.js";
 import { AgentRuntimeAuditService } from "./runtimeAuditService.js";
+import type { AgentRuntimeAuditEntry } from "./runtimeAuditService.js";
 import { ToolExecutionPipeline } from "./toolExecutionPipeline.js";
 import type {
   AgentRuntimeHook,
@@ -73,6 +74,9 @@ export interface AgentSkill {
 }
 
 export interface AgentSessionSummary {
+  sessionId: string;
+  senderId: string;
+  entrySource: AgentEntrySource;
   activeEntrySource: AgentEntrySource;
   activeEntryLabel: string;
   enabledToolsets: AgentToolsetId[];
@@ -113,10 +117,52 @@ export interface AgentSessionSummary {
   };
 }
 
+export interface AgentRuntimeOverview {
+  sessionCount: number;
+  sessionCountsByEntrySource: Record<AgentEntrySource, number>;
+  defaultRoute: {
+    providerId: string;
+    providerLabel: string;
+    modelId: string;
+    modelLabel: string;
+    llmStatus: "ready" | "needs-setup" | "disabled";
+    llmSource: "registry" | "env";
+    wireApi?: OpenAiWireApi | undefined;
+  };
+  availableReasoningEfforts: Array<"default" | OpenAiReasoningEffort>;
+  audit: {
+    path: string;
+    exists: boolean;
+    status: "ready" | "not-found";
+  };
+}
+
+export interface AgentSessionHistoryItem {
+  role: "user" | "assistant" | "tool";
+  content: string;
+  createdAt: string;
+  name?: string | undefined;
+}
+
+export interface AgentSessionHistory {
+  sessionId: string;
+  senderId: string;
+  entrySource: AgentEntrySource;
+  items: AgentSessionHistoryItem[];
+}
+
+export interface AgentSessionHooks {
+  sessionId: string;
+  senderId: string;
+  entrySource: AgentEntrySource;
+  items: AgentRuntimeAuditEntry[];
+}
+
 export interface AgentSessionListEntry {
   sessionId: string;
   channel: string;
   senderId: string;
+  entrySource: AgentEntrySource;
   activeEntrySource: AgentEntrySource;
   roleId: string;
   roleLabel: string;
@@ -160,6 +206,11 @@ interface AgentSession {
   reasoningEffort?: OpenAiReasoningEffort | undefined;
   digest: AgentSessionDigest;
   turns: AgentTurn[];
+}
+
+interface ResolvedAgentSession {
+  sessionId: string;
+  session: AgentSession;
 }
 
 interface AgentSessionStore {
@@ -463,6 +514,42 @@ function buildNextStepHint(inputText: string, executedTools: string[], useChines
 
 function resolveInputSource(input: AgentChatInput): AgentEntrySource {
   return input.source ?? "direct";
+}
+
+function isAgentEntrySource(value: string): value is AgentEntrySource {
+  return value === "direct" || value === "ui" || value === "wechat" || value === "openclaw";
+}
+
+function buildCanonicalSessionId(source: AgentEntrySource, senderId: string): string {
+  return `${source}:${senderId.trim()}`;
+}
+
+function parseSessionId(sessionId: string): {
+  sessionId: string;
+  entrySource: AgentEntrySource;
+  senderId: string;
+} | null {
+  const normalized = sessionId.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const separatorIndex = normalized.indexOf(":");
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const source = normalized.slice(0, separatorIndex).trim();
+  const senderId = normalized.slice(separatorIndex + 1).trim();
+  if (!isAgentEntrySource(source) || !senderId) {
+    return null;
+  }
+
+  return {
+    sessionId: buildCanonicalSessionId(source, senderId),
+    entrySource: source,
+    senderId,
+  };
 }
 
 function labelForEntrySource(source: AgentEntrySource): string {
@@ -1116,7 +1203,11 @@ export class AgentRuntime {
   }
 
   private async buildSessionSummary(senderId: string, session: AgentSession): Promise<AgentSessionSummary> {
-    const activeEntrySource = session.lastEntrySource ?? "direct";
+    const parsedSession = parseSessionId(senderId);
+    const canonicalSenderId = parsedSession?.senderId ?? senderId;
+    const entrySource = parsedSession?.entrySource ?? session.lastEntrySource ?? "direct";
+    const canonicalSessionId = parsedSession?.sessionId ?? buildCanonicalSessionId(entrySource, canonicalSenderId);
+    const activeEntrySource = session.lastEntrySource ?? entrySource;
     const allowedToolsets = resolveAllowedToolsetsForSource(activeEntrySource);
     const role = this.getRoleOrDefault(session.roleId);
     const llmRoute = await this.resolveLlmRouteForSession(session);
@@ -1188,6 +1279,9 @@ export class AgentRuntime {
     });
 
     return {
+      sessionId: canonicalSessionId,
+      senderId: canonicalSenderId,
+      entrySource,
       activeEntrySource,
       activeEntryLabel: labelForEntrySource(activeEntrySource),
       enabledToolsets: allowedToolsets,
@@ -1230,8 +1324,114 @@ export class AgentRuntime {
   }
 
   async describeSession(senderId: string): Promise<AgentSessionSummary> {
-    const session = await this.getSession(senderId);
-    return this.buildSessionSummary(senderId, session);
+    const { sessionId, session } = await this.getSession(senderId);
+    return this.buildSessionSummary(sessionId, session);
+  }
+
+  async findSession(reference: string, source?: AgentEntrySource): Promise<AgentSessionSummary | null> {
+    const store = await this.readStore();
+    const sessionId = this.findExistingSessionId(store, reference, source);
+    if (!sessionId) {
+      return null;
+    }
+
+    return this.buildSessionSummary(sessionId, store.sessions[sessionId]!);
+  }
+
+  async findSessionHistory(
+    reference: string,
+    limit = 50,
+    source?: AgentEntrySource,
+  ): Promise<AgentSessionHistory | null> {
+    const store = await this.readStore();
+    const sessionId = this.findExistingSessionId(store, reference, source);
+    if (!sessionId) {
+      return null;
+    }
+
+    const parsedSession = parseSessionId(sessionId);
+    const items = store.sessions[sessionId]!.turns.slice(-Math.max(1, limit)).map((turn) => ({
+      role: turn.role,
+      content: turn.content,
+      createdAt: turn.createdAt,
+      ...(turn.name ? { name: turn.name } : {}),
+    }));
+
+    return {
+      sessionId,
+      senderId: parsedSession?.senderId ?? reference,
+      entrySource: parsedSession?.entrySource ?? store.sessions[sessionId]!.lastEntrySource ?? "direct",
+      items,
+    };
+  }
+
+  async findSessionHooks(
+    reference: string,
+    limit = 50,
+    event?: AgentRuntimeAuditEntry["event"],
+    source?: AgentEntrySource,
+  ): Promise<AgentSessionHooks | null> {
+    const store = await this.readStore();
+    const sessionId = this.findExistingSessionId(store, reference, source);
+    if (!sessionId) {
+      return null;
+    }
+
+    const parsedSession = parseSessionId(sessionId);
+    const senderId = parsedSession?.senderId ?? reference;
+    const entrySource = parsedSession?.entrySource ?? store.sessions[sessionId]!.lastEntrySource ?? "direct";
+    const items = (await this.auditService.listRecent(200))
+      .filter((item) => item.senderId === senderId && item.source === entrySource)
+      .filter((item) => (event ? item.event === event : true))
+      .slice(0, Math.max(1, limit));
+
+    return {
+      sessionId,
+      senderId,
+      entrySource,
+      items,
+    };
+  }
+
+  async describeRuntime(): Promise<AgentRuntimeOverview> {
+    const store = await this.readStore();
+    const sessionCountsByEntrySource: Record<AgentEntrySource, number> = {
+      direct: 0,
+      ui: 0,
+      wechat: 0,
+      openclaw: 0,
+    };
+
+    for (const sessionId of Object.keys(store.sessions)) {
+      const source = parseSessionId(sessionId)?.entrySource ?? store.sessions[sessionId]?.lastEntrySource ?? "direct";
+      sessionCountsByEntrySource[source] += 1;
+    }
+
+    const defaultRoute = await this.llmRegistry.resolvePurpose("agent");
+    const auditPath = this.auditService.getAuditPath();
+    const auditExists = await readFile(auditPath, "utf8")
+      .then(() => true)
+      .catch(() => false);
+
+    return {
+      sessionCount: Object.keys(store.sessions).length,
+      sessionCountsByEntrySource,
+      defaultRoute: {
+        providerId: defaultRoute.providerId,
+        providerLabel: defaultRoute.providerLabel,
+        modelId: defaultRoute.modelId,
+        modelLabel: defaultRoute.modelLabel,
+        llmStatus: defaultRoute.status,
+        llmSource: defaultRoute.source,
+        ...(defaultRoute.wireApi ? { wireApi: defaultRoute.wireApi } : {}),
+      },
+      availableReasoningEfforts: [...REASONING_EFFORT_OPTIONS],
+      audit: {
+        path: auditPath,
+        exists: auditExists,
+        status: auditExists ? "ready" : "not-found",
+      },
+    };
   }
 
   async listSessions(): Promise<AgentSessionListEntry[]> {
@@ -1239,16 +1439,15 @@ export class AgentRuntime {
 
     const entries = await Promise.all(
       Object.entries(store.sessions).map(async ([sessionId, session]) => {
-        const summary = await this.buildSessionSummary(sessionId.split(":").slice(1).join(":") || sessionId, session);
+        const summary = await this.buildSessionSummary(sessionId, session);
         const lastUserTurn = [...session.turns].reverse().find((turn) => turn.role === "user");
         const lastAssistantTurn = [...session.turns].reverse().find((turn) => turn.role === "assistant");
-        const [channel, ...senderParts] = sessionId.split(":");
-        const senderId = senderParts.join(":") || sessionId;
 
         return {
-          sessionId,
-          channel: channel || "workspace",
-          senderId,
+          sessionId: summary.sessionId,
+          channel: summary.entrySource,
+          senderId: summary.senderId,
+          entrySource: summary.entrySource,
           activeEntrySource: summary.activeEntrySource,
           roleId: summary.roleId,
           roleLabel: summary.roleLabel,
@@ -1282,7 +1481,7 @@ export class AgentRuntime {
     }
 
     await this.mutateStore((store) => {
-      const key = this.buildSessionKey(senderId);
+      const key = this.resolveSessionId(store, senderId);
       const session = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...session,
@@ -1306,7 +1505,7 @@ export class AgentRuntime {
     }
 
     await this.mutateStore((store) => {
-      const key = this.buildSessionKey(senderId);
+      const key = this.resolveSessionId(store, senderId);
       const session = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...session,
@@ -1336,7 +1535,7 @@ export class AgentRuntime {
     }
 
     await this.mutateStore((store) => {
-      const key = this.buildSessionKey(senderId);
+      const key = this.resolveSessionId(store, senderId);
       const session = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...session,
@@ -1352,7 +1551,7 @@ export class AgentRuntime {
 
   async clearModel(senderId: string): Promise<AgentSessionSummary> {
     await this.mutateStore((store) => {
-      const key = this.buildSessionKey(senderId);
+      const key = this.resolveSessionId(store, senderId);
       const session = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...session,
@@ -1391,7 +1590,7 @@ export class AgentRuntime {
     }
 
     await this.mutateStore((store) => {
-      const key = this.buildSessionKey(senderId);
+      const key = this.resolveSessionId(store, senderId);
       const session = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...session,
@@ -1413,7 +1612,7 @@ export class AgentRuntime {
     }
 
     await this.mutateStore((store) => {
-      const key = this.buildSessionKey(senderId);
+      const key = this.resolveSessionId(store, senderId);
       const session = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...session,
@@ -1432,8 +1631,9 @@ export class AgentRuntime {
       return "Please enter a message.";
     }
 
-    await this.setLastEntrySource(input.senderId, resolveInputSource(input));
-    const session = await this.getSession(input.senderId);
+    const inputSource = resolveInputSource(input);
+    await this.setLastEntrySource(input.senderId, inputSource, input.source ? inputSource : undefined);
+    const { sessionId, session } = await this.getSession(input.senderId, input.source ? inputSource : undefined);
     const memoryPrimer = await this.memoryRecallService
       .recall(text, {
         limit: MEMORY_PRIMER_LIMIT,
@@ -1474,7 +1674,7 @@ export class AgentRuntime {
         content: result.text,
         createdAt: nowIso(),
       },
-    ]);
+    ], input.source ? inputSource : parseSessionId(sessionId)?.entrySource);
 
     return result.text;
   }
@@ -1485,8 +1685,9 @@ export class AgentRuntime {
       return "Please enter a message.";
     }
 
-    await this.setLastEntrySource(input.senderId, resolveInputSource(input));
-    const session = await this.getSession(input.senderId);
+    const inputSource = resolveInputSource(input);
+    await this.setLastEntrySource(input.senderId, inputSource, input.source ? inputSource : undefined);
+    const { sessionId, session } = await this.getSession(input.senderId, input.source ? inputSource : undefined);
     const memoryPrimer = await this.memoryRecallService
       .recall(text, {
         limit: MEMORY_PRIMER_LIMIT,
@@ -1527,13 +1728,55 @@ export class AgentRuntime {
         content: result.text,
         createdAt: nowIso(),
       },
-    ]);
+    ], input.source ? inputSource : parseSessionId(sessionId)?.entrySource);
 
     return result.text;
   }
 
-  private buildSessionKey(senderId: string): string {
-    return `wechat:${senderId}`;
+  private resolveSessionId(
+    store: AgentSessionStore,
+    reference: string,
+    source?: AgentEntrySource,
+  ): string {
+    const existingSessionId = this.findExistingSessionId(store, reference, source);
+    if (existingSessionId) {
+      return existingSessionId;
+    }
+
+    const normalizedReference = reference.trim();
+    if (source) {
+      return buildCanonicalSessionId(source, normalizedReference);
+    }
+
+    return buildCanonicalSessionId("wechat", normalizedReference);
+  }
+
+  private findExistingSessionId(
+    store: AgentSessionStore,
+    reference: string,
+    source?: AgentEntrySource,
+  ): string | null {
+    const normalizedReference = reference.trim();
+    const parsedReference = parseSessionId(normalizedReference);
+    if (parsedReference) {
+      return store.sessions[parsedReference.sessionId] ? parsedReference.sessionId : null;
+    }
+
+    if (source) {
+      const sourcedSessionId = buildCanonicalSessionId(source, normalizedReference);
+      return store.sessions[sourcedSessionId] ? sourcedSessionId : null;
+    }
+
+    const matchingKeys = Object.entries(store.sessions)
+      .filter(([sessionId]) => parseSessionId(sessionId)?.senderId === normalizedReference)
+      .sort((left, right) => right[1].updatedAt.localeCompare(left[1].updatedAt))
+      .map(([sessionId]) => sessionId);
+
+    if (matchingKeys.length > 0) {
+      return matchingKeys[0]!;
+    }
+
+    return null;
   }
 
   private async readStore(): Promise<AgentSessionStore> {
@@ -1545,6 +1788,7 @@ export class AgentRuntime {
           ? Object.fromEntries(
               Object.entries(parsed.sessions).map(([sessionId, session]) => {
                 const partial = session as Partial<AgentSession>;
+                const parsedSession = parseSessionId(sessionId);
                 const roleId = this.roleMap.has(String(partial.roleId)) ? String(partial.roleId) : "operator";
                 const skillIds = Array.isArray(partial.skillIds)
                   ? partial.skillIds
@@ -1557,9 +1801,9 @@ export class AgentRuntime {
                     : undefined;
                 const lastEntrySource =
                   typeof partial.lastEntrySource === "string" &&
-                  ["direct", "ui", "wechat", "openclaw"].includes(partial.lastEntrySource)
+                  isAgentEntrySource(partial.lastEntrySource)
                     ? (partial.lastEntrySource as AgentEntrySource)
-                    : "direct";
+                    : parsedSession?.entrySource ?? "direct";
                 const modelId =
                   typeof partial.modelId === "string" && partial.modelId.trim()
                     ? partial.modelId.trim()
@@ -1634,7 +1878,7 @@ export class AgentRuntime {
                   : buildDigestFromTurns(turns);
 
                 return [
-                  sessionId,
+                  parsedSession?.sessionId ?? sessionId,
                   {
                     updatedAt:
                       typeof partial.updatedAt === "string" ? partial.updatedAt : nowIso(),
@@ -1678,23 +1922,29 @@ export class AgentRuntime {
     await this.writeStore(nextStore);
   }
 
-  private async getSession(senderId: string): Promise<AgentSession> {
+  private async getSession(senderId: string, source?: AgentEntrySource): Promise<ResolvedAgentSession> {
     const store = await this.readStore();
-    const key = this.buildSessionKey(senderId);
+    const key = this.resolveSessionId(store, senderId, source);
     const existing = store.sessions[key];
     if (existing) {
-      return existing;
+      return {
+        sessionId: key,
+        session: existing,
+      };
     }
 
     const session = defaultSession();
     store.sessions[key] = session;
     await this.writeStore(store);
-    return session;
+    return {
+      sessionId: key,
+      session,
+    };
   }
 
-  private async appendTurns(senderId: string, turns: AgentTurn[]): Promise<void> {
+  private async appendTurns(senderId: string, turns: AgentTurn[], source?: AgentEntrySource): Promise<void> {
     await this.mutateStore((store) => {
-      const key = this.buildSessionKey(senderId);
+      const key = this.resolveSessionId(store, senderId, source);
       const current = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...current,
@@ -1706,9 +1956,13 @@ export class AgentRuntime {
     });
   }
 
-  private async setLastEntrySource(senderId: string, source: AgentEntrySource): Promise<void> {
+  private async setLastEntrySource(
+    senderId: string,
+    source: AgentEntrySource,
+    sessionSource?: AgentEntrySource,
+  ): Promise<void> {
     await this.mutateStore((store) => {
-      const key = this.buildSessionKey(senderId);
+      const key = this.resolveSessionId(store, senderId, sessionSource);
       const current = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...current,

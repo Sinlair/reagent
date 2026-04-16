@@ -74,17 +74,24 @@ ReAgent is currently strongest for:
 The current runtime includes:
 
 - entry-aware toolsets for direct, UI, WeChat, and OpenClaw surfaces
+- a canonical agent runtime surface across root CLI (`reagent agent ...`) and HTTP (`/api/agent/*`)
 - a tool registry and tool execution pipeline
 - runtime hooks, tool policies, and built-in audit trails
 - structured session digests instead of relying only on recent chat turns
 - progressive workspace skill disclosure with optional reference files
+- explicit host-session linkage for OpenClaw-backed conversations
 - unified job runtime observability for scheduled discovery and memory compaction
 - research handoff workstreams for `search`, `reading`, and `synthesis`
+- bounded research-only delegation with durable delegation records and workstream artifacts
 
 Operator-facing examples:
 
 ```bash
 reagent runtime jobs
+reagent agent runtime
+reagent agent sessions
+reagent agent session wechat:wx-user-1
+reagent agent host sessions
 reagent research discovery scheduler runtime
 reagent memory scheduler runtime
 reagent research handoff <taskId>
@@ -98,7 +105,7 @@ ReAgent currently spans five practical surfaces:
 - `research`: queue or run research tasks, manage direction profiles, inspect discovery plans and scheduler runs, record feedback, traverse the research memory graph, and reopen paper, repo, module, presentation, and direction-report artifacts.
 - `memory`: keep file-backed notes searchable and recallable, write durable entries, and run manual or scheduled compaction with visible policy and run history.
 - `channels`: receive UI or WeChat messages through `mock`, `native`, or `openclaw` providers, push outbound replies, and inspect lifecycle state, OpenClaw events, and cached sessions.
-- `agent runtime`: tune per-sender role, skills, model route, fallback routes, and reasoning effort instead of treating every conversation as one shared opaque agent.
+- `agent runtime`: inspect canonical sessions, tune per-session role, skills, model route, fallback routes, reasoning effort, hook history, host linkage, and bounded delegations instead of treating every conversation as one shared opaque agent.
 - `workspace control`: manage LLM providers, MCP servers, workspace skills, and inbound command authorization from the CLI or JSON-backed config files.
 
 Examples:
@@ -107,12 +114,40 @@ Examples:
 reagent research directions
 reagent research graph report --view asset
 reagent memory recall "recent research choices"
-reagent channels agent session wx-user-1
+reagent agent session wx-user-1
+reagent agent profile wechat:wx-user-1
+reagent agent hooks wechat:wx-user-1
+reagent agent delegate wx-user-1 search --task <taskId>
 reagent models routes
 reagent mcp list
 reagent skills list
 reagent commands policy
 ```
+
+## Canonical Agent Surface
+
+ReAgent now exposes one canonical agent runtime surface:
+
+- root CLI: `reagent agent ...`
+- HTTP API: `/api/agent/*`
+- web console: `Agents` and `Sessions` panels
+
+That surface covers:
+
+- runtime overview
+- canonical session list and detail
+- profile read/write (`role`, `skills`, `model`, `fallbacks`, `reasoning`)
+- runtime history and hook/audit inspection
+- OpenClaw host session list/history under `agent host`
+- bounded research-only delegation under `agent delegate` / `agent delegates`
+
+Compatibility paths remain available:
+
+- `reagent channels agent ...`
+- top-level `reagent sessions`, `reagent history`, `reagent watch`
+- `/api/channels/wechat/agent*`
+
+The intent is to keep existing operator flows working while moving new documentation and new tooling toward the canonical `agent` surface.
 
 ## Product Shape
 
@@ -174,6 +209,9 @@ LLM_PROVIDER=fallback
 WECHAT_PROVIDER=mock
 ```
 
+`reagent onboard --apply` persists this safe `fallback + mock` starter profile when provider settings are missing.
+Use it for first-run evaluation and product walkthroughs, not as the final research-quality configuration.
+
 If PowerShell blocks `npm`, use `npm.cmd`.
 
 ## Global CLI Install
@@ -184,6 +222,9 @@ reagent onboard
 reagent home
 reagent service run
 ```
+
+`reagent home` works with the starter profile without additional provider setup.
+The Web console uses the same starter profile once the runtime is running.
 
 The published package name is `@sinlair/reagent`.
 The installed command is `reagent`.
@@ -212,6 +253,8 @@ reagent home
 reagent runtime status
 reagent runtime jobs
 reagent runtime logs --follow
+reagent agent runtime
+reagent agent sessions
 reagent research recent
 reagent research tasks
 reagent memory recall "recent research choices"
@@ -239,6 +282,7 @@ Use:
 - `reagent doctor` for diagnostics and safe local repair
 - `reagent service ...` to manage the supervised runtime
 - `reagent runtime ...` to inspect health, status, jobs, dashboard, logs, and doctor output
+- `reagent agent ...` to inspect and control canonical agent runtime state, host linkage, and bounded delegations
 
 Always-on service lifecycle:
 
@@ -260,6 +304,7 @@ Use it for:
 - graph and memory exploration
 - task and report browsing
 - operational visibility
+- agent runtime overview, selected session profile, runtime history, hooks, and delegation inspection
 
 Use the CLI for:
 
@@ -297,6 +342,9 @@ Key layers:
 - `memory/YYYY-MM-DD.md` for daily notes
 - indexed metadata in `memory-index.json`
 - runtime session digests and audit logs under `channels/`
+- canonical agent session state in `channels/agent-runtime.json`
+- bounded delegation state in `channels/agent-delegations.json`
+- OpenClaw host-session registry and cached transcripts under `channels/openclaw-*`
 - research task runs in `research/task-runs.json`
 - research rounds in `research/rounds/<taskId>/`
 - handoff dossiers and workstream memos under each research round
@@ -321,6 +369,17 @@ This is intentional:
 | [`upstream/openclaw/`](./upstream/openclaw) | Imported upstream reference used for bridge and compatibility work |
 
 **How you install and drive ReAgent.** The supported path is still the standalone package (`npm install -g @sinlair/reagent`) and the `reagent` command as the single control plane. The runtime is built so host-style behavior, the WeChat bridge path, and extension surfaces stay inspectable rather than forked in secret: the foundation code under `package/` is the concrete place that tracks those contracts, and the same root CLI exposes host-oriented operations (`reagent status`, `reagent sessions`, `reagent history`, `reagent watch`, `reagent inspect`, `reagent install`) when you need them beside everyday research and memory commands.
+
+For agent runtime operations, prefer the canonical root surface:
+
+```bash
+reagent agent runtime
+reagent agent sessions
+reagent agent session wechat:wx-user-1
+reagent agent profile wechat:wx-user-1
+reagent agent host sessions
+reagent agent delegates
+```
 
 ## Run Modes
 
