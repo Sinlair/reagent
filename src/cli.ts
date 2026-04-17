@@ -45,6 +45,7 @@ import { createResearchGraphFeedbackCli } from "./cli/researchGraphFeedback.js";
 import { createOpenClawCli } from "./cli/openClaw.js";
 import { createRuntimeSurfaceCli } from "./cli/runtimeSurface.js";
 import { createWorkspaceControlCli } from "./cli/workspaceControl.js";
+import { createWorkspaceLifecycleCli } from "./cli/workspaceLifecycle.js";
 import type {
   ResearchGraphExplainPayload,
   ResearchGraphPathPayload,
@@ -454,6 +455,7 @@ Core:
   reagent models      Inspect or edit managed LLM provider routes
   reagent mcp         Inspect or edit managed MCP server registry
   reagent skills      Inspect or edit managed workspace skill state
+  reagent workspace   Create workspace snapshots and recovery artifacts
   reagent qr          Delegate to the OpenClaw qr command family
   reagent devices     Delegate to the OpenClaw devices command family
   reagent pairing     Delegate to the OpenClaw pairing command family
@@ -827,6 +829,24 @@ Flags:
   --follow                  With "logs", keep polling and print appended lines
   --poll <ms>               Poll interval for "logs --follow" (default: 2000)
   --fix                     With "doctor", apply safe local repairs
+  --json                    Print JSON output
+`);
+}
+
+function renderWorkspaceHelp(): void {
+  console.log(`ReAgent Workspace
+
+Commands:
+  reagent workspace snapshot
+  reagent workspace restore preview <snapshotPath>
+  reagent workspace restore apply <snapshotPath> --yes
+  reagent workspace support-bundle
+
+Flags:
+  --out <dir>               Write the snapshot into the given directory root
+  --label <name>            Use a fixed snapshot directory name instead of a timestamp
+  --protection-dir <dir>    Override the restore protection backup root
+  --yes                     Required for restore apply
   --json                    Print JSON output
 `);
 }
@@ -3967,6 +3987,12 @@ async function resolveWorkspaceDir(options: ParsedOptions): Promise<string> {
   return path.resolve(process.cwd(), runtimeEnv.PLATFORM_WORKSPACE_DIR);
 }
 
+async function resolveDatabaseUrl(options: ParsedOptions): Promise<string> {
+  applyRuntimeOverrides(options);
+  const runtimeEnv = await loadRuntimeEnv();
+  return runtimeEnv.DATABASE_URL;
+}
+
 async function doctorCommand(options: ParsedOptions): Promise<void> {
   applyRuntimeOverrides(options);
   const version = await readPackageVersion();
@@ -4268,6 +4294,31 @@ const {
 });
 
 const {
+  workspaceCommand,
+} = createWorkspaceLifecycleCli({
+  resolveWorkspaceDir,
+  resolveDatabaseUrl,
+  resolveSqlitePath: (databaseUrl: string) => resolveSqlitePath(databaseUrl, process.cwd()),
+  pathExists,
+  readGatewayStatus: async () => {
+    const snapshot = await getGatewayServiceStatus(undefined, {
+      deep: false,
+      probe: true,
+    });
+    return {
+      reachable: snapshot.healthReachable,
+      port: snapshot.port,
+      status: snapshot.healthStatus,
+      issues: snapshot.issues,
+      hints: snapshot.hints,
+    };
+  },
+  readRuntimeLogTail: async (kind: "out" | "err", lines: number) => readGatewayLogTail(kind, lines),
+  printJson,
+  renderWorkspaceHelp,
+});
+
+const {
   researchArtifactCommand,
   researchBundleCommand,
   researchSourceCommand,
@@ -4430,6 +4481,7 @@ const ROOT_COMMAND_HANDLERS: Record<string, CliCommandHandler> = {
   models: modelsCommand,
   mcp: mcpCommand,
   skills: skillsCommand,
+  workspace: workspaceCommand,
   research: researchCommand,
   config: configCommand,
   plugins: pluginsCommand,

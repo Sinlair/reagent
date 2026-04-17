@@ -188,8 +188,10 @@ const els = {
   discoverySchedulerDirectionIds: document.querySelector("#discovery-scheduler-direction-ids"),
   discoverySchedulerTopK: document.querySelector("#discovery-scheduler-topk"),
   discoverySchedulerMaxPapers: document.querySelector("#discovery-scheduler-max-papers"),
+  discoverySchedulerPreset: document.querySelector("#discovery-scheduler-preset"),
   discoverySchedulerRun: document.querySelector("#discovery-scheduler-run"),
   discoverySchedulerStatus: document.querySelector("#discovery-scheduler-status"),
+  discoverySchedulerHint: document.querySelector("#discovery-scheduler-hint"),
   discoverySchedulerRuns: document.querySelector("#discovery-scheduler-runs"),
   discoveryRunDetail: document.querySelector("#discovery-run-detail"),
   researchTaskList: document.querySelector("#research-task-list"),
@@ -975,6 +977,8 @@ function renderWorkspacePulse() {
   const memoryFiles = state.memoryStatus?.files ?? 0;
   const briefsCount = state.researchBriefs.length;
   const reportsCount = state.recentReports.length;
+  const starterProfileActive = state.runtimeMeta?.llmProvider === "fallback" && state.runtimeMeta?.wechatProvider === "mock";
+  const noArtifactsYet = memoryFiles === 0 && briefsCount === 0 && reportsCount === 0 && !activeTask;
 
   let headline = state.lang === "zh"
     ? "\u5de5\u4f5c\u533a\u5df2\u5c31\u7eea\uff0c\u53ef\u4ee5\u53d1\u8d77\u7b2c\u4e00\u6761\u7814\u7a76\u6d41\u6c34\u7ebf\u3002"
@@ -1007,6 +1011,15 @@ function renderWorkspacePulse() {
       ? "\u6700\u65b0\u4ea7\u51fa\u5df2\u5c31\u7eea\uff0c\u53ef\u4ee5\u7ee7\u7eed\u5ba1\u9605\u6216\u4ea4\u4ed8\u3002"
       : "The latest output is ready for review or delivery.";
     subtitle = `${trimText(summary.topic || summary.taskId || "-", 92)} 路 ${formatRelativeTime(summary.generatedAt)}`;
+  }
+
+  if (healthOk && starterProfileActive && noArtifactsYet) {
+    headline = state.lang === "zh"
+      ? "Starter profile 宸插惎鐢紝鍙互鐩存帴璧疯窇绗竴鏉＄爺绌舵祦銆?"
+      : "The starter profile is active and the workspace is ready for the first run.";
+    subtitle = state.lang === "zh"
+      ? "褰撳墠浣跨敤 fallback + mock锛岄€傚悎棣栨浣撻獙銆傛帴涓嬫潵鎵撳紑 Research 椤甸潰鍒涘缓绗竴涓?brief 鎴?task銆?"
+      : "ReAgent is currently using fallback + mock for first-run evaluation. Open Research and create the first brief or task next.";
   }
 
   if (els.workspacePulseKicker) {
@@ -1146,6 +1159,8 @@ function renderLandingCommandBar() {
   const briefsCount = state.researchBriefs.length;
   const deploymentModes = state.runtimeMeta?.deployment?.alwaysOn?.modes || [];
   const deploymentMeta = deploymentModes.map((mode) => mode.label).join(" / ");
+  const starterProfileActive = state.runtimeMeta?.llmProvider === "fallback" && state.runtimeMeta?.wechatProvider === "mock";
+  const noArtifactsYet = memoryFiles === 0 && briefsCount === 0 && state.recentReports.length === 0 && !activeTask;
 
   const cards = [
     summary?.taskId
@@ -1166,8 +1181,14 @@ function renderLandingCommandBar() {
           }
         : {
             eyebrow: t("landing.commandStartEyebrow", "Start Research"),
-            title: t("landing.commandStartTitle", "Start the first scoped investigation"),
-            meta: t("landing.commandStartMeta", "Open the evidence workspace and queue the first topic."),
+            title: starterProfileActive && noArtifactsYet
+              ? (state.lang === "zh" ? "Starter profile 宸插惎鐢?" : "Starter profile is active")
+              : t("landing.commandStartTitle", "Start the first scoped investigation"),
+            meta: starterProfileActive && noArtifactsYet
+              ? (state.lang === "zh"
+                ? "fallback + mock 宸插氨缁ソ锛屾帴涓嬫潵鍒涘缓绗竴涓?brief 鎴?task銆?"
+                : "fallback + mock is ready for evaluation. Create the first brief or task next.")
+              : t("landing.commandStartMeta", "Open the evidence workspace and queue the first topic."),
             tab: "research",
             tone: "accent"
           },
@@ -2544,7 +2565,7 @@ function renderOverviewActivity(messages) {
 function renderProductAlerts() {
   if (!els.productAlerts) return;
 
-  const alertsAllowedTabs = new Set(["channels", "settings"]);
+  const alertsAllowedTabs = new Set(["landing", "overview", "channels", "agents", "settings"]);
   if (!alertsAllowedTabs.has(state.activeTab)) {
     els.productAlerts.hidden = true;
     els.productAlerts.innerHTML = "";
@@ -2562,16 +2583,16 @@ function renderProductAlerts() {
       title: state.lang === "zh" ? "Research Is In Fallback Mode" : "Research Is In Fallback Mode",
       body:
         state.lang === "zh"
-          ? "The research workflow is currently using the fallback LLM. Outputs are useful for scaffolding, not as final model analysis."
-          : "The research workflow is using the fallback LLM. Outputs are useful for scaffolding, not as final model analysis."
-    });
+          ? "The research workflow is currently using the fallback LLM. Outputs are useful for scaffolding, not as final model analysis. Run `reagent onboard --apply` for first-run setup or configure a real research route in Settings."
+          : "The research workflow is using the fallback LLM. Outputs are useful for scaffolding, not as final model analysis. Run `reagent onboard --apply` for first-run setup or configure a real research route in Settings."
+      });
   }
 
   if (gatewaySupervisor?.issues?.length) {
     alerts.push({
       tone: "warn",
       title: state.lang === "zh" ? "\u8fd0\u884c\u670d\u52a1\u9700\u8981\u5173\u6ce8" : "Runtime Service Needs Attention",
-      body: gatewaySupervisor.issues[0]
+      body: `${gatewaySupervisor.issues[0]} ${state.lang === "zh" ? "Next: run `reagent runtime status` or `reagent doctor`." : "Next: run `reagent runtime status` or `reagent doctor`."}`
     });
   }
 
@@ -2583,6 +2604,28 @@ function renderProductAlerts() {
         state.lang === "zh"
           ? "The bridge is in openclaw mode, but the plugin is not ready. Open Settings > Deployment for the install command."
           : "The bridge is in openclaw mode, but the plugin is not ready. Open Settings > Deployment for the install command."
+    });
+  }
+
+  if (wechat && wechat.providerMode !== "mock" && !wechat.connected) {
+    alerts.push({
+      tone: "warn",
+      title: state.lang === "zh" ? "Channel setup is still pending" : "Channel setup is still pending",
+      body:
+        state.lang === "zh"
+          ? "The current channel mode is not connected yet. Next: run `reagent channels login` or inspect Channels for pairing state."
+          : "The current channel mode is not connected yet. Next: run `reagent channels login` or inspect Channels for pairing state."
+    });
+  }
+
+  if (state.activeTab === "agents" && !state.agentSession) {
+    alerts.push({
+      tone: "warn",
+      title: state.lang === "zh" ? "Agent runtime session is not loaded" : "Agent runtime session is not loaded",
+      body:
+        state.lang === "zh"
+          ? "Open the Sessions panel or run `reagent agent sessions` to inspect the canonical runtime surface."
+          : "Open the Sessions panel or run `reagent agent sessions` to inspect the canonical runtime surface."
     });
   }
 
@@ -4385,6 +4428,28 @@ function isSchedulerFormActive() {
   return Boolean(els.discoverySchedulerForm && document.activeElement && els.discoverySchedulerForm.contains(document.activeElement));
 }
 
+function applyDailyDigestPreset() {
+  const selectedDirectionIds = state.selectedResearchBriefId
+    ? [state.selectedResearchBriefId]
+    : state.researchBriefs.length > 0
+      ? [state.researchBriefs[0].id]
+      : [];
+
+  if (els.discoverySchedulerEnabled) els.discoverySchedulerEnabled.checked = true;
+  if (els.discoverySchedulerTime) els.discoverySchedulerTime.value = "09:00";
+  if (els.discoverySchedulerSenderId && !els.discoverySchedulerSenderId.value.trim()) {
+    els.discoverySchedulerSenderId.value = UI_AGENT_SENDER_ID;
+  }
+  if (els.discoverySchedulerSenderName && !els.discoverySchedulerSenderName.value.trim()) {
+    els.discoverySchedulerSenderName.value = "ReAgent Daily Digest";
+  }
+  if (els.discoverySchedulerTopK) els.discoverySchedulerTopK.value = "5";
+  if (els.discoverySchedulerMaxPapers) els.discoverySchedulerMaxPapers.value = "4";
+  if (els.discoverySchedulerDirectionIds) {
+    els.discoverySchedulerDirectionIds.value = formatListInput(selectedDirectionIds);
+  }
+}
+
 function renderDiscoveryScheduler(status) {
   state.discoveryScheduler = status || null;
   if (!els.discoverySchedulerStatus) return;
@@ -4428,6 +4493,30 @@ function renderDiscoveryScheduler(status) {
   ]
     .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join("");
+
+  if (els.discoverySchedulerHint) {
+    let hint = "";
+    if (!scheduler.enabled) {
+      hint = state.lang === "zh"
+        ? "Scheduler is currently disabled. Use the daily digest preset or enable the schedule after filling the sender."
+        : "Scheduler is currently disabled. Use the daily digest preset or enable the schedule after filling the sender.";
+    } else if (!scheduler.senderId?.trim()) {
+      hint = state.lang === "zh"
+        ? "A sender id is still required before the scheduler can push daily digests."
+        : "A sender id is still required before the scheduler can push daily digests.";
+    } else if (!(scheduler.directionIds || []).length && !state.researchBriefs.length) {
+      hint = state.lang === "zh"
+        ? "No research brief is configured yet. Create one first, or the preset will have nothing to target."
+        : "No research brief is configured yet. Create one first, or the preset will have nothing to target.";
+    } else if (!(scheduler.directionIds || []).length) {
+      hint = state.lang === "zh"
+        ? "No explicit brief is pinned, so the scheduler will use all enabled templates."
+        : "No explicit brief is pinned, so the scheduler will use all enabled templates.";
+    }
+
+    els.discoverySchedulerHint.className = hint ? "alert-strip alert-strip--warn" : "empty-state compact-empty";
+    els.discoverySchedulerHint.textContent = hint || (state.lang === "zh" ? "Daily digest preset is ready." : "Daily digest preset is ready.");
+  }
 }
 
 async function loadDiscoveryScheduler() {
@@ -7632,6 +7721,11 @@ els.discoverySchedulerForm?.addEventListener("submit", async (event) => {
   });
 
   await loadDiscoveryScheduler();
+});
+
+els.discoverySchedulerPreset?.addEventListener("click", () => {
+  applyDailyDigestPreset();
+  renderDiscoveryScheduler(state.discoveryScheduler);
 });
 
 els.discoverySchedulerRun?.addEventListener("click", async () => {

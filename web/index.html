@@ -1831,6 +1831,9 @@
                       <input id="discovery-scheduler-max-papers" type="number" min="1" max="10" value="4" data-i18n-placeholder="research.schedulerMaxPapers" placeholder="Papers per search" />
                     </div>
                     <div class="button-row">
+                      <button id="discovery-scheduler-preset" class="btn btn--ghost" type="button" data-i18n="research.schedulerPreset">
+                        Use daily digest preset
+                      </button>
                       <button id="discovery-scheduler-save" class="btn primary" type="submit" data-i18n="research.schedulerSave">
                         Save schedule
                       </button>
@@ -1841,6 +1844,7 @@
                   </form>
 
                   <div id="discovery-scheduler-status" class="detail-list"></div>
+                  <div id="discovery-scheduler-hint" class="empty-state compact-empty"></div>
                   <div id="discovery-scheduler-runs" class="empty-state compact-empty">
                     <span data-i18n="research.schedulerEmpty">No scheduled runs yet.</span>
                   </div>

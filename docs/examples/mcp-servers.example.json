@@ -1,0 +1,14 @@
+{
+  "servers": [
+    {
+      "id": "example-local-docs",
+      "label": "Example Local Docs",
+      "transport": "stdio",
+      "command": "node",
+      "args": [
+        "scripts/example-mcp-server.mjs"
+      ],
+      "enabled": true
+    }
+  ]
+}

@@ -1,18 +1,17 @@
 {
   "project": "ReAgent",
-  "branchName": "ralph/reagent-personal-researcher-v1",
-  "description": "Productize ReAgent into a usable v1 for individual researchers with a stronger first-use loop, more trustworthy research outputs, durable backup and restore flows, and release-grade browser smoke checks.",
+  "branchName": "ralph/reagent-open-source-productization-v1",
+  "description": "Productize ReAgent into a publicly adoptable open-source research workspace with Hermes-style runtime seams, safe backup and recovery flows, release-grade verification, and clear developer extension contracts.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add onboarding readiness summary",
-      "description": "As a first-time individual researcher, I want `reagent onboard` to tell me what is blocked and what to do next so that I can start the product without reading the whole repo.",
+      "title": "Publish a stable public install guide and quickstart",
+      "description": "As an open-source evaluator, I want one official install path so that I can get ReAgent running without reading source code.",
       "acceptanceCriteria": [
-        "Classify onboarding checks into required and optional items",
-        "Readiness output covers `.env`, workspace, database, LLM route, channel mode, and runtime port",
-        "Each blocking issue includes one explicit next step",
-        "`--json` output is stable and machine-readable",
-        "Tests pass",
+        "README highlights one recommended install path using `@sinlair/reagent`",
+        "Quickstart covers Node version, database initialization, runtime start, and Web URL",
+        "Install failure guidance points to `reagent onboard` or `reagent doctor`",
+        "Quickstart includes one end-to-end path from an empty directory to a running Web console",
         "Typecheck passes"
       ],
       "priority": 1,
@@ -21,15 +20,16 @@
     },
     {
       "id": "US-002",
-      "title": "Apply a safe starter profile during onboarding",
-      "description": "As a first-time individual researcher, I want onboarding to apply a safe starter profile so that I can reach the product loop before configuring final providers.",
+      "title": "Tighten the first-run flow across onboard, home, and the Web console",
+      "description": "As a first-time user, I want onboard, home, and the Web console to form one guided first-run path so that I do not get dropped into implementation details.",
       "acceptanceCriteria": [
-        "`reagent onboard --apply` can set a safe `fallback + mock` starter profile when provider config is missing",
-        "Existing explicit provider values are not overwritten",
-        "After onboarding apply, `reagent home` can load without additional manual setup",
-        "Onboarding output explains that the starter profile is for evaluation rather than final research quality",
+        "`reagent onboard` next steps match `reagent home` and first-run Web copy",
+        "Starter profile, channel mode, and runtime health are described consistently across CLI and Web",
+        "First-run surfaces point to the next action without requiring manual command discovery",
+        "The first-run path covers `reagent onboard`, `reagent home`, `reagent service run`, and Web console entry",
         "Tests pass",
-        "Typecheck passes"
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
       ],
       "priority": 2,
       "passes": false,
@@ -37,15 +37,16 @@
     },
     {
       "id": "US-003",
-      "title": "Add first-use checklist to the home and landing surfaces",
-      "description": "As a first-time individual researcher, I want the home and landing pages to tell me the next step so that I can reach my first useful report from an empty workspace.",
+      "title": "Create workspace backup snapshots",
+      "description": "As a long-term user, I want one command to create a workspace snapshot so that I can safely upgrade, migrate, or experiment without losing work.",
       "acceptanceCriteria": [
-        "Home or landing shows a first useful report checklist",
-        "Checklist includes create brief, run research or discovery, open report, and save memory",
-        "Each checklist item includes a direct action or navigation target",
-        "Checklist reflects completed state when the workspace already has matching artifacts",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Add a workspace backup snapshot command",
+        "Snapshot covers file-backed memory, channel runtime state, research rounds, and the database layer",
+        "Successful backup returns one concrete local snapshot path",
+        "Backup does not overwrite an existing snapshot by default",
+        "Snapshot metadata records creation time and included content",
+        "Tests pass",
+        "Typecheck passes"
       ],
       "priority": 3,
       "passes": false,
@@ -53,15 +54,15 @@
     },
     {
       "id": "US-004",
-      "title": "Add brief starter templates for individual researchers",
-      "description": "As an individual researcher, I want starter brief templates so that I do not begin every new topic from an empty form.",
+      "title": "Preview workspace restore before applying it",
+      "description": "As a user restoring a workspace, I want to preview a snapshot before applying it so that I do not accidentally replace my current state.",
       "acceptanceCriteria": [
-        "Web offers at least three brief starter templates for personal research",
-        "Each template includes topic, target problem, success criteria, known baselines, and evaluation priorities",
-        "A selected template can be edited and saved as a direction or brief",
-        "Brief import and export still work after template support is added",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Add a restore preview command",
+        "Preview shows snapshot time, included content, and target workspace path",
+        "Preview does not modify the active workspace",
+        "Preview reports missing or unreadable snapshot content clearly",
+        "Tests pass",
+        "Typecheck passes"
       ],
       "priority": 4,
       "passes": false,
@@ -69,12 +70,13 @@
     },
     {
       "id": "US-005",
-      "title": "Improve discovery normalization and candidate deduplication",
-      "description": "As an individual researcher, I want repeated or near-duplicate discovery candidates to be suppressed so that I spend time on distinct papers rather than noisy repeats.",
+      "title": "Apply workspace restore safely",
+      "description": "As a user restoring a workspace, I want restore apply to require explicit confirmation so that recovery does not silently destroy current data.",
       "acceptanceCriteria": [
-        "Discovery candidate generation suppresses exact and near-duplicate paper candidates",
-        "Returned candidates keep stable source metadata for later UI display",
-        "When deduplication removes candidates, the run still returns deterministic ordering",
+        "Add a restore apply command",
+        "Restore apply requires explicit confirmation or an equivalent safety flag",
+        "Restore apply can repopulate `reagent home`, recent research, and memory files from restored data",
+        "Restore failures preserve a debuggable error state instead of partially overwriting the workspace silently",
         "Tests pass",
         "Typecheck passes"
       ],
@@ -84,14 +86,16 @@
     },
     {
       "id": "US-006",
-      "title": "Show discovery ranking reasons and candidate context in the UI",
-      "description": "As an individual researcher, I want discovery results to explain why each candidate is ranked so that I can quickly decide what to read next.",
+      "title": "Export a support bundle without leaking secrets",
+      "description": "As an open-source user hitting a problem, I want to export a support bundle so that I can debug locally or attach it to an issue without leaking plaintext secrets.",
       "acceptanceCriteria": [
-        "Discovery result cards show ranking reasons when available",
-        "Each candidate card shows source, year, and venue or equivalent metadata when available",
-        "Weak-result and empty-result states show explanatory copy rather than a blank list",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Add a support bundle export command",
+        "Bundle includes runtime status, doctor summary, recent logs, channel lifecycle, and agent runtime audit",
+        "Plaintext secrets are excluded by default",
+        "Successful export returns one concrete local bundle path",
+        "Bundle output is suitable for local diagnosis or issue attachment",
+        "Tests pass",
+        "Typecheck passes"
       ],
       "priority": 6,
       "passes": false,
@@ -99,13 +103,13 @@
     },
     {
       "id": "US-007",
-      "title": "Surface evidence, support labels, and warnings in report detail",
-      "description": "As an individual researcher, I want report detail to distinguish evidence-backed claims from inference so that I can judge whether a result is trustworthy.",
+      "title": "Add product-facing recovery hints to key surfaces",
+      "description": "As a user blocked by an error, I want key product surfaces to show recovery hints so that I know what to do next without reading raw logs.",
       "acceptanceCriteria": [
-        "Report detail shows evidence items with source type and confidence",
-        "The UI distinguishes paper-supported, code-supported, or inference-backed conclusions when data is available",
-        "Weak evidence coverage or high inference proportion shows an explicit warning state",
-        "No-evidence reports show a clear empty state instead of silently omitting evidence sections",
+        "Home, Settings, Channels, and Agents surfaces show product-facing recovery hints for blocking failures",
+        "Recovery hints name the next command, next setting, or next diagnostic artifact to inspect",
+        "Hints do not expose raw internal stack traces by default",
+        "Recovery hint wording is consistent with CLI doctor and status output",
         "Typecheck passes",
         "Verify in browser using dev-browser skill"
       ],
@@ -115,15 +119,15 @@
     },
     {
       "id": "US-008",
-      "title": "Add recent artifact reopen flow for personal work loops",
-      "description": "As an individual researcher, I want to reopen my latest report, presentation, module asset, or workstream memo so that prior work stays part of the daily loop.",
+      "title": "Add browser smoke verification to release checks",
+      "description": "As a maintainer, I want release verification to run a browser smoke gate so that broken public builds are blocked before release.",
       "acceptanceCriteria": [
-        "Web shows recent artifacts including report, presentation, module asset, and workstream memo when present",
-        "Recent artifact items navigate directly to a detail view or file-backed content view",
-        "`reagent home` surfaces the latest report and latest active task",
-        "Missing artifact targets return a readable error instead of a raw path failure",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Release verification includes a browser smoke flow",
+        "Smoke covers Landing or Home, Sessions, Agents, session switching, and history, hooks, runtime, and delegations panels",
+        "Smoke failures emit debuggable artifacts such as screenshots or result JSON",
+        "Smoke runs in a mock environment without real WeChat pairing",
+        "Tests pass",
+        "Typecheck passes"
       ],
       "priority": 8,
       "passes": false,
@@ -131,14 +135,13 @@
     },
     {
       "id": "US-009",
-      "title": "Export a single research artifact bundle",
-      "description": "As an individual researcher, I want to export one research result as a reusable bundle so that I can share or archive it outside the workspace.",
+      "title": "Create a stable public docs hub and navigation entrypoints",
+      "description": "As an open-source user or contributor, I want a structured docs entrypoint so that I can quickly find the right documentation without reading one long README.",
       "acceptanceCriteria": [
-        "Add a command that exports a single artifact bundle",
-        "The bundle can include report, review, related workstream memo, and core metadata",
-        "Successful export returns a concrete local file path",
-        "Export failures explain which required files are missing",
-        "Tests pass",
+        "Add a docs landing page or docs index linked from README",
+        "Docs navigation separates user, developer, and operations entrypoints",
+        "README no longer serves as the only documentation surface for all audiences",
+        "Core docs entrypoints are valid repo-relative links",
         "Typecheck passes"
       ],
       "priority": 9,
@@ -147,14 +150,12 @@
     },
     {
       "id": "US-010",
-      "title": "Create workspace backup snapshots",
-      "description": "As an individual researcher, I want one command to back up the whole workspace so that I can safely upgrade, migrate, or experiment without losing work.",
+      "title": "Document core product and runtime flows",
+      "description": "As a user or operator, I want docs for the core product flows so that I can install, run, upgrade, recover, and inspect ReAgent without guessing the intended path.",
       "acceptanceCriteria": [
-        "Add a workspace backup snapshot command",
-        "Backup covers file-backed memory, channel runtime state, research rounds, and the database layer",
-        "Backup output returns one snapshot path",
-        "Backup does not overwrite an existing snapshot by default",
-        "Tests pass",
+        "Docs cover install, run, upgrade, recovery, research, memory, agent runtime, and OpenClaw bridge flows",
+        "Each flow page names the primary commands or pages to use",
+        "Docs distinguish everyday user actions from maintainer or operator actions",
         "Typecheck passes"
       ],
       "priority": 10,
@@ -163,13 +164,12 @@
     },
     {
       "id": "US-011",
-      "title": "Preview workspace restore before applying it",
-      "description": "As an individual researcher, I want to preview a backup before restore so that I do not accidentally replace my current workspace.",
+      "title": "Publish a workspace skill example and contract guide",
+      "description": "As a third-party developer, I want one runnable workspace skill example and contract guide so that I can extend ReAgent without reverse-engineering internal code.",
       "acceptanceCriteria": [
-        "Add a restore preview command",
-        "Preview shows snapshot timestamp, included content, and target workspace path",
-        "Preview does not modify the active workspace",
-        "Tests pass",
+        "Add one runnable workspace skill example",
+        "Example documents required files, configuration, and validation steps",
+        "Docs distinguish stable skill integration fields from unstable implementation details",
         "Typecheck passes"
       ],
       "priority": 11,
@@ -178,14 +178,12 @@
     },
     {
       "id": "US-012",
-      "title": "Apply workspace restore safely",
-      "description": "As an individual researcher, I want to apply a restore with explicit confirmation so that I can recover a workspace without silent data loss.",
+      "title": "Publish an MCP example and contract guide",
+      "description": "As a third-party developer, I want one MCP example and contract guide so that I can integrate external tools into ReAgent with clear expectations.",
       "acceptanceCriteria": [
-        "Add a restore apply command",
-        "Restore apply requires explicit confirmation or an equivalent safety flag",
-        "After restore, `reagent home`, recent research, and memory files can load restored data",
-        "Restore failures leave the current workspace in a debuggable state with a clear error message",
-        "Tests pass",
+        "Add one MCP server configuration example",
+        "Example documents required config, expected behavior, and validation steps",
+        "Docs distinguish stable MCP integration fields from unstable implementation details",
         "Typecheck passes"
       ],
       "priority": 12,
@@ -194,14 +192,13 @@
     },
     {
       "id": "US-013",
-      "title": "Add product-facing recovery hints to key surfaces",
-      "description": "As an individual researcher, I want product-facing recovery hints on blocked surfaces so that I know how to recover without reading raw logs first.",
+      "title": "Publish a plugin or bridge example and contract guide",
+      "description": "As a third-party developer, I want one plugin or bridge-facing example and contract guide so that I can understand how ReAgent extends beyond built-in workspace skills.",
       "acceptanceCriteria": [
-        "Home, settings, channels, and agents surfaces show product-facing recovery hints for blocking failures",
-        "Recovery hints are actionable and name the next command or setting to check",
-        "Hints do not expose raw internal stack traces by default",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Add one plugin-facing or bridge-facing example",
+        "Example documents required contract fields, configuration, and validation steps",
+        "Docs distinguish stable plugin or bridge integration fields from unstable implementation details",
+        "Typecheck passes"
       ],
       "priority": 13,
       "passes": false,
@@ -209,14 +206,13 @@
     },
     {
       "id": "US-014",
-      "title": "Export a support bundle without leaking secrets",
-      "description": "As an individual researcher, I want to export a support bundle so that I can debug or ask for help without manually collecting logs.",
+      "title": "Publish public product examples and walkthroughs",
+      "description": "As a first-time evaluator, I want a few high-quality walkthroughs so that I can quickly understand ReAgent's product value before committing to adoption.",
       "acceptanceCriteria": [
-        "Add a support bundle export command",
-        "The bundle includes runtime status, doctor summary, recent logs, channel lifecycle, and agent runtime audit",
-        "Plaintext secrets are excluded by default",
-        "Successful export returns one local bundle path",
-        "Tests pass",
+        "Provide at least one personal researcher walkthrough",
+        "Provide at least one OpenClaw or channel runtime inspection walkthrough",
+        "Provide at least one brief-to-report-to-artifact-reopen walkthrough",
+        "Example commands and screenshots match current CLI or Web behavior",
         "Typecheck passes"
       ],
       "priority": 14,
@@ -225,33 +221,16 @@
     },
     {
       "id": "US-015",
-      "title": "Add a daily digest preset for individual researchers",
-      "description": "As an individual researcher, I want a daily digest preset so that I can enable routine updates without manually composing scheduler fields.",
+      "title": "Document release, compatibility, and positioning rules",
+      "description": "As a maintainer or contributor, I want explicit release, compatibility, and product-positioning rules so that users know what is stable and how ReAgent differs from Hermes-Agent.",
       "acceptanceCriteria": [
-        "Web provides a daily digest preset",
-        "The preset configures sender, time, topK, max papers, and enabled state",
-        "The preset works with the current brief or direction configuration",
-        "Scheduler empty and disabled states explain what is missing",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 15,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-016",
-      "title": "Add browser smoke verification to release checks",
-      "description": "As a maintainer, I want release verification to run a browser smoke flow so that public beta builds cannot ship with broken core pages.",
-      "acceptanceCriteria": [
-        "Release verification runs a browser smoke flow",
-        "The smoke flow covers Sessions, Agents, session switching, and history, hooks, runtime, and delegations panels",
-        "Smoke failures emit debuggable artifacts such as screenshots or result JSON",
-        "Smoke can run against a mock environment without real WeChat pairing",
-        "Tests pass",
+        "Docs mark stable surfaces, compatibility aliases, and experimental features",
+        "Release process documents changelog expectations, upgrade notes, and breaking-change handling",
+        "README or docs explicitly state that ReAgent is a research-first workspace rather than a completed general-purpose agent runtime",
+        "Docs explain shared Hermes-style runtime seams versus ReAgent-specific research artifact and memory models",
         "Typecheck passes"
       ],
-      "priority": 16,
+      "priority": 15,
       "passes": false,
       "notes": ""
     }

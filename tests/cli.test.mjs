@@ -3238,6 +3238,166 @@ async function main() {
         assert.equal(result.stdout.includes("reagent service run"), true);
       });
 
+      await runTest("CLI workspace snapshot exports a non-overwriting workspace backup", async () => {
+        await withTempDir(async (tempDir) => {
+          const workspaceDir = path.join(tempDir, "workspace");
+          const snapshotsDir = path.join(tempDir, "snapshots");
+          const protectionDir = path.join(tempDir, "restore-protection");
+          const bundleDir = path.join(tempDir, "support-bundles");
+          const sqliteDir = path.join(tempDir, "prisma");
+          const sqlitePath = path.join(sqliteDir, "dev.db");
+
+          await mkdir(path.join(workspaceDir, "channels"), { recursive: true });
+          await mkdir(path.join(workspaceDir, "research"), { recursive: true });
+          await mkdir(path.join(workspaceDir, "memory"), { recursive: true });
+          await mkdir(sqliteDir, { recursive: true });
+
+          await writeFile(path.join(workspaceDir, "memory", "note.md"), "# note\n", "utf8");
+          await writeFile(path.join(workspaceDir, "channels", "wechat-state.json"), "{\"connected\":false}\n", "utf8");
+          await writeFile(path.join(workspaceDir, "channels", "wechat-lifecycle-audit.jsonl"), "{\"event\":\"started\"}\n", "utf8");
+          await writeFile(path.join(workspaceDir, "channels", "agent-runtime-audit.jsonl"), "{\"event\":\"tool_call\"}\n", "utf8");
+          await writeFile(path.join(workspaceDir, "research", "task-runs.json"), "{\"tasks\":[]}\n", "utf8");
+          await writeFile(sqlitePath, "sqlite-fixture", "utf8");
+
+          let result = await runCli(
+            [
+              "workspace",
+              "snapshot",
+              "--workspace",
+              workspaceDir,
+              "--db-url",
+              `file:${sqlitePath}`,
+              "--out",
+              snapshotsDir,
+              "--label",
+              "test-snapshot",
+              "--json",
+            ],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          let payload = JSON.parse(result.stdout);
+          assert.equal(payload.snapshotDir.endsWith(path.join("snapshots", "test-snapshot")), true);
+          assert.equal(payload.manifest.format, "reagent-workspace-snapshot");
+          assert.equal(payload.manifest.includes.some((entry) => entry.kind === "workspace"), true);
+          assert.equal(payload.manifest.includes.some((entry) => entry.kind === "database"), true);
+          const manifestRaw = await readFile(path.join(snapshotsDir, "test-snapshot", "manifest.json"), "utf8");
+          const manifest = JSON.parse(manifestRaw);
+          assert.equal(manifest.workspaceDir, workspaceDir);
+          await access(path.join(snapshotsDir, "test-snapshot", "workspace", "memory", "note.md"));
+          await access(path.join(snapshotsDir, "test-snapshot", "database", "dev.db"));
+
+          result = await runCli(
+            [
+              "workspace",
+              "restore",
+              "preview",
+              path.join(snapshotsDir, "test-snapshot"),
+              "--json",
+            ],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.manifest.format, "reagent-workspace-snapshot");
+          assert.equal(payload.manifest.createdAt, manifest.createdAt);
+
+          await writeFile(path.join(workspaceDir, "memory", "note.md"), "# mutated\n", "utf8");
+          await writeFile(sqlitePath, "sqlite-mutated", "utf8");
+
+          result = await runCli(
+            [
+              "workspace",
+              "restore",
+              "apply",
+              path.join(snapshotsDir, "test-snapshot"),
+              "--workspace",
+              workspaceDir,
+              "--db-url",
+              `file:${sqlitePath}`,
+              "--protection-dir",
+              protectionDir,
+              "--json",
+            ],
+            cwd,
+          );
+          assert.equal(result.code, 1);
+          assert.equal(result.stderr.includes("--yes"), true);
+
+          result = await runCli(
+            [
+              "workspace",
+              "restore",
+              "apply",
+              path.join(snapshotsDir, "test-snapshot"),
+              "--workspace",
+              workspaceDir,
+              "--db-url",
+              `file:${sqlitePath}`,
+              "--protection-dir",
+              protectionDir,
+              "--yes",
+              "--json",
+            ],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.restored, true);
+          assert.equal(payload.protectionDir.includes("restore-protection"), true);
+          const restoredNote = await readFile(path.join(workspaceDir, "memory", "note.md"), "utf8");
+          const restoredDb = await readFile(sqlitePath, "utf8");
+          assert.equal(restoredNote.includes("# note"), true);
+          assert.equal(restoredDb, "sqlite-fixture");
+          await access(path.join(payload.protectionDir, "workspace-before-restore", "memory", "note.md"));
+
+          result = await runCli(
+            [
+              "workspace",
+              "support-bundle",
+              "--workspace",
+              workspaceDir,
+              "--db-url",
+              `file:${sqlitePath}`,
+              "--out",
+              bundleDir,
+              "--label",
+              "test-support",
+              "--json",
+            ],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.bundleDir.endsWith(path.join("support-bundles", "test-support")), true);
+          const supportBundle = JSON.parse(await readFile(path.join(bundleDir, "test-support", "bundle.json"), "utf8"));
+          assert.equal(supportBundle.format, "reagent-support-bundle");
+          assert.equal(typeof supportBundle.runtimeStatus.reachable, "boolean");
+          assert.equal(supportBundle.channelLifecycleAudit.includes("\"started\""), true);
+          assert.equal(supportBundle.agentRuntimeAudit.includes("\"tool_call\""), true);
+          assert.equal(JSON.stringify(supportBundle).includes("OPENAI_API_KEY"), false);
+
+          result = await runCli(
+            [
+              "workspace",
+              "snapshot",
+              "--workspace",
+              workspaceDir,
+              "--db-url",
+              `file:${sqlitePath}`,
+              "--out",
+              snapshotsDir,
+              "--label",
+              "test-snapshot",
+              "--json",
+            ],
+            cwd,
+          );
+          assert.equal(result.code, 1);
+          assert.equal(result.stderr.includes("Snapshot target already exists"), true);
+        });
+      });
+
       await runTest("CLI research task and report commands expose synchronous and queued flows", async () => {
         const taskId = "11111111-1111-1111-1111-111111111111";
 

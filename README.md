@@ -9,6 +9,8 @@
     <a href="./README.zh-CN.md">简体中文</a>
   </p>
   <p>
+    <a href="./docs/index.md">Docs</a>
+    <span>&nbsp;|&nbsp;</span>
     <a href="./ROADMAP.md">Roadmap</a>
     <span>&nbsp;|&nbsp;</span>
     <a href="./OPERATIONS.md">Operations</a>
@@ -43,6 +45,7 @@
 
 - `reagent` is the primary product surface.
 - The only official npm install target is `@sinlair/reagent`.
+- The public docs hub starts at [`docs/index.md`](./docs/index.md).
 - One always-on runtime acts as the control plane for research, memory, channels, jobs, and delivery.
 - The CLI is the main control surface. The web console is a companion inspection surface.
 - Research work is durable: briefs, tasks, reports, reviews, presentations, workstreams, and module assets stay visible after one run.
@@ -190,6 +193,8 @@ Those choices are reflected directly in the runtime, CLI, and repository structu
 
 ## Quick Start
 
+For the public install path, start with [`docs/public-install.md`](./docs/public-install.md).
+
 1. Install dependencies.
 2. Push the Prisma schema.
 3. Start the runtime or onboard first.
@@ -216,6 +221,8 @@ If PowerShell blocks `npm`, use `npm.cmd`.
 
 ## Global CLI Install
 
+This is the official public install path:
+
 ```bash
 npm install -g @sinlair/reagent
 reagent onboard
@@ -225,9 +232,22 @@ reagent service run
 
 `reagent home` works with the starter profile without additional provider setup.
 The Web console uses the same starter profile once the runtime is running.
+Default Web URL: `http://127.0.0.1:3000/`
 
 The published package name is `@sinlair/reagent`.
 The installed command is `reagent`.
+
+## Docs
+
+Start here:
+
+- [Docs Hub](./docs/index.md)
+- [Public Install And Quickstart](./docs/public-install.md)
+- [Core Product Flows](./docs/core-flows.md)
+- [Public Walkthroughs](./docs/walkthroughs.md)
+- [Positioning: ReAgent vs Hermes-Agent](./docs/positioning.md)
+- [Developer Extensions: Skills, MCP, And Bridge Contracts](./docs/developer-extensions.md)
+- [Release And Compatibility Rules](./docs/release-and-compatibility.md)
 
 ## Recommended CLI Flow
 
@@ -253,6 +273,9 @@ reagent home
 reagent runtime status
 reagent runtime jobs
 reagent runtime logs --follow
+reagent workspace snapshot
+reagent workspace restore preview <snapshotPath>
+reagent workspace support-bundle
 reagent agent runtime
 reagent agent sessions
 reagent research recent
