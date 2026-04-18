@@ -141,6 +141,21 @@ async function createFixtureServer() {
       scope: "research-only",
       allowRecursiveDelegation: false,
     },
+    rationale: {
+      source: "cognition-state",
+      summary: "Current cognition prefers evidence-gathering delegations before search.",
+      matchedAction: "Inspect the strongest evidence before delivery.",
+      matchedHypothesis: "There may be multiple valid alternatives worth keeping in play.",
+      posture: {
+        mode: "evidence-gathering",
+        reasons: ["1 conflicted hypothesis node(s) remain active."],
+        recommendedKinds: ["search", "reading"],
+        deferredKinds: ["synthesis"],
+        conflictedHypotheses: 1,
+        provisionalHypotheses: 1,
+        supportedHypotheses: 0,
+      },
+    },
     artifact: {
       path: "research/rounds/11111111-1111-1111-1111-111111111111/workstreams/search.md",
       type: "workstream-memo",
@@ -1180,6 +1195,21 @@ async function createFixtureServer() {
           ...(body.prompt ? { prompt: body.prompt } : {}),
           scope: "research-only",
           allowRecursiveDelegation: false,
+        },
+        rationale: {
+          source: "cognition-state",
+          summary: `Current cognition prefers evidence-gathering delegations before ${body.kind}.`,
+          matchedAction: "Inspect the strongest evidence before delivery.",
+          matchedHypothesis: "There may be multiple valid alternatives worth keeping in play.",
+          posture: {
+            mode: body.kind === "synthesis" ? "balanced" : "evidence-gathering",
+            reasons: ["1 conflicted hypothesis node(s) remain active."],
+            recommendedKinds: body.kind === "synthesis" ? ["reading", "search", "synthesis"] : ["search", "reading"],
+            deferredKinds: body.kind === "synthesis" ? [] : ["synthesis"],
+            conflictedHypotheses: 1,
+            provisionalHypotheses: 1,
+            supportedHypotheses: 0,
+          },
         },
       };
       sendJson(201, agentDelegation);
@@ -3140,12 +3170,15 @@ async function main() {
         payload = JSON.parse(result.stdout);
         assert.equal(payload.status, "completed");
         assert.equal(payload.kind, "search");
+        assert.equal(payload.rationale.posture.mode, "evidence-gathering");
+        assert.equal(payload.rationale.matchedAction.includes("Inspect the strongest evidence"), true);
 
         result = await runCli(["agent", "delegates", "--url", fixture.baseUrl, "--json"], cwd);
         assert.equal(result.code, 0, result.stderr);
         payload = JSON.parse(result.stdout);
         assert.equal(payload.items.length, 1);
         assert.equal(payload.items[0].delegationId, "dlg_fixture_1");
+        assert.equal(payload.items[0].rationale.posture.recommendedKinds.includes("search"), true);
       });
 
       await runTest("CLI channels chat, inbound, and push commands send message payloads", async () => {

@@ -217,6 +217,21 @@ type AgentDelegationRecord = {
     scope: "research-only";
     allowRecursiveDelegation: boolean;
   };
+  rationale?: {
+    source: "cognition-state";
+    summary: string;
+    matchedAction?: string | undefined;
+    matchedHypothesis?: string | undefined;
+    posture: {
+      mode: "evidence-gathering" | "delivery-ready" | "balanced";
+      reasons: string[];
+      recommendedKinds: Array<"search" | "reading" | "synthesis">;
+      deferredKinds: Array<"search" | "reading" | "synthesis">;
+      conflictedHypotheses: number;
+      provisionalHypotheses: number;
+      supportedHypotheses: number;
+    };
+  } | undefined;
   artifact?: {
     path: string;
     type: "workstream-memo";
@@ -498,6 +513,18 @@ Flags:
       }
       if (item.input.prompt) {
         console.log(`Prompt=${item.input.prompt}`);
+      }
+      if (item.rationale) {
+        console.log(`Rationale=${item.rationale.summary}`);
+        console.log(
+          `Posture=${item.rationale.posture.mode} Recommended=${item.rationale.posture.recommendedKinds.join(", ") || "-"}`,
+        );
+        if (item.rationale.matchedAction) {
+          console.log(`Matched action=${item.rationale.matchedAction}`);
+        }
+        if (item.rationale.matchedHypothesis) {
+          console.log(`Matched hypothesis=${item.rationale.matchedHypothesis}`);
+        }
       }
       if (item.error) {
         console.log(`Error=${item.error}`);

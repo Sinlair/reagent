@@ -1897,6 +1897,23 @@ function renderAgentDelegationsPanel() {
         <article class="result-item">
           <h3>${escapeHtml(item.kind)} / ${escapeHtml(item.status)}</h3>
           <p>${escapeHtml(`Task ${item.taskId}`)}</p>
+          ${
+            item.rationale
+              ? `<p>${escapeHtml(
+                  `${item.rationale.summary} | posture=${item.rationale.posture?.mode || "-"} | recommended=${(item.rationale.posture?.recommendedKinds || []).join(", ") || "-"}`
+                )}</p>`
+              : ""
+          }
+          ${
+            item.rationale?.matchedAction
+              ? `<small>${escapeHtml(`Action: ${item.rationale.matchedAction}`)}</small>`
+              : ""
+          }
+          ${
+            item.rationale?.matchedHypothesis
+              ? `<small>${escapeHtml(`Hypothesis: ${item.rationale.matchedHypothesis}`)}</small>`
+              : ""
+          }
           <small>${escapeHtml(item.artifact?.path || item.input?.prompt || item.error || formatTime(item.updatedAt))}</small>
         </article>
       `
