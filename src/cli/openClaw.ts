@@ -75,6 +75,28 @@ export interface OpenClawCliDeps {
 }
 
 export function createOpenClawCli(deps: OpenClawCliDeps) {
+  function renderOpenClawHelp(): void {
+    console.log(`ReAgent OpenClaw
+
+Commands:
+  reagent openclaw
+  reagent openclaw status
+  reagent openclaw sessions
+  reagent openclaw history <sessionKey>
+  reagent openclaw watch [sessionKey]
+  reagent openclaw sync
+  reagent openclaw plugins ...
+
+Notes:
+  - "status" is the direct OpenClaw overview surface for ReAgent
+  - "sessions", "history", and "watch" reuse the same host/session surfaces exposed at the root
+  - "plugins" reuses the existing plugin inspection and lifecycle paths
+
+Flags:
+  --json                 Print JSON output
+`);
+  }
+
   async function resolveOpenClawCliPath(options: ParsedOptions): Promise<string> {
     applyRuntimeOverrides(options);
     const runtimeEnv = await deps.loadRuntimeEnv();
@@ -237,6 +259,33 @@ Flags:
       gatewayUrl: runtimeEnv.OPENCLAW_GATEWAY_URL,
       channelId: runtimeEnv.OPENCLAW_WECHAT_CHANNEL_ID,
     });
+  }
+
+  async function openClawStatusCommand(options: ParsedOptions): Promise<void> {
+    const runtimeEnv = await deps.loadRuntimeEnv();
+    const overview = await buildOpenClawOverview();
+    const payload = {
+      wechatProvider: runtimeEnv.WECHAT_PROVIDER,
+      openclaw: overview,
+    };
+
+    if (getBooleanFlag(options, "json")) {
+      deps.printJson(payload);
+      return;
+    }
+
+    console.log("ReAgent OpenClaw");
+    console.log("");
+    console.log(`WeChat provider: ${runtimeEnv.WECHAT_PROVIDER}`);
+    console.log(`CLI: ${overview.cliPath}`);
+    console.log(`Gateway URL: ${overview.gatewayUrl}`);
+    console.log(`Channel: ${overview.channelId}`);
+    console.log(`Imported upstream: ${deps.formatYesNo(overview.upstreamAvailable)}`);
+    console.log(`Foundation packages: ${overview.foundationPackageCount}`);
+    console.log(`Imported upstream extensions: ${overview.importedExtensionCount}`);
+    console.log(`Cached host sessions: ${overview.sessionRegistryCount}`);
+    console.log(`Session registry updated: ${deps.formatWhen(overview.sessionRegistryUpdatedAt)}`);
+    console.log(`Imported commit: ${overview.sourceCommit ?? "-"}`);
   }
 
   async function createOpenClawBridgeFromOptions(options: ParsedOptions): Promise<any> {
@@ -702,8 +751,68 @@ Flags:
     });
   }
 
+  async function openClawCommand(options: ParsedOptions): Promise<void> {
+    if (getBooleanFlag(options, "help", "h")) {
+      renderOpenClawHelp();
+      return;
+    }
+
+    const subcommand = options.positionals[0];
+    if (!subcommand || subcommand === "status") {
+      await openClawStatusCommand({
+        flags: new Map(options.flags),
+        positionals: subcommand ? options.positionals.slice(1) : options.positionals,
+      });
+      return;
+    }
+
+    if (subcommand === "sessions") {
+      await openClawSessionsCommand({
+        flags: new Map(options.flags),
+        positionals: options.positionals.slice(1),
+      });
+      return;
+    }
+
+    if (subcommand === "history") {
+      await openClawHistoryCommand({
+        flags: new Map(options.flags),
+        positionals: options.positionals.slice(1),
+      });
+      return;
+    }
+
+    if (subcommand === "watch") {
+      await openClawWatchCommand({
+        flags: new Map(options.flags),
+        positionals: options.positionals.slice(1),
+      });
+      return;
+    }
+
+    if (subcommand === "sync") {
+      await openClawSyncCommand({
+        flags: new Map(options.flags),
+        positionals: options.positionals.slice(1),
+      });
+      return;
+    }
+
+    if (subcommand === "plugins") {
+      await pluginsCommand({
+        flags: new Map(options.flags),
+        positionals: options.positionals.slice(1),
+      });
+      return;
+    }
+
+    throw new Error(`Unknown openclaw command: ${subcommand}`);
+  }
+
   return {
     buildOpenClawOverview,
+    renderOpenClawHelp,
+    openClawStatusCommand,
     openClawInspectCommand,
     openClawSessionsCommand,
     openClawHistoryCommand,
@@ -716,5 +825,6 @@ Flags:
     delegatePluginCommand,
     delegateOpenClawCommandFamily,
     pluginsCommand,
+    openClawCommand,
   };
 }

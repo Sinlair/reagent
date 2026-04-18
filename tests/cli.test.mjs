@@ -2803,6 +2803,20 @@ async function main() {
         assert.equal(result.stdout.includes("Search mode:"), true);
       });
 
+      await runTest("CLI openclaw status exposes a dedicated overview surface", async () => {
+        let result = await runCli(["openclaw", "status", "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        let payload = JSON.parse(result.stdout);
+        assert.equal(payload.wechatProvider.length > 0, true);
+        assert.equal(payload.openclaw.cliPath.length > 0, true);
+        assert.equal(typeof payload.openclaw.sessionRegistryCount, "number");
+
+        result = await runCli(["openclaw"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(result.stdout.includes("ReAgent OpenClaw"), true);
+        assert.equal(result.stdout.includes("Imported upstream"), true);
+      });
+
       await runTest("CLI status falls back to local diagnostics when the gateway is unreachable", async () => {
         const result = await runCli(["status", "--url", "http://127.0.0.1:1", "--json"], cwd);
         assert.equal(result.code, 0, result.stderr);
@@ -3301,6 +3315,8 @@ async function main() {
           payload = JSON.parse(result.stdout);
           assert.equal(payload.manifest.format, "reagent-workspace-snapshot");
           assert.equal(payload.manifest.createdAt, manifest.createdAt);
+          assert.equal(payload.validation.valid, true);
+          assert.equal(payload.validation.workspaceFileCount >= 3, true);
 
           await writeFile(path.join(workspaceDir, "memory", "note.md"), "# mutated\n", "utf8");
           await writeFile(sqlitePath, "sqlite-mutated", "utf8");
@@ -3344,12 +3360,49 @@ async function main() {
           assert.equal(result.code, 0, result.stderr);
           payload = JSON.parse(result.stdout);
           assert.equal(payload.restored, true);
+          assert.equal(payload.validation.valid, true);
           assert.equal(payload.protectionDir.includes("restore-protection"), true);
           const restoredNote = await readFile(path.join(workspaceDir, "memory", "note.md"), "utf8");
           const restoredDb = await readFile(sqlitePath, "utf8");
           assert.equal(restoredNote.includes("# note"), true);
           assert.equal(restoredDb, "sqlite-fixture");
           await access(path.join(payload.protectionDir, "workspace-before-restore", "memory", "note.md"));
+
+          await rm(path.join(snapshotsDir, "test-snapshot", "database", "dev.db"));
+          result = await runCli(
+            [
+              "workspace",
+              "restore",
+              "preview",
+              path.join(snapshotsDir, "test-snapshot"),
+              "--json",
+            ],
+            cwd,
+          );
+          assert.equal(result.code, 0, result.stderr);
+          payload = JSON.parse(result.stdout);
+          assert.equal(payload.validation.valid, false);
+          assert.equal(payload.validation.missingPaths.some((item) => item.endsWith(path.join("database", "dev.db"))), true);
+
+          result = await runCli(
+            [
+              "workspace",
+              "restore",
+              "apply",
+              path.join(snapshotsDir, "test-snapshot"),
+              "--workspace",
+              workspaceDir,
+              "--db-url",
+              `file:${sqlitePath}`,
+              "--protection-dir",
+              protectionDir,
+              "--yes",
+              "--json",
+            ],
+            cwd,
+          );
+          assert.equal(result.code, 1);
+          assert.equal(result.stderr.includes("Snapshot is incomplete"), true);
 
           result = await runCli(
             [

@@ -38,6 +38,9 @@ Goal:
 Commands:
 
 ```powershell
+reagent openclaw status
+reagent openclaw sessions
+reagent openclaw history <sessionKey>
 reagent channels status
 reagent sessions
 reagent history <sessionKey>

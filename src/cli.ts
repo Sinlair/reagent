@@ -438,6 +438,7 @@ Core:
   reagent watch       Watch live OpenClaw host session events from the root CLI
   reagent sessions    List live OpenClaw host sessions from the root CLI
   reagent history     Read OpenClaw host chat history for a session
+  reagent openclaw    Inspect the OpenClaw overview and host-facing surfaces
   reagent login       Start the channel login flow
   reagent wait        Wait for channel login completion
   reagent logout      Log out the active channel session
@@ -4144,6 +4145,8 @@ const {
 
 const {
   buildOpenClawOverview,
+  renderOpenClawHelp,
+  openClawStatusCommand,
   openClawInspectCommand,
   openClawSessionsCommand,
   openClawHistoryCommand,
@@ -4156,6 +4159,7 @@ const {
   delegatePluginCommand,
   delegateOpenClawCommandFamily,
   pluginsCommand,
+  openClawCommand,
 } = createOpenClawCli({
   loadRuntimeEnv,
   renderPluginsHelp,
@@ -4467,6 +4471,7 @@ const ROOT_COMMAND_HANDLERS: Record<string, CliCommandHandler> = {
   push: channelsPushCommand,
   sessions: openClawSessionsCommand,
   history: openClawHistoryCommand,
+  openclaw: openClawCommand,
   inspect: openClawInspectCommand,
   ...ROOT_PLUGIN_DELEGATE_HANDLERS,
   onboard: onboardCommand,

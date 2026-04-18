@@ -193,6 +193,15 @@ interface AgentSessionDigest {
   recentUserIntents: string[];
   recentToolOutcomes: string[];
   pendingActions: string[];
+  neurons: AgentSessionNeuronState;
+}
+
+interface AgentSessionNeuronState {
+  updatedAt: string;
+  perception: string[];
+  memory: string[];
+  reasoning: string[];
+  action: string[];
 }
 
 interface AgentSession {
@@ -297,6 +306,7 @@ const MAX_DISCLOSED_SKILL_REFERENCE_CHARS = 1000;
 const MAX_DIGEST_USER_INTENTS = 6;
 const MAX_DIGEST_TOOL_OUTCOMES = 6;
 const MAX_DIGEST_PENDING_ACTIONS = 4;
+const MAX_NEURON_ITEMS = 4;
 const ALL_AGENT_TOOLSETS: AgentToolsetId[] = [
   "workspace",
   "memory",
@@ -375,6 +385,17 @@ function defaultSessionDigest(): AgentSessionDigest {
     recentUserIntents: [],
     recentToolOutcomes: [],
     pendingActions: [],
+    neurons: defaultNeuronState(),
+  };
+}
+
+function defaultNeuronState(): AgentSessionNeuronState {
+  return {
+    updatedAt: nowIso(),
+    perception: [],
+    memory: [],
+    reasoning: [],
+    action: [],
   };
 }
 
@@ -707,6 +728,69 @@ function summarizeToolTurn(turn: AgentTurn): string | null {
   }
 }
 
+function inferReasoningNeuronSignals(inputText: string, recentToolOutcomes: string[]): string[] {
+  const normalized = inputText.toLowerCase();
+  const signals: string[] = [];
+
+  if (/\b(compare|versus|vs|tradeoff|difference)\b/iu.test(normalized) || /(瀵规瘮|姣旇緝|宸紓)/u.test(inputText)) {
+    signals.push("Compare alternatives before committing to one conclusion.");
+  }
+  if (/\b(summarize|summary|briefing|tldr|digest)\b/iu.test(normalized) || /(鎬荤粨|鎽樿|绠€鎶?)/u.test(inputText)) {
+    signals.push("Compress the strongest signals into a reviewable synthesis.");
+  }
+  if (/\b(why|reason|because|evidence|support|confidence)\b/iu.test(normalized) || /(涓轰粈涔?璇佹嵁|鏀寔|淇″績)/u.test(inputText)) {
+    signals.push("Ground the answer in evidence and separate support from inference.");
+  }
+  if (/\b(next|plan|should|what now|action)\b/iu.test(normalized) || /(涓嬩竴姝?璁″垝|鎬庝箞鍋?)/u.test(inputText)) {
+    signals.push("End with a concrete next action instead of only analysis.");
+  }
+  if (recentToolOutcomes.length === 0) {
+    signals.push("Use live workspace state before guessing.");
+  }
+
+  if (signals.length === 0) {
+    signals.push("Synthesize the current session state into one clear working judgment.");
+  }
+
+  return trimDigestItems(signals, MAX_NEURON_ITEMS);
+}
+
+function buildNeuronState(input: {
+  recentUserIntents: string[];
+  recentToolOutcomes: string[];
+  pendingActions: string[];
+  turns: AgentTurn[];
+}): AgentSessionNeuronState {
+  const latestUserTurn = [...input.turns].reverse().find((turn) => turn.role === "user")?.content ?? "";
+  const perception = trimDigestItems(
+    input.turns
+      .filter((turn) => turn.role === "user")
+      .slice(-MAX_NEURON_ITEMS)
+      .map((turn) => clipText(turn.content, 140)),
+    MAX_NEURON_ITEMS,
+  );
+  const memory = trimDigestItems(
+    [
+      ...input.recentToolOutcomes,
+      ...input.recentUserIntents.map((item) => item.replace(/^User asked:\s*/u, "").trim()),
+    ],
+    MAX_NEURON_ITEMS,
+  );
+  const reasoning = inferReasoningNeuronSignals(latestUserTurn, input.recentToolOutcomes);
+  const action = trimDigestItems(input.pendingActions, MAX_NEURON_ITEMS);
+
+  return {
+    updatedAt: nowIso(),
+    perception,
+    memory,
+    reasoning,
+    action:
+      action.length > 0
+        ? action
+        : ["Leave one concrete next step instead of ending with only descriptive context."],
+  };
+}
+
 function buildDigestFromTurns(turns: AgentTurn[]): AgentSessionDigest {
   const recentUserIntents = trimDigestItems(
     turns
@@ -728,6 +812,12 @@ function buildDigestFromTurns(turns: AgentTurn[]): AgentSessionDigest {
     recentUserIntents,
     recentToolOutcomes,
     pendingActions: trimDigestItems(latestPendingActions, MAX_DIGEST_PENDING_ACTIONS),
+    neurons: buildNeuronState({
+      recentUserIntents,
+      recentToolOutcomes,
+      pendingActions: trimDigestItems(latestPendingActions, MAX_DIGEST_PENDING_ACTIONS),
+      turns,
+    }),
   };
 }
 
@@ -761,11 +851,29 @@ function mergeSessionDigest(current: AgentSessionDigest, turns: AgentTurn[]): Ag
     recentUserIntents: nextUserIntents,
     recentToolOutcomes: nextToolOutcomes,
     pendingActions: nextPendingActions,
+    neurons: buildNeuronState({
+      recentUserIntents: nextUserIntents,
+      recentToolOutcomes: nextToolOutcomes,
+      pendingActions: nextPendingActions,
+      turns,
+    }),
   };
 }
 
 function buildSessionDigestBlock(digest: AgentSessionDigest): string {
   const sections = [
+    digest.neurons.perception.length > 0
+      ? ["Neuron state / perception:", ...digest.neurons.perception.map((item) => `- ${item}`)]
+      : [],
+    digest.neurons.memory.length > 0
+      ? ["Neuron state / memory:", ...digest.neurons.memory.map((item) => `- ${item}`)]
+      : [],
+    digest.neurons.reasoning.length > 0
+      ? ["Neuron state / reasoning:", ...digest.neurons.reasoning.map((item) => `- ${item}`)]
+      : [],
+    digest.neurons.action.length > 0
+      ? ["Neuron state / action:", ...digest.neurons.action.map((item) => `- ${item}`)]
+      : [],
     digest.recentUserIntents.length > 0
       ? ["Recent user intents:", ...digest.recentUserIntents.map((item) => `- ${item}`)]
       : [],
@@ -1874,6 +1982,57 @@ export class AgentRuntime {
                           : [],
                         MAX_DIGEST_PENDING_ACTIONS,
                       ),
+                      neurons:
+                        rawDigest.neurons && typeof rawDigest.neurons === "object"
+                          ? {
+                              updatedAt:
+                                typeof rawDigest.neurons.updatedAt === "string" ? rawDigest.neurons.updatedAt : nowIso(),
+                              perception: trimDigestItems(
+                                Array.isArray(rawDigest.neurons.perception)
+                                  ? rawDigest.neurons.perception.filter((item): item is string => typeof item === "string")
+                                  : [],
+                                MAX_NEURON_ITEMS,
+                              ),
+                              memory: trimDigestItems(
+                                Array.isArray(rawDigest.neurons.memory)
+                                  ? rawDigest.neurons.memory.filter((item): item is string => typeof item === "string")
+                                  : [],
+                                MAX_NEURON_ITEMS,
+                              ),
+                              reasoning: trimDigestItems(
+                                Array.isArray(rawDigest.neurons.reasoning)
+                                  ? rawDigest.neurons.reasoning.filter((item): item is string => typeof item === "string")
+                                  : [],
+                                MAX_NEURON_ITEMS,
+                              ),
+                              action: trimDigestItems(
+                                Array.isArray(rawDigest.neurons.action)
+                                  ? rawDigest.neurons.action.filter((item): item is string => typeof item === "string")
+                                  : [],
+                                MAX_NEURON_ITEMS,
+                              ),
+                            }
+                          : buildNeuronState({
+                              recentUserIntents: trimDigestItems(
+                                Array.isArray(rawDigest.recentUserIntents)
+                                  ? rawDigest.recentUserIntents.filter((item): item is string => typeof item === "string")
+                                  : [],
+                                MAX_DIGEST_USER_INTENTS,
+                              ),
+                              recentToolOutcomes: trimDigestItems(
+                                Array.isArray(rawDigest.recentToolOutcomes)
+                                  ? rawDigest.recentToolOutcomes.filter((item): item is string => typeof item === "string")
+                                  : [],
+                                MAX_DIGEST_TOOL_OUTCOMES,
+                              ),
+                              pendingActions: trimDigestItems(
+                                Array.isArray(rawDigest.pendingActions)
+                                  ? rawDigest.pendingActions.filter((item): item is string => typeof item === "string")
+                                  : [],
+                                MAX_DIGEST_PENDING_ACTIONS,
+                              ),
+                              turns,
+                            }),
                     }
                   : buildDigestFromTurns(turns);
 
@@ -2094,6 +2253,7 @@ export class AgentRuntime {
       "- If the user asks how papers, repos, or artifacts relate, use graph_query, graph_report, graph_explain, or graph_path.",
       "- Keep the final answer concise and actionable.",
       "- When tools or research actions were involved, structure the final answer as: What I understood / What I did / What you should do next.",
+      "- Organize internal reasoning like a human-style neural loop: perception -> memory -> reasoning -> action.",
       "- Reply in the same language as the user.",
       ...(workspaceSkillDisclosure.catalogLines.length > 0
         ? [

@@ -49,9 +49,10 @@ export function createWorkspaceLifecycleCli(deps: WorkspaceLifecycleCliDeps) {
       throw new Error("workspace restore preview requires a snapshot directory or manifest path.");
     }
 
-    const manifest = await WorkspaceBackupService.readSnapshotManifest(path.resolve(process.cwd(), snapshotPath));
+    const inspection = await WorkspaceBackupService.inspectSnapshot(path.resolve(process.cwd(), snapshotPath));
+    const { manifest, validation } = inspection;
     if (getBooleanFlag(options, "json")) {
-      deps.printJson({ manifest });
+      deps.printJson({ manifest, validation });
       return;
     }
 
@@ -59,6 +60,16 @@ export function createWorkspaceLifecycleCli(deps: WorkspaceLifecycleCliDeps) {
     console.log(`Created: ${manifest.createdAt}`);
     console.log(`Target workspace: ${manifest.workspaceDir}`);
     console.log(`Database: ${manifest.sqlitePath ?? manifest.databaseUrl}`);
+    console.log(`Valid: ${validation.valid ? "yes" : "no"}`);
+    console.log(`Workspace files: ${validation.workspaceFileCount ?? "-"}`);
+    console.log(`Workspace bytes: ${validation.workspaceBytes ?? "-"}`);
+    console.log(`Database bytes: ${validation.databaseBytes ?? "-"}`);
+    if (validation.missingPaths.length > 0) {
+      console.log("Missing:");
+      for (const item of validation.missingPaths) {
+        console.log(`  - ${item}`);
+      }
+    }
     console.log("Included:");
     for (const item of manifest.includes) {
       console.log(`  - ${item.kind}: ${item.sourcePath} -> ${item.snapshotPath}`);
@@ -84,6 +95,7 @@ export function createWorkspaceLifecycleCli(deps: WorkspaceLifecycleCliDeps) {
     if (getBooleanFlag(options, "json")) {
       deps.printJson({
         restored: true,
+        validation: result.validation,
         protectionDir: result.protectionDir,
         restoredWorkspaceDir: result.restoredWorkspaceDir,
         restoredDatabasePath: result.restoredDatabasePath,

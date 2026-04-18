@@ -24,6 +24,8 @@ async function main() {
     { id: "agent-delegations-panel", ok: appJs.includes('["delegations", t("agents.panelDelegations", "Delegations")]') },
     { id: "session-switching", ok: appJs.includes("data-agent-session-id") && appJs.includes("loadAgentSession(sessionId)") },
     { id: "discovery-run-detail", ok: indexHtml.includes('id="discovery-run-detail"') && appJs.includes("function renderDiscoveryRunDetail(run)") },
+    { id: "discovery-run-selection", ok: appJs.includes('data-discovery-run-id') && appJs.includes("hydrateDiscoveryRun(runId)") },
+    { id: "scheduler-preset-button", ok: indexHtml.includes('id="discovery-scheduler-preset"') && appJs.includes("function applyDailyDigestPreset()") },
   ];
 
   const failed = checks.filter((check) => !check.ok);

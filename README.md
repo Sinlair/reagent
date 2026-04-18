@@ -191,51 +191,119 @@ The working position in this repository is:
 
 Those choices are reflected directly in the runtime, CLI, and repository structure rather than a separate design memo.
 
-## Quick Start
+## Get Started
 
-For the public install path, start with [`docs/public-install.md`](./docs/public-install.md).
+ReAgent is designed to be installed and driven as a product, not as a repo-first demo.
 
-1. Install dependencies.
-2. Push the Prisma schema.
-3. Start the runtime or onboard first.
-
-```bash
-npm install
-npm run db:push
-npm run dev
-```
-
-Then open `http://127.0.0.1:3000/`.
-
-Minimal local setup:
-
-```env
-LLM_PROVIDER=fallback
-WECHAT_PROVIDER=mock
-```
-
-`reagent onboard --apply` persists this safe `fallback + mock` starter profile when provider settings are missing.
-Use it for first-run evaluation and product walkthroughs, not as the final research-quality configuration.
-
-If PowerShell blocks `npm`, use `npm.cmd`.
-
-## Global CLI Install
-
-This is the official public install path:
+Official install path:
 
 ```bash
 npm install -g @sinlair/reagent
+```
+
+First-run path:
+
+```bash
 reagent onboard
+reagent onboard --apply
 reagent home
 reagent service run
 ```
 
-`reagent home` works with the starter profile without additional provider setup.
-The Web console uses the same starter profile once the runtime is running.
-Default Web URL: `http://127.0.0.1:3000/`
+Default Web URL:
 
-The published package name is `@sinlair/reagent`.
-The installed command is `reagent`.
+```text
+http://127.0.0.1:3000/
+```
+
+The starter profile uses `fallback + mock`.
+It is intended for first-run evaluation and walkthroughs, not as the final research-quality route.
+
+## Product Surfaces
+
+ReAgent is meant to be used through a few stable product surfaces:
+
+- `reagent home`
+  the product overview and next-step entrypoint
+- `reagent research ...`
+  briefs, tasks, reports, workstreams, and reusable artifacts
+- `reagent memory ...`
+  durable notes and recall
+- `reagent agent ...`
+  canonical runtime sessions, hooks, host linkage, and delegation
+- `reagent openclaw ...`
+  host-facing OpenClaw inspection
+- `reagent workspace ...`
+  backup snapshots, restore preview or apply, and support bundles
+
+## Daily Use
+
+Typical product commands:
+
+```bash
+reagent home
+reagent runtime status
+reagent agent runtime
+reagent openclaw status
+reagent research recent
+reagent research tasks
+reagent memory recall "recent research choices"
+reagent workspace snapshot
+```
+
+Typical research flow:
+
+```bash
+reagent research directions
+reagent research enqueue "multimodal web agents" --question "Which open-source baselines are strongest?"
+reagent research tasks
+reagent research report <taskId>
+reagent research handoff <taskId>
+```
+
+## Web Console
+
+The Web console is the companion inspection surface.
+
+Use it for:
+
+- first-run orientation
+- discovery review
+- report and artifact reading
+- recent artifact reopen
+- scheduler and digest configuration
+- runtime and session inspection
+
+The CLI remains the primary control plane.
+
+## Recovery And Safety
+
+ReAgent now treats recovery as a product surface, not just an internal maintenance concern.
+
+Use:
+
+```bash
+reagent workspace snapshot
+reagent workspace restore preview <snapshotPath>
+reagent workspace restore apply <snapshotPath> --yes
+reagent workspace support-bundle
+```
+
+These flows are designed to keep workspace state inspectable and recoverable without exposing raw secrets by default.
+
+## OpenClaw Host Surface
+
+Use the dedicated OpenClaw entrypoint when you want bridge-facing host state:
+
+```bash
+reagent openclaw
+reagent openclaw status
+reagent openclaw sessions
+reagent openclaw history <sessionKey>
+```
+
+Use `reagent agent ...` when you want canonical runtime state.
+Use `reagent openclaw ...` when you want host-facing bridge state.
 
 ## Docs
 
@@ -245,203 +313,34 @@ Start here:
 - [Public Install And Quickstart](./docs/public-install.md)
 - [Core Product Flows](./docs/core-flows.md)
 - [Public Walkthroughs](./docs/walkthroughs.md)
+- [OpenClaw Host Surface](./docs/openclaw-host-surface.md)
 - [Positioning: ReAgent vs Hermes-Agent](./docs/positioning.md)
 - [Developer Extensions: Skills, MCP, And Bridge Contracts](./docs/developer-extensions.md)
 - [Release And Compatibility Rules](./docs/release-and-compatibility.md)
+- [Operations](./OPERATIONS.md)
+- [Contributing](./CONTRIBUTING.md)
 
-## Recommended CLI Flow
+## Product Positioning
 
-First-run flow:
+ReAgent is a research-first workspace.
 
-```bash
-reagent onboard
-reagent home
-reagent service run
-```
+It borrows Hermes-style runtime seams such as:
 
-Repair flow:
+- hooks
+- audit trails
+- progressive skill disclosure
+- bounded delegation
+- explicit host/runtime inspection
 
-```bash
-reagent doctor
-reagent doctor --fix --skip-db
-```
-
-Daily control flow:
-
-```bash
-reagent home
-reagent runtime status
-reagent runtime jobs
-reagent runtime logs --follow
-reagent workspace snapshot
-reagent workspace restore preview <snapshotPath>
-reagent workspace support-bundle
-reagent agent runtime
-reagent agent sessions
-reagent research recent
-reagent research tasks
-reagent memory recall "recent research choices"
-reagent channels status
-```
-
-Example research flow:
-
-```bash
-reagent research enqueue "multimodal web agents" --question "Which open-source baselines are strongest?"
-reagent research tasks
-reagent research handoff <taskId>
-reagent research workstream <taskId> search
-reagent research report <taskId>
-```
-
-## Runtime And Service Model
-
-ReAgent is built around an always-on runtime.
-
-Use:
-
-- `reagent home` for the product overview
-- `reagent onboard` for first-run setup
-- `reagent doctor` for diagnostics and safe local repair
-- `reagent service ...` to manage the supervised runtime
-- `reagent runtime ...` to inspect health, status, jobs, dashboard, logs, and doctor output
-- `reagent agent ...` to inspect and control canonical agent runtime state, host linkage, and bounded delegations
-
-Always-on service lifecycle:
-
-```bash
-reagent service install
-reagent service status
-reagent service start
-reagent service restart
-reagent service stop
-```
-
-## Web Console
-
-The web console is a companion surface, not the main control plane.
-
-Use it for:
-
-- artifact inspection
-- graph and memory exploration
-- task and report browsing
-- operational visibility
-- agent runtime overview, selected session profile, runtime history, hooks, and delegation inspection
-
-Use the CLI for:
-
-- first-run setup
-- runtime control
-- day-to-day automation
-- scripting and repeatable operations
-
-## Managed Runtime Config
-
-The runtime keeps editable JSON-backed config under `workspace/channels/`:
-
-- `llm-providers.json` for provider routes and defaults
-- `mcp-servers.json` for remote MCP server registry
-- `skills-config.json` for workspace skill enablement and env overrides
-- `inbound-command-policy.json` for remote slash-command policy and allowlists
-
-Common control commands:
-
-```bash
-reagent config validate
-reagent models routes
-reagent mcp list
-reagent skills list
-reagent commands authorize openclaw wx-user-1 /memory-recall
-```
-
-## Knowledge And Artifact Model
-
-ReAgent keeps research state durable.
-
-Key layers:
-
-- `MEMORY.md` for long-term memory
-- `memory/YYYY-MM-DD.md` for daily notes
-- indexed metadata in `memory-index.json`
-- runtime session digests and audit logs under `channels/`
-- canonical agent session state in `channels/agent-runtime.json`
-- bounded delegation state in `channels/agent-delegations.json`
-- OpenClaw host-session registry and cached transcripts under `channels/openclaw-*`
-- research task runs in `research/task-runs.json`
-- research rounds in `research/rounds/<taskId>/`
-- handoff dossiers and workstream memos under each research round
-- reports, reviews, presentations, and module assets as reusable artifacts
-
-This is intentional:
-
-- memory is not just chat history
-- research is not just one synchronous run
-- outputs are meant to be reopened and reused
-- runtime state is meant to be inspectable
-
-## Repository Layout
-
-| Path | Purpose |
-| --- | --- |
-| `./` | Root ReAgent runtime, CLI, web console, and API server |
-| [`src/`](./src) | Runtime entry points, CLI surfaces, routes, and core services |
-| [`docs/`](./docs) | Product visuals and supporting docs |
-| [`workspace/skills/`](./workspace/skills) | Local workspace skills and references |
-| [`package/`](./package) | In-repo foundation package: plugin host surface and SDK alignment for bridge and tooling |
-| [`upstream/openclaw/`](./upstream/openclaw) | Imported upstream reference used for bridge and compatibility work |
-
-**How you install and drive ReAgent.** The supported path is still the standalone package (`npm install -g @sinlair/reagent`) and the `reagent` command as the single control plane. The runtime is built so host-style behavior, the WeChat bridge path, and extension surfaces stay inspectable rather than forked in secret: the foundation code under `package/` is the concrete place that tracks those contracts, and the same root CLI exposes host-oriented operations (`reagent status`, `reagent sessions`, `reagent history`, `reagent watch`, `reagent inspect`, `reagent install`) when you need them beside everyday research and memory commands.
-
-For agent runtime operations, prefer the canonical root surface:
-
-```bash
-reagent agent runtime
-reagent agent sessions
-reagent agent session wechat:wx-user-1
-reagent agent profile wechat:wx-user-1
-reagent agent host sessions
-reagent agent delegates
-```
-
-## Run Modes
-
-| Mode | Commands | Notes |
-| --- | --- | --- |
-| Development | `npm run dev` | Local development with live reload |
-| PM2 | `npm run pm2:start` / `npm run pm2:restart` / `npm run pm2:logs` | Background runtime with PM2 |
-| Windows Service | `npm run service:install` / `npm run service:status` / `npm run service:start` / `npm run service:stop` | Machine-level runtime on Windows |
-
-See [OPERATIONS.md](./OPERATIONS.md) for deployment and maintenance details.
-
-## Development
-
-Validation:
-
-```bash
-npm run check:all
-npm run test
-```
-
-If you only want to validate the standalone publishable package:
-
-```bash
-npm run release:verify
-npm run release:pack
-```
+It does not present itself as a finished general-purpose agent runtime.
+Its core product value is still durable research work, durable memory, and reusable artifacts.
 
 ## Documentation
 
 - Chinese README: [README.zh-CN.md](./README.zh-CN.md)
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
 - Roadmap: [ROADMAP.md](./ROADMAP.md)
-- Operations: [OPERATIONS.md](./OPERATIONS.md)
-- Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
 - Security: [SECURITY.md](./SECURITY.md)
-- Release process: [docs/release-process.md](./docs/release-process.md)
-- Self-evolution capability map: [docs/reagent-self-evolution-map.md](./docs/reagent-self-evolution-map.md)
-- Self-evolution task list: [docs/reagent-self-evolution-task-list.md](./docs/reagent-self-evolution-task-list.md)
-- Research agent landscape notes: [docs/research-agent-landscape.md](./docs/research-agent-landscape.md)
 
 ## Inspiration
 

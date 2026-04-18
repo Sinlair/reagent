@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export type WorkspaceSnapshotManifest = {
@@ -16,6 +16,14 @@ export type WorkspaceSnapshotManifest = {
   }>;
 };
 
+export type WorkspaceSnapshotValidation = {
+  valid: boolean;
+  missingPaths: string[];
+  workspaceFileCount: number | null;
+  workspaceBytes: number | null;
+  databaseBytes: number | null;
+};
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -27,6 +35,28 @@ function sanitizeTimestamp(iso: string): string {
 function isInside(parent: string, candidate: string): boolean {
   const relative = path.relative(parent, candidate);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+async function summarizeDirectory(targetPath: string): Promise<{ fileCount: number; totalBytes: number }> {
+  let fileCount = 0;
+  let totalBytes = 0;
+  const entries = await readdir(targetPath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const entryPath = path.join(targetPath, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await summarizeDirectory(entryPath);
+      fileCount += nested.fileCount;
+      totalBytes += nested.totalBytes;
+      continue;
+    }
+
+    const entryStat = await stat(entryPath);
+    fileCount += 1;
+    totalBytes += entryStat.size;
+  }
+
+  return { fileCount, totalBytes };
 }
 
 export function resolveSqlitePath(databaseUrl: string, cwd: string): string | null {
@@ -140,13 +170,56 @@ export class WorkspaceBackupService {
     return manifest;
   }
 
+  static async inspectSnapshot(snapshotPath: string): Promise<{
+    manifest: WorkspaceSnapshotManifest;
+    validation: WorkspaceSnapshotValidation;
+  }> {
+    const manifest = await WorkspaceBackupService.readSnapshotManifest(snapshotPath);
+    const missingPaths: string[] = [];
+    let workspaceFileCount: number | null = null;
+    let workspaceBytes: number | null = null;
+    let databaseBytes: number | null = null;
+
+    for (const item of manifest.includes) {
+      try {
+        const itemStat = await stat(item.snapshotPath);
+        if (item.kind === "workspace" && itemStat.isDirectory()) {
+          const summary = await summarizeDirectory(item.snapshotPath);
+          workspaceFileCount = summary.fileCount;
+          workspaceBytes = summary.totalBytes;
+        }
+        if (item.kind === "database" && itemStat.isFile()) {
+          databaseBytes = itemStat.size;
+        }
+      } catch {
+        missingPaths.push(item.snapshotPath);
+      }
+    }
+
+    return {
+      manifest,
+      validation: {
+        valid: missingPaths.length === 0,
+        missingPaths,
+        workspaceFileCount,
+        workspaceBytes,
+        databaseBytes,
+      },
+    };
+  }
+
   async applySnapshot(snapshotPath: string, input: { protectionDir?: string | undefined }): Promise<{
     manifest: WorkspaceSnapshotManifest;
+    validation: WorkspaceSnapshotValidation;
     protectionDir: string;
     restoredWorkspaceDir: string;
     restoredDatabasePath: string | null;
   }> {
-    const manifest = await WorkspaceBackupService.readSnapshotManifest(snapshotPath);
+    const inspection = await WorkspaceBackupService.inspectSnapshot(snapshotPath);
+    const { manifest, validation } = inspection;
+    if (!validation.valid) {
+      throw new Error(`Snapshot is incomplete and cannot be restored: ${validation.missingPaths.join(", ")}`);
+    }
     const createdAt = nowIso();
     const protectionName = `restore-protection-${sanitizeTimestamp(createdAt)}`;
     const protectionRootDir = input.protectionDir?.trim()
@@ -221,6 +294,7 @@ export class WorkspaceBackupService {
 
     return {
       manifest,
+      validation,
       protectionDir,
       restoredWorkspaceDir: this.workspaceDir,
       restoredDatabasePath,

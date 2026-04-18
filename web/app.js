@@ -8,6 +8,24 @@ import {
   buildDiscoveryRunState,
   summarizeDiscoveryCandidateReasons,
 } from "./researchDiscoveryState.js";
+import {
+  renderWorkspacePulseView,
+  renderLandingCommandBarView,
+  renderLaunchChecklistView,
+  renderLandingSurfacesView,
+} from "./landingViews.js";
+import {
+  applyDailyDigestPresetView,
+  renderDiscoverySchedulerView,
+  renderDiscoveryRunsView,
+  renderDiscoveryRunDetailView,
+} from "./researchRailViews.js";
+import {
+  renderDirectionReportView,
+  renderPresentationArtifactView,
+  renderModuleAssetView,
+  renderWorkstreamMemoView,
+} from "./artifactViews.js";
 
 const i18n = window.ReAgentI18n;
 
@@ -968,6 +986,20 @@ function getActiveResearchTask() {
 }
 
 function renderWorkspacePulse() {
+  return renderWorkspacePulseView({
+    state,
+    els,
+    trimText,
+    escapeHtml,
+    formatRelativeTime,
+    formatResearchTaskState,
+    getLatestSummary,
+    getActiveResearchTask,
+    getTransportStatus,
+    bindOpenTabButtons,
+    bindReportButtons,
+  });
+
   if (!els.workspacePulseMetrics || !els.workspacePulseActions) return;
 
   const summary = getLatestSummary();
@@ -1150,6 +1182,21 @@ function renderWorkspacePulse() {
 }
 
 function renderLandingCommandBar() {
+  return renderLandingCommandBarView({
+    state,
+    els,
+    t,
+    trimText,
+    escapeHtml,
+    formatRelativeTime,
+    formatResearchTaskState,
+    getLatestSummary,
+    getActiveResearchTask,
+    getTransportStatus,
+    bindOpenTabButtons,
+    bindReportButtons,
+  });
+
   if (!els.landingCommandBar) return;
 
   const summary = getLatestSummary();
@@ -1257,6 +1304,17 @@ function renderLandingCommandBar() {
 }
 
 function renderLaunchChecklist() {
+  return renderLaunchChecklistView({
+    state,
+    els,
+    t,
+    trimText,
+    escapeHtml,
+    getLatestSummary,
+    bindOpenTabButtons,
+    bindReportButtons,
+  });
+
   if (!els.launchChecklist) return;
 
   const summary = getLatestSummary();
@@ -1344,6 +1402,17 @@ function renderLaunchChecklist() {
 }
 
 function renderLandingSurfaces() {
+  return renderLandingSurfacesView({
+    state,
+    els,
+    renderLandingCommandBar,
+    renderLaunchChecklist,
+    renderOverviewCards,
+    renderLatestReport,
+    renderSessionCards,
+    getLatestSummary,
+  });
+
   renderLandingCommandBar();
   renderLaunchChecklist();
   renderOverviewCards(els.landingLiveCards, false);
@@ -1542,10 +1611,10 @@ function renderSkillDetail(session) {
           <h3>Status</h3>
           <p>${escapeHtml(status)}</p>
         </button>
-        <article class="result-item">
+        <button class="session-item ${state.selectedDiscoveryRunId === run.runId ? "session-item--current" : ""}" type="button" data-discovery-run-id="${escapeHtml(run.runId)}">
           <h3>Description</h3>
           <p>${escapeHtml(skill.instruction)}</p>
-        </article>
+        </button>
         <article class="result-item">
           <h3>Runtime effect</h3>
           <p>${escapeHtml(enabled ? "This skill currently exposes its tool group to the runtime." : "This skill is currently excluded from the runtime tool list.")}</p>
@@ -4006,6 +4075,15 @@ function renderResearchReport(report) {
 }
 
 function renderDirectionReport(report) {
+  return renderDirectionReportView({
+    state,
+    els,
+    escapeHtml,
+    renderPill,
+    renderStringList,
+    formatTime,
+  }, report);
+
   if (!report) {
     els.researchReport.className = "empty-state";
     els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
@@ -4127,6 +4205,16 @@ function renderDirectionReport(report) {
 }
 
 function renderPresentationArtifact(presentation) {
+  return renderPresentationArtifactView({
+    state,
+    els,
+    escapeHtml,
+    renderPill,
+    renderStringList,
+    formatTime,
+    clipBlock,
+  }, presentation);
+
   if (!presentation) {
     els.researchReport.className = "empty-state";
     els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
@@ -4211,6 +4299,15 @@ function renderPresentationArtifact(presentation) {
 }
 
 function renderModuleAsset(asset) {
+  return renderModuleAssetView({
+    state,
+    els,
+    escapeHtml,
+    renderPill,
+    renderStringList,
+    formatTime,
+  }, asset);
+
   if (!asset) {
     els.researchReport.className = "empty-state";
     els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
@@ -4278,6 +4375,14 @@ function renderModuleAsset(asset) {
 }
 
 function renderWorkstreamMemo(workstreamMemo) {
+  return renderWorkstreamMemoView({
+    els,
+    escapeHtml,
+    renderPill,
+    formatTime,
+    clipBlock,
+  }, workstreamMemo);
+
   if (!workstreamMemo) {
     els.researchReport.className = "empty-state";
     els.researchReport.textContent = t("empty.reportLoaded", "No report loaded.");
@@ -4429,6 +4534,13 @@ function isSchedulerFormActive() {
 }
 
 function applyDailyDigestPreset() {
+  return applyDailyDigestPresetView({
+    state,
+    els,
+    formatListInput,
+    UI_AGENT_SENDER_ID,
+  });
+
   const selectedDirectionIds = state.selectedResearchBriefId
     ? [state.selectedResearchBriefId]
     : state.researchBriefs.length > 0
@@ -4451,6 +4563,15 @@ function applyDailyDigestPreset() {
 }
 
 function renderDiscoveryScheduler(status) {
+  return renderDiscoverySchedulerView({
+    state,
+    els,
+    escapeHtml,
+    formatListInput,
+    formatTime,
+    isSchedulerFormActive,
+  }, status);
+
   state.discoveryScheduler = status || null;
   if (!els.discoverySchedulerStatus) return;
 
@@ -4525,6 +4646,15 @@ async function loadDiscoveryScheduler() {
 }
 
 function renderDiscoveryRuns() {
+  return renderDiscoveryRunsView({
+    state,
+    els,
+    escapeHtml,
+    formatRelativeTime,
+    hydrateDiscoveryRun,
+    renderDiscoveryRunDetail,
+  });
+
   if (!els.discoverySchedulerRuns) return;
 
   const runs = (state.discoveryRuns || []).slice(0, 6);
@@ -4561,6 +4691,15 @@ function renderDiscoveryRuns() {
 }
 
 function renderDiscoveryRunDetail(run) {
+  return renderDiscoveryRunDetailView({
+    state,
+    els,
+    escapeHtml,
+    renderPill,
+    summarizeDiscoveryCandidateReasons,
+    buildDiscoveryRunState,
+  }, run);
+
   if (!els.discoveryRunDetail) return;
 
   if (!run) {

@@ -67,6 +67,10 @@ Goal:
 ## 5. OpenClaw Bridge Flow
 
 ```powershell
+reagent openclaw status
+reagent openclaw sessions
+reagent openclaw history <sessionKey>
+reagent openclaw watch <sessionKey>
 reagent channels status
 reagent sessions
 reagent history <sessionKey>
@@ -78,6 +82,10 @@ Goal:
 
 - inspect the OpenClaw-backed host surface
 - correlate host sessions with runtime sessions
+
+Docs:
+
+- [OpenClaw Host Surface](./openclaw-host-surface.md)
 
 ## 6. Upgrade And Repair Flow
 

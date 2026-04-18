@@ -68,6 +68,8 @@ async function main() {
       assert.equal(requests.length, 6);
       const finalInput = String(requests[5].input);
       assert.ok(finalInput.includes("Structured session digest:"));
+      assert.ok(finalInput.includes("Neuron state / perception:"));
+      assert.ok(finalInput.includes("Neuron state / reasoning:"));
       assert.ok(finalInput.includes("User asked: Remember alpha context for this workspace."));
       assert.equal(finalInput.includes("User: Remember alpha context for this workspace."), false);
     });
@@ -124,6 +126,11 @@ async function main() {
       assert.ok(session.digest.recentToolOutcomes.some((item) => item.includes("agent_describe")));
       assert.ok(Array.isArray(session.digest.pendingActions));
       assert.equal(session.digest.pendingActions.length > 0, true);
+      assert.ok(Array.isArray(session.digest.neurons.perception));
+      assert.ok(Array.isArray(session.digest.neurons.memory));
+      assert.ok(Array.isArray(session.digest.neurons.reasoning));
+      assert.ok(Array.isArray(session.digest.neurons.action));
+      assert.equal(session.digest.neurons.reasoning.length > 0, true);
     });
   });
 }
