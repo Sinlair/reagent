@@ -188,6 +188,31 @@ interface AgentTurn {
   name?: string | undefined;
 }
 
+type AgentNeuronKind = "perception" | "memory" | "hypothesis" | "reasoning" | "action" | "reflection";
+type AgentHypothesisStatus = "provisional" | "supported" | "conflicted";
+type AgentNeuronSource =
+  | "user-input"
+  | "workspace-memory"
+  | "artifact-memory"
+  | "tool-outcome"
+  | "session-history"
+  | "session-digest"
+  | "assistant-reply"
+  | "runtime-inference";
+
+interface AgentNeuronNode {
+  id: string;
+  kind: AgentNeuronKind;
+  content: string;
+  salience: number;
+  confidence: number;
+  source: AgentNeuronSource;
+  updatedAt: string;
+  status?: AgentHypothesisStatus | undefined;
+  supportingEvidence?: string[] | undefined;
+  conflictingEvidence?: string[] | undefined;
+}
+
 interface AgentSessionDigest {
   updatedAt: string;
   recentUserIntents: string[];
@@ -198,10 +223,12 @@ interface AgentSessionDigest {
 
 interface AgentSessionNeuronState {
   updatedAt: string;
-  perception: string[];
-  memory: string[];
-  reasoning: string[];
-  action: string[];
+  perception: AgentNeuronNode[];
+  memory: AgentNeuronNode[];
+  hypothesis: AgentNeuronNode[];
+  reasoning: AgentNeuronNode[];
+  action: AgentNeuronNode[];
+  reflection: AgentNeuronNode[];
 }
 
 interface AgentSession {
@@ -394,8 +421,10 @@ function defaultNeuronState(): AgentSessionNeuronState {
     updatedAt: nowIso(),
     perception: [],
     memory: [],
+    hypothesis: [],
     reasoning: [],
     action: [],
+    reflection: [],
   };
 }
 
@@ -414,6 +443,57 @@ function trimDigestItems(items: string[], limit: number): string[] {
   return [...new Set(items.map((item) => item.trim()).filter(Boolean))].slice(-limit);
 }
 
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+}
+
+function buildNeuronNode(input: {
+  kind: AgentNeuronKind;
+  content: string;
+  salience: number;
+  confidence: number;
+  source: AgentNeuronSource;
+  updatedAt?: string | undefined;
+  id?: string | undefined;
+  status?: AgentHypothesisStatus | undefined;
+  supportingEvidence?: string[] | undefined;
+  conflictingEvidence?: string[] | undefined;
+}): AgentNeuronNode {
+  const updatedAt = input.updatedAt ?? nowIso();
+  const supportingEvidence = trimDigestItems(input.supportingEvidence ?? [], 3);
+  const conflictingEvidence = trimDigestItems(input.conflictingEvidence ?? [], 3);
+  return {
+    id: input.id?.trim() || `${input.kind}:${updatedAt}:${clipPreview(input.content, 32)}`,
+    kind: input.kind,
+    content: input.content.trim(),
+    salience: clampScore(input.salience),
+    confidence: clampScore(input.confidence),
+    source: input.source,
+    updatedAt,
+    ...(input.status ? { status: input.status } : {}),
+    ...(supportingEvidence.length > 0 ? { supportingEvidence } : {}),
+    ...(conflictingEvidence.length > 0 ? { conflictingEvidence } : {}),
+  };
+}
+
+function trimNeuronNodes(nodes: AgentNeuronNode[], limit = MAX_NEURON_ITEMS): AgentNeuronNode[] {
+  const deduped = new Map<string, AgentNeuronNode>();
+  for (const node of nodes) {
+    const key = `${node.kind}:${node.content}`.trim();
+    deduped.set(key, node);
+  }
+
+  return [...deduped.values()]
+    .sort((left, right) => {
+      const salienceDelta = right.salience - left.salience;
+      if (salienceDelta !== 0) {
+        return salienceDelta;
+      }
+      return right.updatedAt.localeCompare(left.updatedAt);
+    })
+    .slice(0, limit);
+}
+
 function clipPreview(text: string, maxLength = 96): string {
   const normalized = text.replace(/\s+/gu, " ").trim();
   if (normalized.length <= maxLength) {
@@ -430,6 +510,10 @@ function clipText(text: string, maxLength = MAX_FALLBACK_ECHO_CHARS): string {
   }
 
   return `${normalized.slice(0, maxLength).trimEnd()}...`;
+}
+
+function isAgentHypothesisStatus(value: string): value is AgentHypothesisStatus {
+  return value === "provisional" || value === "supported" || value === "conflicted";
 }
 
 function includesCjk(text: string): boolean {
@@ -755,43 +839,383 @@ function inferReasoningNeuronSignals(inputText: string, recentToolOutcomes: stri
   return trimDigestItems(signals, MAX_NEURON_ITEMS);
 }
 
+function inferHypothesisNeuronSignals(inputText: string, pendingActions: string[]): string[] {
+  const normalized = inputText.toLowerCase();
+  const signals: string[] = [];
+
+  if (/\b(compare|versus|vs|baseline|alternative)\b/iu.test(normalized) || /(瀵规瘮|鍩虹嚎|鏇夸唬)/u.test(inputText)) {
+    signals.push("There may be multiple valid alternatives worth keeping in play.");
+  }
+  if (/\b(uncertain|maybe|possibly|likely|hypothesis)\b/iu.test(normalized) || /(鍙兘|鍋囪|涓嶇‘瀹?)/u.test(inputText)) {
+    signals.push("Keep the current conclusion provisional until stronger evidence arrives.");
+  }
+  if (pendingActions.length > 0) {
+    signals.push("The next action should reduce uncertainty instead of merely restating context.");
+  }
+
+  if (signals.length === 0) {
+    signals.push("Preserve at least one working hypothesis until the next evidence update.");
+  }
+
+  return trimDigestItems(signals, MAX_NEURON_ITEMS);
+}
+
+function describeMemoryHitEvidence(hit: MemoryRecallHit): string {
+  const location = hit.layer === "artifact" ? hit.artifactType ?? hit.provenance : hit.path ?? hit.provenance;
+  return clipText(`${hit.title} (${location})`, 96);
+}
+
+function buildHypothesisNeuronNodes(input: {
+  latestUserTurn: string;
+  pendingActions: string[];
+  memoryHits: MemoryRecallHit[];
+  recentToolOutcomes: string[];
+  recentUserIntents: string[];
+  updatedAt: string;
+}): AgentNeuronNode[] {
+  const workspaceHits = input.memoryHits.filter((hit) => hit.layer === "workspace");
+  const artifactHits = input.memoryHits.filter((hit) => hit.layer === "artifact");
+  const compareRequested =
+    /\b(compare|versus|vs|baseline|alternative|tradeoff|difference)\b/iu.test(input.latestUserTurn) ||
+    /(鐎佃鐦畖閸╄櫣鍤巪閺囧じ鍞?|瀵规瘮|鍩虹嚎|鏇夸唬|宸紓)/u.test(input.latestUserTurn);
+  const workspaceEvidence = workspaceHits.map((hit) => describeMemoryHitEvidence(hit));
+  const artifactEvidence = artifactHits.map((hit) => describeMemoryHitEvidence(hit));
+  const toolEvidence = input.recentToolOutcomes.map((item) => clipText(`Tool outcome: ${item}`, 96));
+  const sessionEvidence = input.recentUserIntents.map((item) =>
+    clipText(item.replace(/^User asked:\s*/u, "").trim(), 96),
+  );
+  const nextActionEvidence = input.pendingActions.map((item) => clipText(`Next action: ${item}`, 96));
+  const nodes: AgentNeuronNode[] = [];
+
+  if (workspaceEvidence.length > 0) {
+    nodes.push(
+      buildNeuronNode({
+        id: `hypothesis:${input.updatedAt}:workspace`,
+        kind: "hypothesis",
+        content: "Workspace memory likely contains relevant operating context for the current turn.",
+        salience: 0.8,
+        confidence: compareRequested && artifactEvidence.length > 0 ? 0.64 : 0.74,
+        source: "runtime-inference",
+        updatedAt: input.updatedAt,
+        status: compareRequested && artifactEvidence.length > 0 ? "conflicted" : "supported",
+        supportingEvidence: workspaceEvidence,
+        conflictingEvidence: compareRequested ? artifactEvidence : [],
+      }),
+    );
+  }
+
+  if (artifactEvidence.length > 0) {
+    nodes.push(
+      buildNeuronNode({
+        id: `hypothesis:${input.updatedAt}:artifact`,
+        kind: "hypothesis",
+        content: "Artifact-backed evidence may refine the current conclusion before it is finalized.",
+        salience: 0.78,
+        confidence: compareRequested && workspaceEvidence.length > 0 ? 0.62 : 0.72,
+        source: "runtime-inference",
+        updatedAt: input.updatedAt,
+        status: compareRequested && workspaceEvidence.length > 0 ? "conflicted" : "supported",
+        supportingEvidence: artifactEvidence,
+        conflictingEvidence: compareRequested ? workspaceEvidence : [],
+      }),
+    );
+  }
+
+  const provisionalSignals = inferHypothesisNeuronSignals(input.latestUserTurn, input.pendingActions);
+  const provisionalEvidence = trimDigestItems(
+    [...nextActionEvidence, ...toolEvidence, ...sessionEvidence],
+    3,
+  );
+
+  for (const [index, signal] of provisionalSignals.entries()) {
+    nodes.push(
+      buildNeuronNode({
+        id: `hypothesis:${input.updatedAt}:provisional:${index}`,
+        kind: "hypothesis",
+        content: signal,
+        salience: 0.74 - index * 0.06,
+        confidence: compareRequested ? 0.5 : 0.56,
+        source: "runtime-inference",
+        updatedAt: input.updatedAt,
+        status: "provisional",
+        supportingEvidence: provisionalEvidence,
+        conflictingEvidence: compareRequested ? trimDigestItems([...workspaceEvidence, ...artifactEvidence], 2) : [],
+      }),
+    );
+  }
+
+  return trimNeuronNodes(nodes);
+}
+
+function neuronKey(node: AgentNeuronNode): string {
+  return `${node.kind}:${node.content}`.trim().toLowerCase();
+}
+
+function reconcileNeuronLayer(input: {
+  previous: AgentNeuronNode[];
+  next: AgentNeuronNode[];
+  updatedAt: string;
+  staleSaliencePenalty: number;
+  staleConfidencePenalty: number;
+  carryStale: boolean;
+}): AgentNeuronNode[] {
+  const previousByKey = new Map(input.previous.map((node) => [neuronKey(node), node]));
+  const nextKeys = new Set(input.next.map((node) => neuronKey(node)));
+
+  const activated = input.next.map((node) => {
+    const previous = previousByKey.get(neuronKey(node));
+    if (!previous) {
+      return node;
+    }
+
+    const isConflictedHypothesis =
+      node.kind === "hypothesis" && (node.status === "conflicted" || (node.conflictingEvidence?.length ?? 0) > 0);
+    let confidence = clampScore(Math.max(node.confidence, previous.confidence * 0.9 + 0.06));
+    if (isConflictedHypothesis && previous.status !== "conflicted") {
+      confidence = clampScore(Math.min(confidence, Math.max(node.confidence - 0.08, 0.35)));
+    } else if (isConflictedHypothesis) {
+      confidence = clampScore(Math.max(node.confidence, previous.confidence - 0.02));
+    }
+
+    return {
+      ...node,
+      salience: clampScore(Math.max(node.salience, previous.salience * 0.84 + 0.12)),
+      confidence,
+      updatedAt: input.updatedAt,
+      ...(node.supportingEvidence || previous.supportingEvidence
+        ? {
+            supportingEvidence: trimDigestItems(
+              [...(previous.supportingEvidence ?? []), ...(node.supportingEvidence ?? [])],
+              3,
+            ),
+          }
+        : {}),
+      ...(node.conflictingEvidence || previous.conflictingEvidence
+        ? {
+            conflictingEvidence: trimDigestItems(
+              [...(previous.conflictingEvidence ?? []), ...(node.conflictingEvidence ?? [])],
+              3,
+            ),
+          }
+        : {}),
+      ...(node.status ? { status: node.status } : previous.status ? { status: previous.status } : {}),
+    };
+  });
+
+  if (!input.carryStale) {
+    return trimNeuronNodes(activated);
+  }
+
+  const decayed = input.previous
+    .filter((node) => !nextKeys.has(neuronKey(node)))
+    .map((node) => {
+      const salience = clampScore(node.salience - input.staleSaliencePenalty);
+      const confidence = clampScore(node.confidence - input.staleConfidencePenalty);
+      if (salience < 0.35) {
+        return null;
+      }
+
+      return {
+        ...node,
+        salience,
+        confidence,
+        updatedAt: input.updatedAt,
+        ...(node.kind === "hypothesis" && node.status === "supported" ? { status: "provisional" as const } : {}),
+      };
+    })
+    .filter((node): node is AgentNeuronNode => Boolean(node));
+
+  return trimNeuronNodes([...activated, ...decayed]);
+}
+
+function buildMemoryNeuronNodes(input: {
+  memoryHits: MemoryRecallHit[];
+  recentToolOutcomes: string[];
+  recentUserIntents: string[];
+  updatedAt: string;
+}): AgentNeuronNode[] {
+  const hitNodes = input.memoryHits.map((hit, index) =>
+    buildNeuronNode({
+      id: `memory:hit:${input.updatedAt}:${index}`,
+      kind: "memory",
+      content: clipText(`${hit.title}: ${hit.snippet}`, 160),
+      salience: 0.86 - index * 0.08,
+      confidence: hit.confidence === "high" ? 0.9 : hit.confidence === "medium" ? 0.75 : 0.55,
+      source: hit.layer === "artifact" ? "artifact-memory" : "workspace-memory",
+      updatedAt: hit.updatedAt ?? hit.createdAt ?? input.updatedAt,
+    }),
+  );
+  const toolNodes = input.recentToolOutcomes.map((item, index) =>
+    buildNeuronNode({
+      id: `memory:tool:${input.updatedAt}:${index}`,
+      kind: "memory",
+      content: item,
+      salience: 0.72 - index * 0.08,
+      confidence: 0.8,
+      source: "tool-outcome",
+      updatedAt: input.updatedAt,
+    }),
+  );
+  const sessionNodes = input.recentUserIntents.map((item, index) =>
+    buildNeuronNode({
+      id: `memory:session:${input.updatedAt}:${index}`,
+      kind: "memory",
+      content: item.replace(/^User asked:\s*/u, "").trim(),
+      salience: 0.62 - index * 0.06,
+      confidence: 0.68,
+      source: "session-history",
+      updatedAt: input.updatedAt,
+    }),
+  );
+
+  return trimNeuronNodes([...hitNodes, ...toolNodes, ...sessionNodes]);
+}
+
 function buildNeuronState(input: {
   recentUserIntents: string[];
   recentToolOutcomes: string[];
   pendingActions: string[];
   turns: AgentTurn[];
+  memoryHits?: MemoryRecallHit[] | undefined;
+  previousState?: AgentSessionNeuronState | undefined;
 }): AgentSessionNeuronState {
+  const updatedAt = nowIso();
   const latestUserTurn = [...input.turns].reverse().find((turn) => turn.role === "user")?.content ?? "";
-  const perception = trimDigestItems(
+  const latestAssistantTurn = [...input.turns].reverse().find((turn) => turn.role === "assistant")?.content ?? "";
+  const previousState = input.previousState ?? defaultNeuronState();
+  const nextActions =
+    input.pendingActions.length > 0
+      ? input.pendingActions
+      : ["Leave one concrete next step instead of ending with only descriptive context."];
+
+  const perception = trimNeuronNodes(
     input.turns
       .filter((turn) => turn.role === "user")
       .slice(-MAX_NEURON_ITEMS)
-      .map((turn) => clipText(turn.content, 140)),
-    MAX_NEURON_ITEMS,
+      .map((turn, index) =>
+        buildNeuronNode({
+          id: `perception:${updatedAt}:${index}`,
+          kind: "perception",
+          content: clipText(turn.content, 140),
+          salience: 0.9 - index * 0.1,
+          confidence: 0.85,
+          source: "user-input",
+          updatedAt: turn.createdAt,
+        }),
+      ),
   );
-  const memory = trimDigestItems(
-    [
-      ...input.recentToolOutcomes,
-      ...input.recentUserIntents.map((item) => item.replace(/^User asked:\s*/u, "").trim()),
-    ],
-    MAX_NEURON_ITEMS,
+  const memory = trimNeuronNodes(
+    buildMemoryNeuronNodes({
+      memoryHits: input.memoryHits ?? [],
+      recentToolOutcomes: input.recentToolOutcomes,
+      recentUserIntents: input.recentUserIntents,
+      updatedAt,
+    }),
   );
-  const reasoning = inferReasoningNeuronSignals(latestUserTurn, input.recentToolOutcomes);
-  const action = trimDigestItems(input.pendingActions, MAX_NEURON_ITEMS);
+  const hypothesis = trimNeuronNodes(
+    buildHypothesisNeuronNodes({
+      latestUserTurn,
+      pendingActions: nextActions,
+      memoryHits: input.memoryHits ?? [],
+      recentToolOutcomes: input.recentToolOutcomes,
+      recentUserIntents: input.recentUserIntents,
+      updatedAt,
+    }),
+  );
+  const reasoning = trimNeuronNodes(
+    inferReasoningNeuronSignals(latestUserTurn, input.recentToolOutcomes).map((item, index) =>
+      buildNeuronNode({
+        id: `reasoning:${updatedAt}:${index}`,
+        kind: "reasoning",
+        content: item,
+        salience: 0.84 - index * 0.08,
+        confidence: 0.72,
+        source: "runtime-inference",
+        updatedAt,
+      }),
+    ),
+  );
+  const action = trimNeuronNodes(
+    nextActions.map((item, index) =>
+      buildNeuronNode({
+        id: `action:${updatedAt}:${index}`,
+        kind: "action",
+        content: item,
+        salience: 0.88 - index * 0.08,
+        confidence: 0.78,
+        source: "assistant-reply",
+        updatedAt,
+      }),
+    ),
+  );
+  const reflection = trimNeuronNodes([
+    buildNeuronNode({
+      id: `reflection:${updatedAt}:0`,
+      kind: "reflection",
+      content: latestAssistantTurn
+        ? `The latest reply consolidated the current state and left ${action.length} next action(s).`
+        : "No assistant reflection has been produced yet.",
+      salience: 0.68,
+      confidence: latestAssistantTurn ? 0.72 : 0.3,
+      source: "assistant-reply",
+      updatedAt,
+    }),
+  ]);
 
   return {
-    updatedAt: nowIso(),
-    perception,
-    memory,
-    reasoning,
-    action:
-      action.length > 0
-        ? action
-        : ["Leave one concrete next step instead of ending with only descriptive context."],
+    updatedAt,
+    perception: reconcileNeuronLayer({
+      previous: previousState.perception,
+      next: perception,
+      updatedAt,
+      staleSaliencePenalty: 0.18,
+      staleConfidencePenalty: 0.06,
+      carryStale: false,
+    }),
+    memory: reconcileNeuronLayer({
+      previous: previousState.memory,
+      next: memory,
+      updatedAt,
+      staleSaliencePenalty: 0.1,
+      staleConfidencePenalty: 0.04,
+      carryStale: true,
+    }),
+    hypothesis: reconcileNeuronLayer({
+      previous: previousState.hypothesis,
+      next: hypothesis,
+      updatedAt,
+      staleSaliencePenalty: 0.14,
+      staleConfidencePenalty: 0.07,
+      carryStale: true,
+    }),
+    reasoning: reconcileNeuronLayer({
+      previous: previousState.reasoning,
+      next: reasoning,
+      updatedAt,
+      staleSaliencePenalty: 0.12,
+      staleConfidencePenalty: 0.05,
+      carryStale: true,
+    }),
+    action: reconcileNeuronLayer({
+      previous: previousState.action,
+      next: action,
+      updatedAt,
+      staleSaliencePenalty: 0.16,
+      staleConfidencePenalty: 0.06,
+      carryStale: false,
+    }),
+    reflection: reconcileNeuronLayer({
+      previous: previousState.reflection,
+      next: reflection,
+      updatedAt,
+      staleSaliencePenalty: 0.2,
+      staleConfidencePenalty: 0.08,
+      carryStale: false,
+    }),
   };
 }
 
-function buildDigestFromTurns(turns: AgentTurn[]): AgentSessionDigest {
+function buildDigestFromTurns(turns: AgentTurn[], memoryHits: MemoryRecallHit[] = []): AgentSessionDigest {
   const recentUserIntents = trimDigestItems(
     turns
       .filter((turn) => turn.role === "user")
@@ -817,11 +1241,13 @@ function buildDigestFromTurns(turns: AgentTurn[]): AgentSessionDigest {
       recentToolOutcomes,
       pendingActions: trimDigestItems(latestPendingActions, MAX_DIGEST_PENDING_ACTIONS),
       turns,
+      memoryHits,
+      previousState: undefined,
     }),
   };
 }
 
-function mergeSessionDigest(current: AgentSessionDigest, turns: AgentTurn[]): AgentSessionDigest {
+function mergeSessionDigest(current: AgentSessionDigest, turns: AgentTurn[], memoryHits: MemoryRecallHit[] = []): AgentSessionDigest {
   const nextUserIntents = trimDigestItems(
     [
       ...current.recentUserIntents,
@@ -856,23 +1282,46 @@ function mergeSessionDigest(current: AgentSessionDigest, turns: AgentTurn[]): Ag
       recentToolOutcomes: nextToolOutcomes,
       pendingActions: nextPendingActions,
       turns,
+      memoryHits,
+      previousState: current.neurons,
     }),
   };
 }
 
 function buildSessionDigestBlock(digest: AgentSessionDigest): string {
+  const renderNeuronLine = (item: AgentNeuronNode): string => {
+    const annotations = [
+      `salience=${item.salience}`,
+      `confidence=${item.confidence}`,
+      `source=${item.source}`,
+      ...(item.status ? [`status=${item.status}`] : []),
+      ...(item.supportingEvidence && item.supportingEvidence.length > 0
+        ? [`support=${item.supportingEvidence.join(" | ")}`]
+        : []),
+      ...(item.conflictingEvidence && item.conflictingEvidence.length > 0
+        ? [`conflict=${item.conflictingEvidence.join(" | ")}`]
+        : []),
+    ];
+    return `- ${item.content} [${annotations.join(" ")}]`;
+  };
   const sections = [
     digest.neurons.perception.length > 0
-      ? ["Neuron state / perception:", ...digest.neurons.perception.map((item) => `- ${item}`)]
+      ? ["Neuron state / perception:", ...digest.neurons.perception.map((item) => renderNeuronLine(item))]
       : [],
     digest.neurons.memory.length > 0
-      ? ["Neuron state / memory:", ...digest.neurons.memory.map((item) => `- ${item}`)]
+      ? ["Neuron state / memory:", ...digest.neurons.memory.map((item) => renderNeuronLine(item))]
+      : [],
+    digest.neurons.hypothesis.length > 0
+      ? ["Neuron state / hypothesis:", ...digest.neurons.hypothesis.map((item) => renderNeuronLine(item))]
       : [],
     digest.neurons.reasoning.length > 0
-      ? ["Neuron state / reasoning:", ...digest.neurons.reasoning.map((item) => `- ${item}`)]
+      ? ["Neuron state / reasoning:", ...digest.neurons.reasoning.map((item) => renderNeuronLine(item))]
       : [],
     digest.neurons.action.length > 0
-      ? ["Neuron state / action:", ...digest.neurons.action.map((item) => `- ${item}`)]
+      ? ["Neuron state / action:", ...digest.neurons.action.map((item) => renderNeuronLine(item))]
+      : [],
+    digest.neurons.reflection.length > 0
+      ? ["Neuron state / reflection:", ...digest.neurons.reflection.map((item) => renderNeuronLine(item))]
       : [],
     digest.recentUserIntents.length > 0
       ? ["Recent user intents:", ...digest.recentUserIntents.map((item) => `- ${item}`)]
@@ -886,6 +1335,60 @@ function buildSessionDigestBlock(digest: AgentSessionDigest): string {
   ].flat();
 
   return sections.length > 0 ? sections.join("\n") : "No structured session digest yet.";
+}
+
+function parseNeuronNodeArray(
+  kind: AgentNeuronKind,
+  source: AgentNeuronSource,
+  raw: unknown,
+): AgentNeuronNode[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return trimNeuronNodes(
+    raw
+      .map((item, index) => {
+        if (typeof item === "string") {
+          return buildNeuronNode({
+            id: `${kind}:legacy:${index}`,
+            kind,
+            content: item,
+            salience: 0.6,
+            confidence: 0.6,
+            source,
+          });
+        }
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+        const record = item as Partial<AgentNeuronNode>;
+        if (typeof record.content !== "string" || !record.content.trim()) {
+          return null;
+        }
+        return buildNeuronNode({
+          id: typeof record.id === "string" ? record.id : undefined,
+          kind,
+          content: record.content,
+          salience: typeof record.salience === "number" ? record.salience : 0.6,
+          confidence: typeof record.confidence === "number" ? record.confidence : 0.6,
+          source: typeof record.source === "string" ? (record.source as AgentNeuronSource) : source,
+          updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : undefined,
+          status:
+            typeof record.status === "string" && isAgentHypothesisStatus(record.status)
+              ? record.status
+              : undefined,
+          supportingEvidence: Array.isArray(record.supportingEvidence)
+            ? record.supportingEvidence.filter((entry): entry is string => typeof entry === "string")
+            : [],
+          conflictingEvidence: Array.isArray(record.conflictingEvidence)
+            ? record.conflictingEvidence.filter((entry): entry is string => typeof entry === "string")
+            : [],
+        });
+      })
+      .filter((item): item is AgentNeuronNode => Boolean(item)),
+    MAX_NEURON_ITEMS,
+  );
 }
 
 function tokenizeForSkillMatch(value: string): string[] {
@@ -1782,7 +2285,7 @@ export class AgentRuntime {
         content: result.text,
         createdAt: nowIso(),
       },
-    ], input.source ? inputSource : parseSessionId(sessionId)?.entrySource);
+    ], input.source ? inputSource : parseSessionId(sessionId)?.entrySource, memoryPrimer);
 
     return result.text;
   }
@@ -1836,7 +2339,7 @@ export class AgentRuntime {
         content: result.text,
         createdAt: nowIso(),
       },
-    ], input.source ? inputSource : parseSessionId(sessionId)?.entrySource);
+    ], input.source ? inputSource : parseSessionId(sessionId)?.entrySource, memoryPrimer);
 
     return result.text;
   }
@@ -1987,30 +2490,12 @@ export class AgentRuntime {
                           ? {
                               updatedAt:
                                 typeof rawDigest.neurons.updatedAt === "string" ? rawDigest.neurons.updatedAt : nowIso(),
-                              perception: trimDigestItems(
-                                Array.isArray(rawDigest.neurons.perception)
-                                  ? rawDigest.neurons.perception.filter((item): item is string => typeof item === "string")
-                                  : [],
-                                MAX_NEURON_ITEMS,
-                              ),
-                              memory: trimDigestItems(
-                                Array.isArray(rawDigest.neurons.memory)
-                                  ? rawDigest.neurons.memory.filter((item): item is string => typeof item === "string")
-                                  : [],
-                                MAX_NEURON_ITEMS,
-                              ),
-                              reasoning: trimDigestItems(
-                                Array.isArray(rawDigest.neurons.reasoning)
-                                  ? rawDigest.neurons.reasoning.filter((item): item is string => typeof item === "string")
-                                  : [],
-                                MAX_NEURON_ITEMS,
-                              ),
-                              action: trimDigestItems(
-                                Array.isArray(rawDigest.neurons.action)
-                                  ? rawDigest.neurons.action.filter((item): item is string => typeof item === "string")
-                                  : [],
-                                MAX_NEURON_ITEMS,
-                              ),
+                              perception: parseNeuronNodeArray("perception", "user-input", rawDigest.neurons.perception),
+                              memory: parseNeuronNodeArray("memory", "session-digest", rawDigest.neurons.memory),
+                              hypothesis: parseNeuronNodeArray("hypothesis", "runtime-inference", rawDigest.neurons.hypothesis),
+                              reasoning: parseNeuronNodeArray("reasoning", "runtime-inference", rawDigest.neurons.reasoning),
+                              action: parseNeuronNodeArray("action", "assistant-reply", rawDigest.neurons.action),
+                              reflection: parseNeuronNodeArray("reflection", "assistant-reply", rawDigest.neurons.reflection),
                             }
                           : buildNeuronState({
                               recentUserIntents: trimDigestItems(
@@ -2101,14 +2586,19 @@ export class AgentRuntime {
     };
   }
 
-  private async appendTurns(senderId: string, turns: AgentTurn[], source?: AgentEntrySource): Promise<void> {
+  private async appendTurns(
+    senderId: string,
+    turns: AgentTurn[],
+    source?: AgentEntrySource,
+    memoryHits: MemoryRecallHit[] = [],
+  ): Promise<void> {
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId, source);
       const current = store.sessions[key] ?? defaultSession();
       store.sessions[key] = {
         ...current,
         updatedAt: nowIso(),
-        digest: mergeSessionDigest(current.digest, turns),
+        digest: mergeSessionDigest(current.digest, turns, memoryHits),
         turns: trimTurns([...current.turns, ...turns]),
       };
       return store;
@@ -3470,7 +3960,7 @@ export class AgentRuntime {
     const usedTools = collectExecutedToolNames(toolTurns);
 
     if (toolTurns.length > 0) {
-      await this.appendTurns(input.senderId, toolTurns);
+      await this.appendTurns(input.senderId, toolTurns, undefined, memoryPrimer);
     }
 
     return {

@@ -1,75 +1,39 @@
 # Ralph Progress
 
 Project: ReAgent
-Branch: ralph/reagent-open-source-productization-v1
-Started: 2026-04-17
+Branch: ralph/reagent-cognitive-kernel-v1
+Started: 2026-04-18
 
 Completed
-- US-001: Publish a stable public install guide and quickstart
-  - Updated `README.md` so the public install path is explicitly `npm install -g @sinlair/reagent` instead of blending repo development and public adoption paths.
-  - Added `docs/public-install.md` as the official public quickstart covering Node version, global install, onboard, starter profile, runtime start, and Web URL.
-  - Added explicit first-failure guidance pointing users to `reagent onboard`, `reagent home`, `reagent runtime status`, and `reagent doctor`.
-- US-002: Tighten the first-run flow across onboard, home, and the Web console
-  - Kept the CLI first-run path anchored on `reagent onboard`, `reagent home`, and `reagent service run`, then documented that same sequence in the public quickstart and core flow docs.
-  - Updated the Web landing first-run messaging so a `fallback + mock` starter profile is described as an evaluation path with a concrete next action: create the first brief or research task.
-  - Kept runtime health, channel mode, and starter-profile language aligned between onboarding output, home output, and the first-run Web copy.
-  - Browser verification was not rerun here because no browser automation tool is available in this environment.
-- US-003: Create workspace backup snapshots
-  - Added a new top-level `reagent workspace snapshot` command.
-  - Workspace snapshots now copy the full workspace directory plus the SQLite database file when `DATABASE_URL` uses a file-backed datasource.
-  - Snapshot output writes a `manifest.json` with creation time, included content, workspace path, and database metadata.
-  - Snapshot creation rejects overwrite attempts by default and refuses to create snapshots inside the active workspace directory.
-- US-004: Preview workspace restore before applying it
-  - Added `reagent workspace restore preview <snapshotPath>` to inspect a snapshot directory or its `manifest.json` before any write occurs.
-  - Preview output shows snapshot creation time, target workspace path, database path or URL, and all included workspace/database items.
-  - Restore preview is read-only and reuses the stored snapshot manifest instead of inferring state from the live workspace.
-- US-005: Apply workspace restore safely
-  - Added `reagent workspace restore apply <snapshotPath> --yes` so restore remains explicit and non-interactive.
-  - Restore apply now refuses to run without `--yes` and creates a protection backup of the current workspace and current SQLite database before overwriting anything.
-  - Restored workspace contents are copied back from the snapshot payload, and file-backed SQLite databases are restored from the snapshot when present.
-  - Restore apply refuses to target the current working directory directly and keeps protection data outside the active workspace path.
-- US-006: Export a support bundle without leaking secrets
-  - Added `reagent workspace support-bundle` to export a local diagnostic bundle.
-  - The bundle includes runtime status, a doctor-style summary, recent stdout and stderr tails, channel lifecycle audit, and agent runtime audit.
-  - Bundle output writes a concrete local directory with `bundle.json` and excludes plaintext secrets by default because it does not embed raw `.env` or secret config values.
-  - Support bundle creation rejects overwrite attempts by default through a unique bundle directory target.
-- US-007: Add product-facing recovery hints to key surfaces
-  - Expanded the existing product alert strip so it now appears on Landing, Overview, Channels, Agents, and Settings instead of only a subset of operational tabs.
-  - Added explicit next-step recovery copy for fallback-only research mode, runtime service issues, channel setup blocking states, and unloaded agent runtime sessions.
-  - Recovery hint copy now points users toward concrete commands such as `reagent onboard --apply`, `reagent runtime status`, `reagent doctor`, `reagent channels login`, and `reagent agent sessions`.
-- US-008: Add browser smoke verification to release checks
-  - Added `tests/browserSmoke.test.mjs` as a browser-surface smoke script that checks the public HTML and front-end surfaces for Landing, Sessions, Agents, session switching hooks, and the history/hooks/runtime/delegations surfaces.
-  - The smoke script writes a JSON artifact to the local temp directory and fails the release gate if any required surface is missing.
-  - Updated `release:verify` so browser smoke now runs alongside typecheck and CLI verification in a mock environment without real WeChat pairing.
-- US-009: Create a stable public docs hub and navigation entrypoints
-  - Added `docs/index.md` as the new docs hub and linked it from the top of `README.md`.
-  - Split docs entrypoints into user, developer, and operations sections instead of relying on one long README.
-  - Added stable repo-relative navigation to install, core flows, positioning, developer extensions, and release rules.
-- US-010: Document core product and runtime flows
-  - Added `docs/core-flows.md` covering first run, research, memory, agent runtime, OpenClaw bridge, upgrade, and recovery flows.
-  - The flow docs explicitly distinguish everyday product actions from operator and repair paths.
-- US-011: Publish a workspace skill example and contract guide
-  - Added `docs/examples/workspace-skill-example.md` and promoted the existing `workspace/skills/research-brief/SKILL.md` as the public runnable skill example.
-  - Documented skill layout, validation steps, and the stable `workspace:<skill-name>` contract shape.
-- US-012: Publish an MCP example and contract guide
-  - Added `docs/examples/mcp-servers.example.json` as a public MCP configuration example.
-  - Linked the example from `docs/developer-extensions.md` and documented the main MCP validation commands.
-- US-013: Publish a plugin or bridge example and contract guide
-  - Added `docs/examples/plugin-bridge-example.md` documenting the current public OpenClaw host and plugin inspection surfaces.
-  - Linked the example from `docs/developer-extensions.md` and documented which bridge-facing entrypoints should be treated as stable.
-- US-014: Publish public product examples and walkthroughs
-  - Added `docs/walkthroughs.md` with a personal researcher walkthrough, an OpenClaw or channel runtime inspection walkthrough, and a brief-to-report-to-artifact-reopen walkthrough.
-  - Linked the walkthrough page from the docs hub and README.
-  - The walkthroughs reuse the public product screenshot and current CLI commands instead of inventing undocumented flows.
-- US-015: Document release, compatibility, and positioning rules
-  - Added `docs/release-and-compatibility.md` to define stable public surfaces, compatibility aliases, and breaking-change documentation expectations.
-  - Added `docs/positioning.md` to make ReAgent's research-first workspace identity explicit and explain how it differs from Hermes-Agent while still borrowing Hermes-style runtime seams.
+- US-001: Define a structured neuron node model
+  - Upgraded the internal neuron state from flat string arrays into structured nodes with `id`, `kind`, `content`, `salience`, `confidence`, `source`, and `updatedAt`.
+  - Added support for `perception`, `memory`, `hypothesis`, `reasoning`, `action`, and `reflection` node kinds inside the persisted session digest.
+  - Reworked neuron generation so new turns create structured cognition nodes rather than only string summaries.
+- US-002: Persist cognition state alongside the legacy session digest
+  - Kept `recentUserIntents`, `recentToolOutcomes`, and `pendingActions` as compatibility summaries while persisting the richer cognition state under `digest.neurons`.
+  - Added backward-compatible session-store parsing so old string-array neuron data can still be read and upgraded into structured nodes.
+  - Updated prompt injection to read the structured neuron model and render a richer `Neuron state` block.
+- US-003: Align cognition memory with workspace memory and artifacts
+  - Wired memory recall hits into digest generation so `memory` neurons can persist explicit `workspace-memory` and `artifact-memory` provenance alongside session and tool-derived context.
+  - Kept long-term memory in the `memory` layer instead of leaking it into `hypothesis`, while preserving source metadata for each neuron node.
+  - Expanded runtime digest coverage so tests now verify both workspace-backed and artifact-backed cognition memory sources.
+- US-004: Support multiple hypotheses instead of a single implicit conclusion
+  - Extended `hypothesis` neurons with optional `status`, `supportingEvidence`, and `conflictingEvidence` fields while keeping the canonical neuron shape backward-compatible.
+  - Reworked hypothesis generation so the runtime can keep multiple simultaneous hypotheses alive, including source-backed workspace and artifact alternatives plus provisional follow-up hypotheses.
+  - Updated prompt injection and session persistence so operators and the model see structured multi-hypothesis summaries without exposing private chain-of-thought.
+- US-005: Add neuron activation, decay, and conflict updates
+  - Added neuron-layer reconciliation so repeated judgments can be reactivated instead of being rebuilt from zero on every turn.
+  - Introduced stale-node decay for carried-over `memory`, `hypothesis`, and `reasoning` layers so older cognition can fade over turns instead of remaining equally strong forever.
+  - Tightened conflict handling so hypothesis confidence can drop or remain provisional when competing evidence stays active.
+- US-006: Inject structured neuron summaries into prompts
+  - The runtime now injects structured `Neuron state` blocks with salience, confidence, source, status, and evidence summaries into the model payload.
+  - Prompt injection continues to coexist with memory primer and recent session history instead of flattening everything into one raw transcript.
+  - The injected cognition view remains an operator-safe summary rather than exposing private chain-of-thought.
 
 Verification
-- `npm.cmd run check`
-- `npm.cmd run test:cli`
-- `node tests/browserSmoke.test.mjs`
 - `npm.cmd run release:verify`
+- `node tests/agentRuntimeDigest.test.mjs`
+- `node tests/memoryRecallService.test.mjs`
 
-Complete
-- All stories in `ralph/reagent-open-source-productization-v1` are currently implemented and verified at the level available in this environment.
+Next
+- US-007: Generate a reflection layer after each completed turn

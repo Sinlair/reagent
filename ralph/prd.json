@@ -1,117 +1,114 @@
 {
   "project": "ReAgent",
-  "branchName": "ralph/reagent-open-source-productization-v1",
-  "description": "Productize ReAgent into a publicly adoptable open-source research workspace with Hermes-style runtime seams, safe backup and recovery flows, release-grade verification, and clear developer extension contracts.",
+  "branchName": "ralph/reagent-cognitive-kernel-v1",
+  "description": "Upgrade ReAgent from a tool-using research agent into a research-first cognition kernel with structured neuron state, multi-hypothesis reasoning, cognition-driven actions, and operator-visible cognition inspection across CLI, API, and Web.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Publish a stable public install guide and quickstart",
-      "description": "As an open-source evaluator, I want one official install path so that I can get ReAgent running without reading source code.",
+      "title": "Define a structured neuron node model",
+      "description": "As a system developer, I want the agent's cognition state to be represented as structured neuron nodes so that the runtime can support weighting, conflicts, decay, and action decisions instead of flat string arrays.",
       "acceptanceCriteria": [
-        "README highlights one recommended install path using `@sinlair/reagent`",
-        "Quickstart covers Node version, database initialization, runtime start, and Web URL",
-        "Install failure guidance points to `reagent onboard` or `reagent doctor`",
-        "Quickstart includes one end-to-end path from an empty directory to a running Web console",
+        "Define one canonical neuron node shape",
+        "Each neuron node includes `id`, `kind`, `content`, `salience`, `confidence`, `source`, and `updatedAt`",
+        "`kind` supports at least `perception`, `memory`, `hypothesis`, `reasoning`, `action`, and `reflection`",
+        "Session persistence remains backward-compatible with older digest-only session data",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed in runtime digest persistence and backward-compatible neuron parsing."
     },
     {
       "id": "US-002",
-      "title": "Tighten the first-run flow across onboard, home, and the Web console",
-      "description": "As a first-time user, I want onboard, home, and the Web console to form one guided first-run path so that I do not get dropped into implementation details.",
+      "title": "Persist cognition state alongside the legacy session digest",
+      "description": "As an operator, I want cognition state to persist across turns and process restarts so that the agent keeps a stable internal model instead of rebuilding everything from scratch each time.",
       "acceptanceCriteria": [
-        "`reagent onboard` next steps match `reagent home` and first-run Web copy",
-        "Starter profile, channel mode, and runtime health are described consistently across CLI and Web",
-        "First-run surfaces point to the next action without requiring manual command discovery",
-        "The first-run path covers `reagent onboard`, `reagent home`, `reagent service run`, and Web console entry",
+        "Session store persists cognition state alongside the existing digest summary",
+        "Legacy `recentUserIntents`, `recentToolOutcomes`, and `pendingActions` are still available for compatibility",
+        "Cognition state can be initialized from old digest-only sessions and recent turns",
+        "Persisted sessions remain readable after the migration",
         "Tests pass",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed with structured neuron persistence layered under the legacy digest summaries."
     },
     {
       "id": "US-003",
-      "title": "Create workspace backup snapshots",
-      "description": "As a long-term user, I want one command to create a workspace snapshot so that I can safely upgrade, migrate, or experiment without losing work.",
+      "title": "Align cognition memory with workspace memory and artifacts",
+      "description": "As a researcher, I want memory neurons to explicitly distinguish workspace memory, session history, tool results, and artifact-derived context so that short-term cognition and long-term knowledge do not get mixed together.",
       "acceptanceCriteria": [
-        "Add a workspace backup snapshot command",
-        "Snapshot covers file-backed memory, channel runtime state, research rounds, and the database layer",
-        "Successful backup returns one concrete local snapshot path",
-        "Backup does not overwrite an existing snapshot by default",
-        "Snapshot metadata records creation time and included content",
+        "Memory neurons record whether they came from workspace memory, session history, tool results, or artifacts",
+        "Workspace memory recall hits can be converted into cognition nodes",
+        "Artifact-backed context can be converted into cognition nodes with source metadata",
+        "The runtime does not misclassify long-term memory as temporary hypothesis state",
         "Tests pass",
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed with workspace-memory and artifact-memory provenance carried into memory neurons and covered by runtime tests."
     },
     {
       "id": "US-004",
-      "title": "Preview workspace restore before applying it",
-      "description": "As a user restoring a workspace, I want to preview a snapshot before applying it so that I do not accidentally replace my current state.",
+      "title": "Support multiple hypotheses instead of a single implicit conclusion",
+      "description": "As a researcher, I want the agent to maintain multiple competing hypotheses so that it does not converge too early on one unsupported conclusion.",
       "acceptanceCriteria": [
-        "Add a restore preview command",
-        "Preview shows snapshot time, included content, and target workspace path",
-        "Preview does not modify the active workspace",
-        "Preview reports missing or unreadable snapshot content clearly",
+        "Cognition state supports multiple hypothesis nodes at once",
+        "Each hypothesis can record supporting and conflicting evidence references or summaries",
+        "Each hypothesis records a confidence value",
+        "When evidence is weak, the runtime keeps hypotheses provisional instead of presenting them as final conclusions",
         "Tests pass",
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed with multi-hypothesis runtime generation, explicit hypothesis status, and supporting/conflicting evidence summaries."
     },
     {
       "id": "US-005",
-      "title": "Apply workspace restore safely",
-      "description": "As a user restoring a workspace, I want restore apply to require explicit confirmation so that recovery does not silently destroy current data.",
+      "title": "Add neuron activation, decay, and conflict updates",
+      "description": "As a system developer, I want cognition nodes to activate, decay, and react to conflicting evidence so that the kernel behaves more like an evolving research judgment process than a static note list.",
       "acceptanceCriteria": [
-        "Add a restore apply command",
-        "Restore apply requires explicit confirmation or an equivalent safety flag",
-        "Restore apply can repopulate `reagent home`, recent research, and memory files from restored data",
-        "Restore failures preserve a debuggable error state instead of partially overwriting the workspace silently",
+        "New input can increase relevant node salience",
+        "Stale nodes can decay over time or over turns",
+        "New evidence can increase or decrease node confidence",
+        "Conflicting evidence can reduce hypothesis confidence or mark explicit conflict",
         "Tests pass",
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed with layer reconciliation, stale-node decay, and conflict-aware confidence adjustments for repeated and competing hypotheses."
     },
     {
       "id": "US-006",
-      "title": "Export a support bundle without leaking secrets",
-      "description": "As an open-source user hitting a problem, I want to export a support bundle so that I can debug locally or attach it to an issue without leaking plaintext secrets.",
+      "title": "Inject structured neuron summaries into prompts",
+      "description": "As an operator, I want the model to see a structured cognition summary instead of scattered context fragments so that responses and actions become more stable across turns.",
       "acceptanceCriteria": [
-        "Add a support bundle export command",
-        "Bundle includes runtime status, doctor summary, recent logs, channel lifecycle, and agent runtime audit",
-        "Plaintext secrets are excluded by default",
-        "Successful export returns one concrete local bundle path",
-        "Bundle output is suitable for local diagnosis or issue attachment",
+        "Prompt input includes a structured neuron or cognition block",
+        "The cognition block covers perception, memory, hypothesis, reasoning, and action",
+        "The injected block does not expose raw private chain-of-thought",
+        "The cognition block coexists with memory primer and turn history instead of replacing them completely",
         "Tests pass",
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed with structured neuron summaries injected alongside memory primer and recent session history."
     },
     {
       "id": "US-007",
-      "title": "Add product-facing recovery hints to key surfaces",
-      "description": "As a user blocked by an error, I want key product surfaces to show recovery hints so that I know what to do next without reading raw logs.",
+      "title": "Generate a reflection layer after each completed turn",
+      "description": "As a system developer, I want each turn to leave a minimal reflection so that the next turn knows what was confirmed, what remains uncertain, and what should happen next.",
       "acceptanceCriteria": [
-        "Home, Settings, Channels, and Agents surfaces show product-facing recovery hints for blocking failures",
-        "Recovery hints name the next command, next setting, or next diagnostic artifact to inspect",
-        "Hints do not expose raw internal stack traces by default",
-        "Recovery hint wording is consistent with CLI doctor and status output",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Each completed turn updates a reflection node or equivalent reflection summary",
+        "Reflection covers at least what was confirmed, what remains uncertain, and what next action is recommended",
+        "Reflection can update or reinforce action and reasoning state for the next turn",
+        "Tests pass",
+        "Typecheck passes"
       ],
       "priority": 7,
       "passes": false,
@@ -119,13 +116,13 @@
     },
     {
       "id": "US-008",
-      "title": "Add browser smoke verification to release checks",
-      "description": "As a maintainer, I want release verification to run a browser smoke gate so that broken public builds are blocked before release.",
+      "title": "Drive tool choice from cognition state",
+      "description": "As a researcher, I want tool selection to be driven by the agent's current cognition state so that it behaves like a research workflow rather than random tool invocation.",
       "acceptanceCriteria": [
-        "Release verification includes a browser smoke flow",
-        "Smoke covers Landing or Home, Sessions, Agents, session switching, and history, hooks, runtime, and delegations panels",
-        "Smoke failures emit debuggable artifacts such as screenshots or result JSON",
-        "Smoke runs in a mock environment without real WeChat pairing",
+        "Tool choice reads current action, hypothesis, and reasoning state",
+        "High uncertainty can bias the runtime toward evidence-gathering actions instead of premature synthesis",
+        "High-confidence conclusions can bias the runtime toward delivery or reuse actions",
+        "Existing tool policy can still block disallowed actions",
         "Tests pass",
         "Typecheck passes"
       ],
@@ -135,13 +132,14 @@
     },
     {
       "id": "US-009",
-      "title": "Create a stable public docs hub and navigation entrypoints",
-      "description": "As an open-source user or contributor, I want a structured docs entrypoint so that I can quickly find the right documentation without reading one long README.",
+      "title": "Drive bounded delegations from cognition state",
+      "description": "As an operator, I want `search`, `reading`, and `synthesis` delegations to align with the current cognition state so that delegation becomes a reasoned action instead of a prompt-level add-on.",
       "acceptanceCriteria": [
-        "Add a docs landing page or docs index linked from README",
-        "Docs navigation separates user, developer, and operations entrypoints",
-        "README no longer serves as the only documentation surface for all audiences",
-        "Core docs entrypoints are valid repo-relative links",
+        "Delegation creation can read action and hypothesis state",
+        "Bounded `search`, `reading`, and `synthesis` delegations align with the current cognition state",
+        "Delegation results can write back into cognition state",
+        "Delegation behavior still respects the existing bounded guardrails",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 9,
@@ -150,12 +148,14 @@
     },
     {
       "id": "US-010",
-      "title": "Document core product and runtime flows",
-      "description": "As a user or operator, I want docs for the core product flows so that I can install, run, upgrade, recover, and inspect ReAgent without guessing the intended path.",
+      "title": "Expose cognition inspection in the root CLI",
+      "description": "As an operator, I want a root CLI cognition view so that I can inspect what the agent currently perceives, remembers, hypothesizes, reasons about, and plans to do next.",
       "acceptanceCriteria": [
-        "Docs cover install, run, upgrade, recovery, research, memory, agent runtime, and OpenClaw bridge flows",
-        "Each flow page names the primary commands or pages to use",
-        "Docs distinguish everyday user actions from maintainer or operator actions",
+        "Add `reagent agent cognition <sessionId|senderId>`",
+        "CLI cognition output covers perception, memory, hypothesis, reasoning, action, and reflection",
+        "CLI cognition output supports `--json`",
+        "CLI cognition output does not expose raw private chain-of-thought",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 10,
@@ -164,12 +164,14 @@
     },
     {
       "id": "US-011",
-      "title": "Publish a workspace skill example and contract guide",
-      "description": "As a third-party developer, I want one runnable workspace skill example and contract guide so that I can extend ReAgent without reverse-engineering internal code.",
+      "title": "Expose cognition inspection in the HTTP API",
+      "description": "As a Web console or integration developer, I want a cognition API so that higher-level surfaces can render the current cognition state without reimplementing runtime logic.",
       "acceptanceCriteria": [
-        "Add one runnable workspace skill example",
-        "Example documents required files, configuration, and validation steps",
-        "Docs distinguish stable skill integration fields from unstable implementation details",
+        "Add `/api/agent/sessions/:sessionId/cognition`",
+        "The API returns the same cognition model used by the CLI",
+        "The API does not expose raw private chain-of-thought",
+        "Existing session, profile, history, and hooks routes remain compatible",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 11,
@@ -178,59 +180,17 @@
     },
     {
       "id": "US-012",
-      "title": "Publish an MCP example and contract guide",
-      "description": "As a third-party developer, I want one MCP example and contract guide so that I can integrate external tools into ReAgent with clear expectations.",
+      "title": "Add a cognition panel to the Web Agents surface",
+      "description": "As an operator, I want the Web `Agents` panel to show the current cognition state so that I can quickly understand what the agent is focusing on, what hypotheses it holds, and why it is choosing the next action.",
       "acceptanceCriteria": [
-        "Add one MCP server configuration example",
-        "Example documents required config, expected behavior, and validation steps",
-        "Docs distinguish stable MCP integration fields from unstable implementation details",
-        "Typecheck passes"
+        "The Web `Agents` panel includes a cognition section",
+        "The cognition section shows at least perception, hypothesis, reasoning, and action state",
+        "The cognition section supports empty, weak, and conflict states with readable UI copy",
+        "The Web cognition section does not expose raw private chain-of-thought",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
       ],
       "priority": 12,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-013",
-      "title": "Publish a plugin or bridge example and contract guide",
-      "description": "As a third-party developer, I want one plugin or bridge-facing example and contract guide so that I can understand how ReAgent extends beyond built-in workspace skills.",
-      "acceptanceCriteria": [
-        "Add one plugin-facing or bridge-facing example",
-        "Example documents required contract fields, configuration, and validation steps",
-        "Docs distinguish stable plugin or bridge integration fields from unstable implementation details",
-        "Typecheck passes"
-      ],
-      "priority": 13,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-014",
-      "title": "Publish public product examples and walkthroughs",
-      "description": "As a first-time evaluator, I want a few high-quality walkthroughs so that I can quickly understand ReAgent's product value before committing to adoption.",
-      "acceptanceCriteria": [
-        "Provide at least one personal researcher walkthrough",
-        "Provide at least one OpenClaw or channel runtime inspection walkthrough",
-        "Provide at least one brief-to-report-to-artifact-reopen walkthrough",
-        "Example commands and screenshots match current CLI or Web behavior",
-        "Typecheck passes"
-      ],
-      "priority": 14,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-015",
-      "title": "Document release, compatibility, and positioning rules",
-      "description": "As a maintainer or contributor, I want explicit release, compatibility, and product-positioning rules so that users know what is stable and how ReAgent differs from Hermes-Agent.",
-      "acceptanceCriteria": [
-        "Docs mark stable surfaces, compatibility aliases, and experimental features",
-        "Release process documents changelog expectations, upgrade notes, and breaking-change handling",
-        "README or docs explicitly state that ReAgent is a research-first workspace rather than a completed general-purpose agent runtime",
-        "Docs explain shared Hermes-style runtime seams versus ReAgent-specific research artifact and memory models",
-        "Typecheck passes"
-      ],
-      "priority": 15,
       "passes": false,
       "notes": ""
     }
