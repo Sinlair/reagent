@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { ChatService } from "../dist/services/chatService.js";
 import { MemoryService } from "../dist/services/memoryService.js";
+import { ResearchDirectionService } from "../dist/services/researchDirectionService.js";
 
 async function runTest(name, fn) {
   try {
@@ -245,6 +246,93 @@ async function main() {
           reason: "Policy denied agent_describe for this sender."
         }
       ]);
+    });
+  });
+
+  await runTest("ChatService runtime blocks premature delivery tools when cognition still prefers evidence-gathering", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      const directions = new ResearchDirectionService(dir);
+      await memory.ensureWorkspace();
+      await memory.remember({
+        scope: "daily",
+        title: "Delivery posture anchor",
+        content: "Workspace memory keeps the current delivery posture unresolved.",
+        source: "test",
+        sourceType: "user-stated",
+        confidence: "high",
+      });
+      await directions.upsertProfile({
+        id: "delivery-posture-brief",
+        label: "Delivery Posture Brief",
+        summary: "Artifact evidence keeps the current delivery posture conflicted.",
+        knownBaselines: ["delivery posture"],
+        evaluationPriorities: ["uncertainty reduction"],
+      });
+
+      const events = [];
+      let callCount = 0;
+      const chat = new ChatService(dir, memory, {
+        client: {
+          responses: {
+            async create(params) {
+              callCount += 1;
+              if ("previous_response_id" in params) {
+                return {
+                  id: `resp-cognition-block-${callCount}`,
+                  output_text: "Blocked by cognition policy.",
+                  output: []
+                };
+              }
+
+              if (callCount === 1) {
+                return {
+                  id: "resp-cognition-seed",
+                  output_text: "Seeded uncertainty.",
+                  output: []
+                };
+              }
+
+              return {
+                id: "resp-cognition-block",
+                output_text: "",
+                output: [
+                  {
+                    type: "function_call",
+                    name: "presentation_generate",
+                    arguments: "{}",
+                    call_id: "call-cognition-block-1"
+                  }
+                ]
+              };
+            }
+          }
+        },
+        model: "gpt-test",
+        wireApi: "responses",
+        hooks: [
+          {
+            toolBlocked({ tool, reason }) {
+              events.push({ name: tool.toolName, reason });
+            }
+          }
+        ]
+      });
+
+      await chat.reply({
+        senderId: "hook-user-4",
+        text: "Compare the delivery posture anchor against the brief."
+      });
+
+      const reply = await chat.reply({
+        senderId: "hook-user-4",
+        text: "Keep going from the same context."
+      });
+
+      assert.ok(reply.includes("Blocked by cognition policy."));
+      assert.equal(events.length, 1);
+      assert.equal(events[0].name, "presentation_generate");
+      assert.ok(events[0].reason.startsWith("Cognition policy prefers evidence-gathering before presentation_generate because "));
     });
   });
 

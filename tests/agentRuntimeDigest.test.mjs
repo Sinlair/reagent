@@ -343,6 +343,64 @@ async function main() {
       assert.equal("rawChainOfThought" in cognition, false);
     });
   });
+
+  await runTest("ChatService runtime injects cognition-driven tool guidance into tool-turn instructions", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      const directions = new ResearchDirectionService(dir);
+      await memory.ensureWorkspace();
+      await memory.remember({
+        scope: "daily",
+        title: "Tool posture anchor",
+        content: "Workspace memory keeps the current tool posture anchor unresolved.",
+        source: "test",
+        sourceType: "user-stated",
+        confidence: "high",
+      });
+      await directions.upsertProfile({
+        id: "tool-posture-anchor",
+        label: "Tool Posture Anchor",
+        summary: "Artifact evidence keeps the current tool posture unresolved.",
+        knownBaselines: ["tool posture anchor"],
+        evaluationPriorities: ["evidence quality"],
+      });
+
+      const requests = [];
+      const chat = new ChatService(dir, memory, {
+        client: {
+          responses: {
+            async create(params) {
+              requests.push(params);
+              return {
+                id: `resp-guidance-${requests.length}`,
+                output_text: `Guidance reply ${requests.length}`,
+                output: []
+              };
+            }
+          }
+        },
+        model: "gpt-test",
+        wireApi: "responses"
+      });
+
+      await chat.reply({
+        senderId: "digest-user-5",
+        text: "Compare the tool posture anchor against the research brief."
+      });
+
+      await chat.reply({
+        senderId: "digest-user-5",
+        text: "Research the next step from the same context."
+      });
+
+      assert.equal(requests.length, 2);
+      const instructions = String(requests[1].instructions);
+      assert.ok(instructions.includes("Cognition-driven tool guidance:"));
+      assert.ok(instructions.includes("Current tool posture: evidence-gathering."));
+      assert.ok(instructions.includes("Read the hypothesis, reasoning, and action neuron layers before calling tools."));
+      assert.ok(instructions.includes("Defer these tools unless the user explicitly asks for the deliverable:"));
+    });
+  });
 }
 
 main().catch((error) => {

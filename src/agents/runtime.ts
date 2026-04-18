@@ -298,6 +298,16 @@ interface AgentReplyResult {
   usedTools: string[];
 }
 
+interface AgentCognitionToolPosture {
+  mode: "evidence-gathering" | "delivery-ready" | "balanced";
+  reasons: string[];
+  preferredTools: string[];
+  deferredTools: string[];
+  conflictedHypotheses: number;
+  provisionalHypotheses: number;
+  supportedHypotheses: number;
+}
+
 type AgentResolvedLlmRoute = Omit<ResolvedLlmRoute, "source"> & {
   source: "registry" | "env" | "injected";
 };
@@ -347,6 +357,26 @@ const MAX_DIGEST_USER_INTENTS = 6;
 const MAX_DIGEST_TOOL_OUTCOMES = 6;
 const MAX_DIGEST_PENDING_ACTIONS = 4;
 const MAX_NEURON_ITEMS = 4;
+const EVIDENCE_GATHERING_TOOLS = new Set([
+  "memory_search",
+  "research_recent",
+  "direction_list",
+  "discovery_run",
+  "discovery_recent",
+  "link_ingest",
+  "paper_analyze",
+  "repo_analyze",
+  "graph_query",
+  "graph_report",
+  "graph_path",
+  "graph_explain",
+]);
+const SYNTHESIS_OR_DELIVERY_TOOLS = new Set([
+  "baseline_suggest",
+  "direction_report_generate",
+  "presentation_generate",
+  "module_extract",
+]);
 const ALL_AGENT_TOOLSETS: AgentToolsetId[] = [
   "workspace",
   "memory",
@@ -582,6 +612,131 @@ function collectExecutedToolNames(toolTurns: AgentTurn[]): string[] {
   }
 
   return [...new Set(names)];
+}
+
+function actionSuggestsEvidence(actionNodes: AgentNeuronNode[]): boolean {
+  return actionNodes.some((node) =>
+    /\b(compare|inspect|verify|search|read|gather|evidence|analyze|investigate|recall|discover)\b/iu.test(node.content),
+  );
+}
+
+function actionSuggestsDelivery(actionNodes: AgentNeuronNode[]): boolean {
+  return actionNodes.some((node) =>
+    /\b(report|summary|deck|presentation|reuse|extract|deliver|handoff|save|persist)\b/iu.test(node.content),
+  );
+}
+
+function deriveCognitionToolPosture(digest: AgentSessionDigest): AgentCognitionToolPosture {
+  const hypothesisNodes = digest.neurons.hypothesis;
+  const reasoningNodes = digest.neurons.reasoning;
+  const actionNodes = digest.neurons.action;
+  const conflictedHypotheses = hypothesisNodes.filter(
+    (node) => node.status === "conflicted" || (node.conflictingEvidence?.length ?? 0) > 0,
+  ).length;
+  const provisionalHypotheses = hypothesisNodes.filter((node) => node.status === "provisional").length;
+  const supportedHypotheses = hypothesisNodes.filter(
+    (node) => node.status === "supported" && node.confidence >= 0.72,
+  ).length;
+  const highConfidenceReasoning = reasoningNodes.filter((node) => node.confidence >= 0.74).length;
+  const evidenceAction = actionSuggestsEvidence(actionNodes);
+  const deliveryAction = actionSuggestsDelivery(actionNodes);
+  const reasons: string[] = [];
+
+  if (conflictedHypotheses > 0) {
+    reasons.push(`${conflictedHypotheses} conflicted hypothesis node(s) still need disambiguation.`);
+  }
+  if (provisionalHypotheses > 0) {
+    reasons.push(`${provisionalHypotheses} provisional hypothesis node(s) remain unresolved.`);
+  }
+  if (supportedHypotheses > 0) {
+    reasons.push(`${supportedHypotheses} supported high-confidence hypothesis node(s) are ready for reuse.`);
+  }
+  if (evidenceAction) {
+    reasons.push("The current action layer points toward evidence gathering.");
+  }
+  if (deliveryAction) {
+    reasons.push("The current action layer points toward delivery or reuse.");
+  }
+  if (highConfidenceReasoning > 0 && reasons.length === 0) {
+    reasons.push("Reasoning confidence is high enough to prepare a deliverable.");
+  }
+
+  if (conflictedHypotheses > 0 || provisionalHypotheses > 1 || (evidenceAction && supportedHypotheses === 0)) {
+    return {
+      mode: "evidence-gathering",
+      reasons: reasons.length > 0 ? reasons : ["Uncertainty is still high."],
+      preferredTools: [...EVIDENCE_GATHERING_TOOLS],
+      deferredTools: [...SYNTHESIS_OR_DELIVERY_TOOLS],
+      conflictedHypotheses,
+      provisionalHypotheses,
+      supportedHypotheses,
+    };
+  }
+
+  if (supportedHypotheses > 0 && conflictedHypotheses === 0 && (deliveryAction || highConfidenceReasoning > 0)) {
+    return {
+      mode: "delivery-ready",
+      reasons: reasons.length > 0 ? reasons : ["Supported conclusions are stable enough to reuse or deliver."],
+      preferredTools: ["direction_report_generate", "presentation_generate", "module_extract", "memory_remember"],
+      deferredTools: ["discovery_run", "discovery_recent", "link_ingest", "paper_analyze", "repo_analyze"],
+      conflictedHypotheses,
+      provisionalHypotheses,
+      supportedHypotheses,
+    };
+  }
+
+  return {
+    mode: "balanced",
+    reasons: reasons.length > 0 ? reasons : ["Cognition is mixed; keep tool selection aligned with the next action."],
+    preferredTools: [...EVIDENCE_GATHERING_TOOLS, "baseline_suggest", "direction_report_generate"],
+    deferredTools: [],
+    conflictedHypotheses,
+    provisionalHypotheses,
+    supportedHypotheses,
+  };
+}
+
+function buildCognitionToolGuidance(digest: AgentSessionDigest): string[] {
+  const posture = deriveCognitionToolPosture(digest);
+
+  return [
+    "Cognition-driven tool guidance:",
+    `- Read the hypothesis, reasoning, and action neuron layers before calling tools.`,
+    `- Current tool posture: ${posture.mode}.`,
+    ...posture.reasons.slice(0, 3).map((reason) => `- Reason: ${reason}`),
+    `- Prefer these tools now: ${posture.preferredTools.join(", ")}.`,
+    ...(posture.deferredTools.length > 0
+      ? [`- Defer these tools unless the user explicitly asks for the deliverable: ${posture.deferredTools.join(", ")}.`]
+      : []),
+  ];
+}
+
+function userExplicitlyRequestsToolAlignedOutput(inputText: string, toolName: string): boolean {
+  const patterns: Record<string, RegExp> = {
+    baseline_suggest: /\b(baseline|innovation|route|direction|novelty|idea|方案|基线|路线|创新)\b/iu,
+    direction_report_generate: /\b(report|overview|summary|weekly|digest|briefing|报告|综述|总结|周报)\b/iu,
+    presentation_generate: /\b(deck|slides|presentation|meeting|group meeting|组会|汇报|幻灯片|演示)\b/iu,
+    module_extract: /\b(module|extract|reuse|download|archive|模块|提取|复用|下载)\b/iu,
+  };
+  const pattern = patterns[toolName];
+  return pattern ? pattern.test(inputText) : false;
+}
+
+function deriveCognitionToolPolicyReason(
+  digest: AgentSessionDigest,
+  inputText: string,
+  toolName: string,
+): string | null {
+  const posture = deriveCognitionToolPosture(digest);
+  if (
+    posture.mode === "evidence-gathering" &&
+    SYNTHESIS_OR_DELIVERY_TOOLS.has(toolName) &&
+    !userExplicitlyRequestsToolAlignedOutput(inputText, toolName)
+  ) {
+    return `Cognition policy prefers evidence-gathering before ${toolName} because ${posture.reasons[0] ?? "uncertainty is still high"}`;
+  }
+
+  return null;
 }
 
 function hasActionReplyShape(text: string): boolean {
@@ -1867,6 +2022,13 @@ export class AgentRuntime {
     tool: AgentRuntimeToolCallInfo,
   ): Promise<AgentRuntimeToolPolicyDecision> {
     const context = this.buildHookContext(input, session);
+    const cognitionPolicyReason = deriveCognitionToolPolicyReason(session.digest, input.text, tool.toolName);
+    if (cognitionPolicyReason) {
+      return {
+        allow: false,
+        reason: cognitionPolicyReason,
+      };
+    }
 
     for (const hook of this.hooks) {
       const decision = await hook.checkToolCall?.({ context, tool });
@@ -2884,6 +3046,8 @@ export class AgentRuntime {
       "- When tools or research actions were involved, structure the final answer as: What I understood / What I did / What you should do next.",
       "- Organize internal reasoning like a human-style neural loop: perception -> memory -> reasoning -> action.",
       "- Reply in the same language as the user.",
+      "",
+      ...buildCognitionToolGuidance(session.digest),
       ...(workspaceSkillDisclosure.catalogLines.length > 0
         ? [
             "",

@@ -41,12 +41,17 @@ Completed
 - US-007: Generate a reflection layer after each completed turn
   - Reworked `reflection` neurons so each turn can now record what was confirmed, what remains uncertain, and the recommended next action.
   - Reflection summaries now inherit supporting and conflicting evidence from the active hypothesis state instead of only emitting one generic sentence.
+- US-008: Drive tool choice from cognition state
+  - Added cognition-driven tool guidance to tool-turn instructions so the model reads `hypothesis`, `reasoning`, and `action` layers before selecting a tool.
+  - Introduced a runtime posture model that biases the agent toward evidence-gathering or delivery-ready tools based on current cognition state.
+  - Added policy enforcement that blocks premature synthesis or delivery tools when the cognition layer still indicates unresolved uncertainty.
 
 Verification
 - `npm.cmd run release:verify`
 - `node tests/agentRoutes.test.mjs`
 - `node tests/agentRuntimeDigest.test.mjs`
+- `node tests/agentRuntimeHooks.test.mjs`
 - `node tests/memoryRecallService.test.mjs`
 
 Next
-- US-008: Drive tool choice from cognition state
+- US-009: Drive bounded delegations from cognition state
