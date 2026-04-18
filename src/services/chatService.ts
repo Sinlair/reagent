@@ -39,6 +39,14 @@ export interface ChatServiceLike {
   setReasoning?(senderId: string, reasoningEffort: "default" | OpenAiReasoningEffort): Promise<AgentSessionSummary>;
   describeSession?(senderId: string): Promise<AgentSessionSummary>;
   describeSessionCognition?(senderId: string): Promise<AgentSessionCognition>;
+  syncDelegationCognition?(reference: string, input: {
+    delegationId: string;
+    taskId: string;
+    kind: "search" | "reading" | "synthesis";
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    artifactPath?: string | undefined;
+    error?: string | null | undefined;
+  }): Promise<AgentSessionCognition | null>;
 }
 
 export class ChatService implements ChatServiceLike {
@@ -128,5 +136,16 @@ export class ChatService implements ChatServiceLike {
 
   async describeSessionCognition(senderId: string): Promise<AgentSessionCognition> {
     return this.runtime.describeSessionCognition(senderId);
+  }
+
+  async syncDelegationCognition(reference: string, input: {
+    delegationId: string;
+    taskId: string;
+    kind: "search" | "reading" | "synthesis";
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    artifactPath?: string | undefined;
+    error?: string | null | undefined;
+  }): Promise<AgentSessionCognition | null> {
+    return this.runtime.syncDelegationCognition(reference, input);
   }
 }

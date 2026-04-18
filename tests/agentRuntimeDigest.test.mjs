@@ -401,6 +401,76 @@ async function main() {
       assert.ok(instructions.includes("Defer these tools unless the user explicitly asks for the deliverable:"));
     });
   });
+
+  await runTest("ChatService runtime can sync delegation outcomes back into session cognition", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      const directions = new ResearchDirectionService(dir);
+      await memory.ensureWorkspace();
+      await memory.remember({
+        scope: "daily",
+        title: "Delegation anchor",
+        content: "Workspace memory anchors the delegation flow.",
+        source: "test",
+        sourceType: "user-stated",
+        confidence: "high",
+      });
+      await directions.upsertProfile({
+        id: "delegation-anchor-brief",
+        label: "Delegation Anchor Brief",
+        summary: "Artifact evidence keeps the delegation context active.",
+        knownBaselines: ["delegation anchor"],
+        evaluationPriorities: ["follow-up quality"],
+      });
+
+      const chat = new ChatService(dir, memory, {
+        client: {
+          responses: {
+            async create() {
+              return {
+                id: "resp-delegation-sync",
+                output_text: "Delegation sync reply",
+                output: []
+              };
+            }
+          }
+        },
+        model: "gpt-test",
+        wireApi: "responses"
+      });
+
+      await chat.plainReply({
+        senderId: "digest-user-6",
+        text: "Compare the delegation anchor before continuing."
+      });
+
+      const synced = await chat.syncDelegationCognition("digest-user-6", {
+        delegationId: "dlg_sync_1",
+        taskId: "task_sync_1",
+        kind: "search",
+        status: "completed",
+        artifactPath: "research/rounds/task_sync_1/workstreams/search.md",
+      });
+
+      assert.ok(synced);
+      assert.equal(
+        synced.recentToolOutcomes.some((item) => item.includes("Delegation dlg_sync_1: search completed for task task_sync_1")),
+        true,
+      );
+      assert.equal(
+        synced.pendingActions.some((item) => item.includes("Review the completed search delegation for task task_sync_1")),
+        true,
+      );
+      assert.equal(
+        synced.neurons.memory.some((item) => item.content.includes("Delegation dlg_sync_1: search completed for task task_sync_1")),
+        true,
+      );
+      assert.equal(
+        synced.neurons.action.some((item) => item.content.includes("Review the completed search delegation for task task_sync_1")),
+        true,
+      );
+    });
+  });
 }
 
 main().catch((error) => {

@@ -1650,6 +1650,13 @@ function cloneNeuronState(state: AgentSessionNeuronState): AgentSessionNeuronSta
   };
 }
 
+function replaceDigestItemsByPrefix(items: string[], prefix: string, nextItem?: string | undefined): string[] {
+  return [
+    ...items.filter((item) => !item.startsWith(prefix)),
+    ...(nextItem?.trim() ? [nextItem.trim()] : []),
+  ];
+}
+
 function tokenizeForSkillMatch(value: string): string[] {
   const stopwords = new Set([
     "a",
@@ -2248,6 +2255,76 @@ export class AgentRuntime {
     }
 
     return this.buildSessionCognition(sessionId, store.sessions[sessionId]!);
+  }
+
+  async syncDelegationCognition(reference: string, input: {
+    delegationId: string;
+    taskId: string;
+    kind: "search" | "reading" | "synthesis";
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    artifactPath?: string | undefined;
+    error?: string | null | undefined;
+  }): Promise<AgentSessionCognition | null> {
+    let nextCognition: AgentSessionCognition | null = null;
+
+    await this.mutateStore((store) => {
+      const sessionId = this.findExistingSessionId(store, reference);
+      if (!sessionId) {
+        return store;
+      }
+
+      const current = store.sessions[sessionId]!;
+      const prefix = `Delegation ${input.delegationId}:`;
+      const toolOutcome = input.status === "completed"
+        ? `${prefix} ${input.kind} completed for task ${input.taskId}${input.artifactPath ? ` (${input.artifactPath})` : ""}`
+        : input.status === "failed"
+          ? `${prefix} ${input.kind} failed for task ${input.taskId}${input.error ? ` (${clipText(input.error, 120)})` : ""}`
+          : input.status === "cancelled"
+            ? `${prefix} ${input.kind} cancelled for task ${input.taskId}`
+            : `${prefix} ${input.kind} ${input.status} for task ${input.taskId}`;
+      const pendingAction = input.status === "completed"
+        ? `Review the completed ${input.kind} delegation for task ${input.taskId}${input.artifactPath ? ` at ${input.artifactPath}` : ""}.`
+        : input.status === "failed"
+          ? `Unblock or replace the failed ${input.kind} delegation for task ${input.taskId}.`
+          : input.status === "cancelled"
+            ? ""
+            : `Wait for the ${input.kind} delegation on task ${input.taskId} and continue once new evidence arrives.`;
+      const nextToolOutcomes = trimDigestItems(
+        replaceDigestItemsByPrefix(current.digest.recentToolOutcomes, prefix, toolOutcome),
+        MAX_DIGEST_TOOL_OUTCOMES,
+      );
+      const nextPendingActions = trimDigestItems(
+        replaceDigestItemsByPrefix(current.digest.pendingActions, "Review the completed", undefined)
+          .filter((item) => !item.includes(`delegation for task ${input.taskId}`))
+          .concat(pendingAction ? [pendingAction] : []),
+        MAX_DIGEST_PENDING_ACTIONS,
+      );
+      const nextDigest: AgentSessionDigest = {
+        ...current.digest,
+        updatedAt: nowIso(),
+        recentToolOutcomes: nextToolOutcomes,
+        pendingActions: nextPendingActions,
+        neurons: buildNeuronState({
+          recentUserIntents: current.digest.recentUserIntents,
+          recentToolOutcomes: nextToolOutcomes,
+          pendingActions: nextPendingActions,
+          turns: current.turns,
+          memoryHits: [],
+          previousState: current.digest.neurons,
+        }),
+      };
+
+      const nextSession: AgentSession = {
+        ...current,
+        updatedAt: nowIso(),
+        digest: nextDigest,
+      };
+      store.sessions[sessionId] = nextSession;
+      nextCognition = this.buildSessionCognition(sessionId, nextSession);
+      return store;
+    });
+
+    return nextCognition;
   }
 
   async findSessionHistory(

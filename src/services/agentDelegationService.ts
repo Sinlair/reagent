@@ -6,6 +6,7 @@ import { ResearchRoundService } from "./researchRoundService.js";
 import type {
   AgentDelegationKind,
   AgentDelegationRecord,
+  AgentDelegationRationale,
   AgentDelegationStatus,
 } from "../types/agentDelegation.js";
 
@@ -59,6 +60,7 @@ export class AgentDelegationService {
     taskId: string;
     kind: AgentDelegationKind;
     prompt?: string | undefined;
+    rationale?: AgentDelegationRationale | undefined;
   }): Promise<AgentDelegationRecord> {
     const handoff = await this.researchRoundService.getHandoff(input.taskId);
     if (!handoff) {
@@ -88,6 +90,7 @@ export class AgentDelegationService {
         scope: "research-only",
         allowRecursiveDelegation: false,
       },
+      ...(input.rationale ? { rationale: input.rationale } : {}),
       ...(handoff.workstreamPaths[input.kind]
         ? {
             artifact: {

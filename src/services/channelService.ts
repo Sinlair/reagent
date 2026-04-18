@@ -439,6 +439,14 @@ function hasAgentRuntimeControls(
   setReasoning(senderId: string, reasoningEffort: string): Promise<AgentRuntimeSummaryShape>;
   describeSession(senderId: string): Promise<AgentRuntimeSummaryShape>;
   describeSessionCognition(senderId: string): Promise<AgentSessionCognition>;
+  syncDelegationCognition(reference: string, input: {
+    delegationId: string;
+    taskId: string;
+    kind: "search" | "reading" | "synthesis";
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    artifactPath?: string | undefined;
+    error?: string | null | undefined;
+  }): Promise<AgentSessionCognition | null>;
 } {
   return (
     typeof (chatService as { describeRuntime?: unknown }).describeRuntime === "function" &&
@@ -454,7 +462,8 @@ function hasAgentRuntimeControls(
     typeof (chatService as { setFallbacks?: unknown }).setFallbacks === "function" &&
     typeof (chatService as { setReasoning?: unknown }).setReasoning === "function" &&
     typeof (chatService as { describeSession?: unknown }).describeSession === "function" &&
-    typeof (chatService as { describeSessionCognition?: unknown }).describeSessionCognition === "function"
+    typeof (chatService as { describeSessionCognition?: unknown }).describeSessionCognition === "function" &&
+    typeof (chatService as { syncDelegationCognition?: unknown }).syncDelegationCognition === "function"
   );
 }
 
@@ -2053,6 +2062,29 @@ export class ChannelService {
     }
 
     return this.chatService.findSessionCognition(sessionId);
+  }
+
+  async syncAgentDelegationCognition(input: {
+    sessionId: string;
+    delegationId: string;
+    taskId: string;
+    kind: "search" | "reading" | "synthesis";
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    artifactPath?: string | undefined;
+    error?: string | null | undefined;
+  }): Promise<AgentSessionCognition | null> {
+    if (!hasAgentRuntimeControls(this.chatService)) {
+      throw new Error("Agent session controls are unavailable in the current chat backend.");
+    }
+
+    return this.chatService.syncDelegationCognition(input.sessionId, {
+      delegationId: input.delegationId,
+      taskId: input.taskId,
+      kind: input.kind,
+      status: input.status,
+      ...(input.artifactPath ? { artifactPath: input.artifactPath } : {}),
+      ...(input.error != null ? { error: input.error } : {}),
+    });
   }
 
   async updateAgentSessionProfile(input: {

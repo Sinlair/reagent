@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { AgentDelegationService } from "../services/agentDelegationService.js";
 import type { ChannelService } from "../services/channelService.js";
+import type { AgentSessionCognition } from "../agents/runtime.js";
+import type { AgentDelegationKind, AgentDelegationRationale } from "../types/agentDelegation.js";
 
 const AgentSessionsQuerySchema = z.object({
   source: z.enum(["direct", "ui", "wechat", "openclaw"]).optional(),
@@ -70,6 +72,105 @@ const AgentDelegationParamsSchema = z.object({
   delegationId: z.string().trim().min(1),
 });
 
+function delegationPromptExplicitlyRequestsKind(
+  kind: AgentDelegationKind,
+  prompt: string | undefined,
+): boolean {
+  const normalized = prompt?.trim() ?? "";
+  if (!normalized) {
+    return false;
+  }
+
+  const patterns: Record<AgentDelegationKind, RegExp> = {
+    search: /\b(search|find|discover|lookup|搜|检索|发现)\b/iu,
+    reading: /\b(read|inspect|analyze|review|阅读|分析|查看)\b/iu,
+    synthesis: /\b(summary|report|synthesis|deck|slides|presentation|总结|汇报|组会|报告)\b/iu,
+  };
+  return patterns[kind].test(normalized);
+}
+
+function deriveDelegationRationale(
+  cognition: AgentSessionCognition,
+  kind: AgentDelegationKind,
+  prompt?: string | undefined,
+): {
+  allow: boolean;
+  reason?: string | undefined;
+  rationale: AgentDelegationRationale;
+} {
+  const actionNodes = cognition.neurons.action ?? [];
+  const hypothesisNodes = cognition.neurons.hypothesis ?? [];
+  const conflictedHypotheses = hypothesisNodes.filter((node) => node.status === "conflicted").length;
+  const provisionalHypotheses = hypothesisNodes.filter((node) => node.status === "provisional").length;
+  const supportedHypotheses = hypothesisNodes.filter((node) => node.status === "supported").length;
+  const matchedAction = actionNodes[0]?.content;
+  const matchedHypothesis =
+    hypothesisNodes.find((node) => node.status === "conflicted")?.content ??
+    hypothesisNodes.find((node) => node.status === "provisional")?.content ??
+    hypothesisNodes[0]?.content;
+  const mode =
+    conflictedHypotheses > 0 || provisionalHypotheses > 1
+      ? "evidence-gathering"
+      : supportedHypotheses > 0
+        ? "delivery-ready"
+        : "balanced";
+  const recommendedKinds: AgentDelegationKind[] =
+    mode === "evidence-gathering"
+      ? ["search", "reading"]
+      : mode === "delivery-ready"
+        ? ["synthesis"]
+        : /\b(read|inspect|analyze|review)\b/iu.test(matchedAction ?? "")
+          ? ["reading", "search", "synthesis"]
+          : /\b(summary|report|presentation|deck)\b/iu.test(matchedAction ?? "")
+            ? ["synthesis", "reading", "search"]
+            : ["search", "reading", "synthesis"];
+  const deferredKinds = (["search", "reading", "synthesis"] as AgentDelegationKind[]).filter(
+    (entry) => !recommendedKinds.includes(entry),
+  );
+  const reasons = [
+    ...(conflictedHypotheses > 0 ? [`${conflictedHypotheses} conflicted hypothesis node(s) remain active.`] : []),
+    ...(provisionalHypotheses > 0 ? [`${provisionalHypotheses} provisional hypothesis node(s) still need evidence.`] : []),
+    ...(matchedAction ? [`Current action focus: ${matchedAction}`] : []),
+  ];
+  const rationale: AgentDelegationRationale = {
+    source: "cognition-state",
+    summary:
+      mode === "evidence-gathering"
+        ? `Current cognition prefers evidence-gathering delegations before ${kind}.`
+        : mode === "delivery-ready"
+          ? `Current cognition is stable enough to support a ${kind} delegation.`
+          : `Current cognition is mixed; ${kind} is being evaluated against the active action and hypothesis state.`,
+    ...(matchedAction ? { matchedAction } : {}),
+    ...(matchedHypothesis ? { matchedHypothesis } : {}),
+    posture: {
+      mode,
+      reasons: reasons.length > 0 ? reasons : ["No strong cognition signal was available."],
+      recommendedKinds,
+      deferredKinds,
+      conflictedHypotheses,
+      provisionalHypotheses,
+      supportedHypotheses,
+    },
+  };
+
+  if (
+    mode === "evidence-gathering" &&
+    kind === "synthesis" &&
+    !delegationPromptExplicitlyRequestsKind(kind, prompt)
+  ) {
+    return {
+      allow: false,
+      reason: `Cognition prefers search or reading delegations before synthesis because ${rationale.posture.reasons[0] ?? "uncertainty is still high"}`,
+      rationale,
+    };
+  }
+
+  return {
+    allow: true,
+    rationale,
+  };
+}
+
 export async function registerAgentRoutes(
   app: FastifyInstance,
   channelService: Pick<
@@ -78,6 +179,7 @@ export async function registerAgentRoutes(
     | "listAgentSessions"
     | "findAgentSession"
     | "getAgentSessionCognition"
+    | "syncAgentDelegationCognition"
     | "updateAgentSessionProfile"
     | "getAgentSessionHistory"
     | "getAgentSessionHooks"
@@ -304,13 +406,26 @@ export async function registerAgentRoutes(
       });
     }
 
-    return reply.send({
-      items: await delegationService.listRecent(
-        parsed.data.limit,
-        parsed.data.status,
-        parsed.data.sessionId,
+    const items = await delegationService.listRecent(
+      parsed.data.limit,
+      parsed.data.status,
+      parsed.data.sessionId,
+    );
+    await Promise.all(
+      items.map((item) =>
+        channelService.syncAgentDelegationCognition({
+          sessionId: item.sessionId,
+          delegationId: item.delegationId,
+          taskId: item.taskId,
+          kind: item.kind,
+          status: item.status,
+          ...(item.artifact?.path ? { artifactPath: item.artifact.path } : {}),
+          ...(item.error != null ? { error: item.error } : {}),
+        }).catch(() => null),
       ),
-    });
+    );
+
+    return reply.send({ items });
   });
 
   app.post("/api/agent/delegations", async (request, reply) => {
@@ -329,8 +444,39 @@ export async function registerAgentRoutes(
       });
     }
 
+    const cognition = await channelService.getAgentSessionCognition(parsed.data.sessionId);
+    if (!cognition) {
+      return reply.code(404).send({
+        message: "Agent cognition not found for this session",
+      });
+    }
+
+    const decision = deriveDelegationRationale(
+      cognition,
+      parsed.data.kind,
+      parsed.data.prompt,
+    );
+    if (!decision.allow) {
+      return reply.code(400).send({
+        message: decision.reason,
+        rationale: decision.rationale,
+      });
+    }
+
     try {
-      const record = await delegationService.createDelegation(parsed.data);
+      const record = await delegationService.createDelegation({
+        ...parsed.data,
+        rationale: decision.rationale,
+      });
+      await channelService.syncAgentDelegationCognition({
+        sessionId: record.sessionId,
+        delegationId: record.delegationId,
+        taskId: record.taskId,
+        kind: record.kind,
+        status: record.status,
+        ...(record.artifact?.path ? { artifactPath: record.artifact.path } : {}),
+        ...(record.error != null ? { error: record.error } : {}),
+      }).catch(() => null);
       return reply.code(201).send(record);
     } catch (error) {
       return reply.code(400).send({
@@ -355,6 +501,16 @@ export async function registerAgentRoutes(
       });
     }
 
+    await channelService.syncAgentDelegationCognition({
+      sessionId: record.sessionId,
+      delegationId: record.delegationId,
+      taskId: record.taskId,
+      kind: record.kind,
+      status: record.status,
+      ...(record.artifact?.path ? { artifactPath: record.artifact.path } : {}),
+      ...(record.error != null ? { error: record.error } : {}),
+    }).catch(() => null);
+
     return reply.send(record);
   });
 
@@ -373,6 +529,16 @@ export async function registerAgentRoutes(
         message: "Agent delegation not found",
       });
     }
+
+    await channelService.syncAgentDelegationCognition({
+      sessionId: record.sessionId,
+      delegationId: record.delegationId,
+      taskId: record.taskId,
+      kind: record.kind,
+      status: record.status,
+      ...(record.artifact?.path ? { artifactPath: record.artifact.path } : {}),
+      ...(record.error != null ? { error: record.error } : {}),
+    }).catch(() => null);
 
     return reply.send(record);
   });

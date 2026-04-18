@@ -13,6 +13,24 @@ export interface AgentDelegationInput {
   allowRecursiveDelegation: boolean;
 }
 
+export interface AgentDelegationCognitionPosture {
+  mode: "evidence-gathering" | "delivery-ready" | "balanced";
+  reasons: string[];
+  recommendedKinds: AgentDelegationKind[];
+  deferredKinds: AgentDelegationKind[];
+  conflictedHypotheses: number;
+  provisionalHypotheses: number;
+  supportedHypotheses: number;
+}
+
+export interface AgentDelegationRationale {
+  source: "cognition-state";
+  summary: string;
+  matchedAction?: string | undefined;
+  matchedHypothesis?: string | undefined;
+  posture: AgentDelegationCognitionPosture;
+}
+
 export interface AgentDelegationRecord {
   delegationId: string;
   sessionId: string;
@@ -20,6 +38,7 @@ export interface AgentDelegationRecord {
   kind: AgentDelegationKind;
   status: AgentDelegationStatus;
   input: AgentDelegationInput;
+  rationale?: AgentDelegationRationale | undefined;
   artifact?: AgentDelegationArtifactRef | undefined;
   createdAt: string;
   updatedAt: string;

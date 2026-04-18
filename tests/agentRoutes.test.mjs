@@ -732,6 +732,7 @@ async function main() {
 
   await runTest("agent routes expose delegation list, create, detail, and cancel", async () => {
     const app = Fastify();
+    const synced = [];
     let delegation = {
       delegationId: "dlg_01",
       sessionId: "wechat:agent-user-2",
@@ -742,6 +743,21 @@ async function main() {
         prompt: "Find strong browser-agent baselines",
         scope: "research-only",
         allowRecursiveDelegation: false,
+      },
+      rationale: {
+        source: "cognition-state",
+        summary: "Current cognition prefers evidence-gathering delegations before search.",
+        matchedAction: "Inspect the strongest evidence before delivery.",
+        matchedHypothesis: "There may be multiple valid alternatives worth keeping in play.",
+        posture: {
+          mode: "evidence-gathering",
+          reasons: ["1 conflicted hypothesis node(s) remain active."],
+          recommendedKinds: ["search", "reading"],
+          deferredKinds: ["synthesis"],
+          conflictedHypotheses: 1,
+          provisionalHypotheses: 1,
+          supportedHypotheses: 0,
+        },
       },
       artifact: {
         path: "research/rounds/task_123/workstreams/search.md",
@@ -814,6 +830,52 @@ async function main() {
           : null;
       },
       async getAgentSessionCognition() {
+        return {
+          sessionId: "wechat:agent-user-2",
+          senderId: "agent-user-2",
+          entrySource: "wechat",
+          updatedAt: "2026-04-14T00:00:00.000Z",
+          digestUpdatedAt: "2026-04-14T00:00:00.000Z",
+          sessionUpdatedAt: "2026-04-14T00:00:00.000Z",
+          recentUserIntents: ["User asked: compare browser-agent baselines"],
+          recentToolOutcomes: [],
+          pendingActions: ["Inspect the strongest evidence before delivery."],
+          neurons: {
+            updatedAt: "2026-04-14T00:00:00.000Z",
+            perception: [],
+            memory: [],
+            hypothesis: [
+              {
+                id: "hypothesis:1",
+                kind: "hypothesis",
+                content: "There may be multiple valid alternatives worth keeping in play.",
+                salience: 0.8,
+                confidence: 0.58,
+                source: "runtime-inference",
+                updatedAt: "2026-04-14T00:00:00.000Z",
+                status: "conflicted",
+                supportingEvidence: ["browser-agent-baseline.md"],
+                conflictingEvidence: ["research-brief"],
+              },
+            ],
+            reasoning: [],
+            action: [
+              {
+                id: "action:1",
+                kind: "action",
+                content: "Inspect the strongest evidence before delivery.",
+                salience: 0.88,
+                confidence: 0.78,
+                source: "assistant-reply",
+                updatedAt: "2026-04-14T00:00:00.000Z",
+              },
+            ],
+            reflection: [],
+          },
+        };
+      },
+      async syncAgentDelegationCognition(input) {
+        synced.push(input);
         return null;
       },
       async updateAgentSessionProfile() {
@@ -848,6 +910,7 @@ async function main() {
               scope: "research-only",
               allowRecursiveDelegation: false,
             },
+            ...(input.rationale ? { rationale: input.rationale } : {}),
             updatedAt: "2026-04-14T00:02:00.000Z",
           };
           return delegation;
@@ -876,6 +939,7 @@ async function main() {
     assert.equal(listResponse.statusCode, 200);
     assert.equal(listResponse.json().items.length, 1);
     assert.equal(listResponse.json().items[0].delegationId, "dlg_01");
+    assert.equal(synced.length, 1);
 
     const createResponse = await app.inject({
       method: "POST",
@@ -890,6 +954,23 @@ async function main() {
     assert.equal(createResponse.statusCode, 201);
     assert.equal(createResponse.json().status, "completed");
     assert.equal(createResponse.json().artifact.path, "research/rounds/task_123/workstreams/search.md");
+    assert.equal(createResponse.json().rationale.posture.mode, "evidence-gathering");
+    assert.deepEqual(createResponse.json().rationale.posture.recommendedKinds, ["search", "reading"]);
+
+    const blockedCreateResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent/delegations",
+      payload: {
+        sessionId: "wechat:agent-user-2",
+        taskId: "task_123",
+        kind: "synthesis",
+      },
+    });
+    assert.equal(blockedCreateResponse.statusCode, 400);
+    assert.equal(
+      blockedCreateResponse.json().message.startsWith("Cognition prefers search or reading delegations before synthesis"),
+      true,
+    );
 
     const detailResponse = await app.inject({
       method: "GET",
@@ -910,6 +991,7 @@ async function main() {
       url: "/api/agent/delegations/missing",
     });
     assert.equal(missingDetailResponse.statusCode, 404);
+    assert.equal(synced.length >= 4, true);
 
     await app.close();
   });
