@@ -97,6 +97,39 @@ async function createFixtureServer() {
     threadId: "thread-host-1",
     lastHostSyncAt: "2026-04-08T08:29:00.000Z",
   };
+  const agentCognition = {
+    sessionId: agentSession.sessionId,
+    senderId: agentSession.senderId,
+    entrySource: agentSession.entrySource,
+    updatedAt: "2026-04-08T08:29:00.000Z",
+    digestUpdatedAt: "2026-04-08T08:29:00.000Z",
+    sessionUpdatedAt: "2026-04-08T08:29:00.000Z",
+    recentUserIntents: ["User asked: compare browser-agent baselines"],
+    recentToolOutcomes: ["agent_describe: completed"],
+    pendingActions: ["Inspect the cognition view."],
+    neurons: {
+      updatedAt: "2026-04-08T08:29:00.000Z",
+      perception: [],
+      memory: [],
+      hypothesis: [
+        {
+          id: "hypothesis:1",
+          kind: "hypothesis",
+          content: "Workspace memory likely contains relevant operating context for the current turn.",
+          salience: 0.8,
+          confidence: 0.64,
+          source: "runtime-inference",
+          updatedAt: "2026-04-08T08:29:00.000Z",
+          status: "conflicted",
+          supportingEvidence: ["browser-agent-baseline.md"],
+          conflictingEvidence: ["research-brief"],
+        },
+      ],
+      reasoning: [],
+      action: [],
+      reflection: [],
+    },
+  };
   let agentDelegation = {
     delegationId: "dlg_fixture_1",
     sessionId: "wechat:wx-user-1",
@@ -983,6 +1016,11 @@ async function createFixtureServer() {
 
     if (req.method === "GET" && url.pathname === `/api/agent/sessions/${encodeURIComponent(agentSession.sessionId)}/profile`) {
       sendJson(200, { ...agentSession });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === `/api/agent/sessions/${encodeURIComponent(agentSession.sessionId)}/cognition`) {
+      sendJson(200, { ...agentCognition });
       return;
     }
 
@@ -3016,6 +3054,12 @@ async function main() {
         payload = JSON.parse(result.stdout);
         assert.equal(payload.senderId, "wx-user-1");
         assert.equal(payload.entrySource, "wechat");
+
+        result = await runCli(["agent", "cognition", "wx-user-1", "--url", fixture.baseUrl, "--json"], cwd);
+        assert.equal(result.code, 0, result.stderr);
+        payload = JSON.parse(result.stdout);
+        assert.equal(payload.sessionId, "wechat:wx-user-1");
+        assert.equal(payload.neurons.hypothesis[0].status, "conflicted");
 
         result = await runCli(["agent", "history", "wx-user-1", "--url", fixture.baseUrl, "--json"], cwd);
         assert.equal(result.code, 0, result.stderr);

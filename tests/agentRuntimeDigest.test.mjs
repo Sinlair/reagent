@@ -167,6 +167,15 @@ async function main() {
       assert.ok(Array.isArray(session.digest.neurons.reflection));
       assert.equal(session.digest.neurons.hypothesis.length > 1, true);
       assert.equal(session.digest.neurons.reasoning.length > 0, true);
+      assert.equal(session.digest.neurons.reflection.length > 1, true);
+      assert.equal(
+        session.digest.neurons.reflection.some((item) => item.content.startsWith("Still uncertain:")),
+        true,
+      );
+      assert.equal(
+        session.digest.neurons.reflection.some((item) => item.content.startsWith("Recommended next action:")),
+        true,
+      );
       assert.equal(session.digest.neurons.hypothesis[0].kind, "hypothesis");
       assert.equal(typeof session.digest.neurons.hypothesis[0].content, "string");
       assert.equal(typeof session.digest.neurons.hypothesis[0].confidence, "number");
@@ -265,6 +274,73 @@ async function main() {
       assert.ok(decayedHypothesis);
       assert.equal(decayedHypothesis.salience < activatedHypothesis.salience, true);
       assert.equal(decayedHypothesis.status === "provisional" || decayedHypothesis.status === "conflicted", true);
+    });
+  });
+
+  await runTest("ChatService runtime exposes structured session cognition without raw chain-of-thought", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      const directions = new ResearchDirectionService(dir);
+      await memory.ensureWorkspace();
+      await memory.remember({
+        scope: "daily",
+        title: "Cognition anchor",
+        content: "Keep the cognition anchor in workspace memory.",
+        source: "test",
+        sourceType: "user-stated",
+        confidence: "high",
+      });
+      await directions.upsertProfile({
+        id: "cognition-anchor-brief",
+        label: "Cognition Anchor Brief",
+        summary: "Artifact evidence for the cognition anchor.",
+        knownBaselines: ["cognition anchor"],
+        evaluationPriorities: ["anchor stability"],
+      });
+
+      const chat = new ChatService(dir, memory, {
+        client: {
+          responses: {
+            async create() {
+              return {
+                id: "resp-cognition",
+                output_text: "Cognition reply",
+                output: []
+              };
+            }
+          }
+        },
+        model: "gpt-test",
+        wireApi: "responses"
+      });
+
+      await chat.plainReply({
+        senderId: "digest-user-4",
+        text: "Compare the cognition anchor against the brief."
+      });
+
+      const cognition = await chat.findSessionCognition("digest-user-4");
+      assert.ok(cognition);
+      assert.equal(cognition.sessionId, "wechat:digest-user-4");
+      assert.equal(cognition.entrySource, "wechat");
+      assert.ok(Array.isArray(cognition.neurons.hypothesis));
+      assert.equal(cognition.neurons.hypothesis.length > 0, true);
+      assert.equal(cognition.neurons.hypothesis.some((item) => item.status === "conflicted"), true);
+      assert.equal(
+        cognition.neurons.hypothesis.some((item) => (item.supportingEvidence?.length ?? 0) > 0),
+        true,
+      );
+      assert.equal(cognition.neurons.reflection.length > 1, true);
+      assert.equal(
+        cognition.neurons.reflection.some((item) => item.content.startsWith("Still uncertain:")),
+        true,
+      );
+      assert.equal(
+        cognition.neurons.reflection.some((item) => item.content.startsWith("Recommended next action:")),
+        true,
+      );
+      assert.equal(typeof cognition.recentUserIntents[0], "string");
+      assert.equal("rawChainOfThought" in cognition, false);
     });
   });
 }

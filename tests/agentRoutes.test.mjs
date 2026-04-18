@@ -218,6 +218,39 @@ async function main() {
 
   await runTest("agent routes expose canonical session list and detail", async () => {
     const app = Fastify();
+    const cognition = {
+      sessionId: "wechat:agent-user-2",
+      senderId: "agent-user-2",
+      entrySource: "wechat",
+      updatedAt: "2026-04-14T00:00:00.000Z",
+      digestUpdatedAt: "2026-04-14T00:00:00.000Z",
+      sessionUpdatedAt: "2026-04-14T00:00:00.000Z",
+      recentUserIntents: ["User asked: latest question limit=2"],
+      recentToolOutcomes: ["agent_describe: completed"],
+      pendingActions: ["Inspect the active cognition state."],
+      neurons: {
+        updatedAt: "2026-04-14T00:00:00.000Z",
+        perception: [],
+        memory: [],
+        hypothesis: [
+          {
+            id: "hypothesis:1",
+            kind: "hypothesis",
+            content: "Workspace memory likely contains relevant operating context for the current turn.",
+            salience: 0.8,
+            confidence: 0.64,
+            source: "runtime-inference",
+            updatedAt: "2026-04-14T00:00:00.000Z",
+            status: "conflicted",
+            supportingEvidence: ["memory/2026-04-14.md"],
+            conflictingEvidence: ["research-brief"],
+          },
+        ],
+        reasoning: [],
+        action: [],
+        reflection: [],
+      },
+    };
 
     await registerAgentRoutes(app, {
       async getAgentRuntimeOverview() {
@@ -324,6 +357,9 @@ async function main() {
         }
 
         return null;
+      },
+      async getAgentSessionCognition(sessionId) {
+        return sessionId === cognition.sessionId ? cognition : null;
       },
       async getAgentSessionHistory(sessionId, limit) {
         if (sessionId === "wechat:agent-user-2") {
@@ -494,6 +530,20 @@ async function main() {
     });
     assert.equal(missingHistoryResponse.statusCode, 404);
 
+    const cognitionResponse = await app.inject({
+      method: "GET",
+      url: "/api/agent/sessions/wechat%3Aagent-user-2/cognition",
+    });
+    assert.equal(cognitionResponse.statusCode, 200);
+    assert.equal(cognitionResponse.json().sessionId, "wechat:agent-user-2");
+    assert.equal(cognitionResponse.json().neurons.hypothesis[0].status, "conflicted");
+
+    const missingCognitionResponse = await app.inject({
+      method: "GET",
+      url: "/api/agent/sessions/openclaw%3Amissing-user/cognition",
+    });
+    assert.equal(missingCognitionResponse.statusCode, 404);
+
     const hooksResponse = await app.inject({
       method: "GET",
       url: "/api/agent/sessions/wechat%3Aagent-user-2/hooks?event=tool_blocked&limit=1",
@@ -591,6 +641,9 @@ async function main() {
       },
       async findAgentSession(sessionId) {
         return sessionId === profile.sessionId ? profile : null;
+      },
+      async getAgentSessionCognition() {
+        return null;
       },
       async updateAgentSessionProfile(input) {
         if (input.sessionId !== profile.sessionId) {
@@ -759,6 +812,9 @@ async function main() {
               },
             }
           : null;
+      },
+      async getAgentSessionCognition() {
+        return null;
       },
       async updateAgentSessionProfile() {
         return null;

@@ -77,6 +77,7 @@ export async function registerAgentRoutes(
     | "getAgentRuntimeOverview"
     | "listAgentSessions"
     | "findAgentSession"
+    | "getAgentSessionCognition"
     | "updateAgentSessionProfile"
     | "getAgentSessionHistory"
     | "getAgentSessionHooks"
@@ -151,6 +152,25 @@ export async function registerAgentRoutes(
     }
 
     return reply.send(session);
+  });
+
+  app.get("/api/agent/sessions/:sessionId/cognition", async (request, reply) => {
+    const parsed = AgentSessionParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        message: "Invalid agent session id",
+        issues: parsed.error.flatten(),
+      });
+    }
+
+    const cognition = await channelService.getAgentSessionCognition(parsed.data.sessionId);
+    if (!cognition) {
+      return reply.code(404).send({
+        message: "Agent session not found",
+      });
+    }
+
+    return reply.send(cognition);
   });
 
   app.patch("/api/agent/sessions/:sessionId/profile", async (request, reply) => {

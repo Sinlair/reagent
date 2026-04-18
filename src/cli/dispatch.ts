@@ -311,6 +311,7 @@ export async function dispatchAgentCommand(
     agentSessionsCommand: CliCommandHandler;
     agentSessionCommand: CliCommandHandler;
     agentProfileCommand: CliCommandHandler;
+    agentCognitionCommand: CliCommandHandler;
     agentHistoryCommand: CliCommandHandler;
     agentHooksCommand: CliCommandHandler;
     agentRoleCommand: CliCommandHandler;
@@ -333,6 +334,7 @@ export async function dispatchAgentCommand(
       sessions: deps.agentSessionsCommand,
       session: deps.agentSessionCommand,
       profile: deps.agentProfileCommand,
+      cognition: deps.agentCognitionCommand,
       history: deps.agentHistoryCommand,
       hooks: deps.agentHooksCommand,
       role: deps.agentRoleCommand,

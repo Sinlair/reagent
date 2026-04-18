@@ -158,6 +158,19 @@ export interface AgentSessionHooks {
   items: AgentRuntimeAuditEntry[];
 }
 
+export interface AgentSessionCognition {
+  sessionId: string;
+  senderId: string;
+  entrySource: AgentEntrySource;
+  updatedAt: string;
+  digestUpdatedAt: string;
+  sessionUpdatedAt: string;
+  recentUserIntents: string[];
+  recentToolOutcomes: string[];
+  pendingActions: string[];
+  neurons: AgentSessionNeuronState;
+}
+
 export interface AgentSessionListEntry {
   sessionId: string;
   channel: string;
@@ -188,9 +201,9 @@ interface AgentTurn {
   name?: string | undefined;
 }
 
-type AgentNeuronKind = "perception" | "memory" | "hypothesis" | "reasoning" | "action" | "reflection";
-type AgentHypothesisStatus = "provisional" | "supported" | "conflicted";
-type AgentNeuronSource =
+export type AgentNeuronKind = "perception" | "memory" | "hypothesis" | "reasoning" | "action" | "reflection";
+export type AgentHypothesisStatus = "provisional" | "supported" | "conflicted";
+export type AgentNeuronSource =
   | "user-input"
   | "workspace-memory"
   | "artifact-memory"
@@ -200,7 +213,7 @@ type AgentNeuronSource =
   | "assistant-reply"
   | "runtime-inference";
 
-interface AgentNeuronNode {
+export interface AgentNeuronNode {
   id: string;
   kind: AgentNeuronKind;
   content: string;
@@ -221,7 +234,7 @@ interface AgentSessionDigest {
   neurons: AgentSessionNeuronState;
 }
 
-interface AgentSessionNeuronState {
+export interface AgentSessionNeuronState {
   updatedAt: string;
   perception: AgentNeuronNode[];
   memory: AgentNeuronNode[];
@@ -289,7 +302,7 @@ type AgentResolvedLlmRoute = Omit<ResolvedLlmRoute, "source"> & {
   source: "registry" | "env" | "injected";
 };
 
-type AgentEntrySource = "direct" | "ui" | "wechat" | "openclaw";
+export type AgentEntrySource = "direct" | "ui" | "wechat" | "openclaw";
 type AgentToolsetId =
   | "workspace"
   | "memory"
@@ -947,6 +960,81 @@ function buildHypothesisNeuronNodes(input: {
   return trimNeuronNodes(nodes);
 }
 
+function buildReflectionNeuronNodes(input: {
+  latestAssistantTurn: string;
+  recentToolOutcomes: string[];
+  nextActions: string[];
+  hypothesis: AgentNeuronNode[];
+  updatedAt: string;
+}): AgentNeuronNode[] {
+  const nodes: AgentNeuronNode[] = [];
+  const confirmedSignal = input.recentToolOutcomes[0] || clipText(input.latestAssistantTurn, 140);
+  if (confirmedSignal) {
+    nodes.push(
+      buildNeuronNode({
+        id: `reflection:${input.updatedAt}:confirmed`,
+        kind: "reflection",
+        content: `Confirmed this turn: ${confirmedSignal}`,
+        salience: 0.72,
+        confidence: input.recentToolOutcomes.length > 0 ? 0.8 : input.latestAssistantTurn ? 0.68 : 0.3,
+        source: input.recentToolOutcomes.length > 0 ? "tool-outcome" : "assistant-reply",
+        updatedAt: input.updatedAt,
+        supportingEvidence: confirmedSignal ? [confirmedSignal] : [],
+      }),
+    );
+  }
+
+  const unresolvedHypothesis = input.hypothesis.find(
+    (node) => node.status === "conflicted" || node.status === "provisional",
+  );
+  if (unresolvedHypothesis) {
+    nodes.push(
+      buildNeuronNode({
+        id: `reflection:${input.updatedAt}:uncertain`,
+        kind: "reflection",
+        content: `Still uncertain: ${unresolvedHypothesis.content}`,
+        salience: 0.68,
+        confidence: 0.6,
+        source: "runtime-inference",
+        updatedAt: input.updatedAt,
+        supportingEvidence: unresolvedHypothesis.supportingEvidence ?? [],
+        conflictingEvidence: unresolvedHypothesis.conflictingEvidence ?? [],
+      }),
+    );
+  }
+
+  if (input.nextActions.length > 0) {
+    nodes.push(
+      buildNeuronNode({
+        id: `reflection:${input.updatedAt}:next`,
+        kind: "reflection",
+        content: `Recommended next action: ${input.nextActions[0]}`,
+        salience: 0.74,
+        confidence: 0.78,
+        source: "assistant-reply",
+        updatedAt: input.updatedAt,
+        supportingEvidence: [input.nextActions[0]!],
+      }),
+    );
+  }
+
+  if (nodes.length === 0) {
+    nodes.push(
+      buildNeuronNode({
+        id: `reflection:${input.updatedAt}:empty`,
+        kind: "reflection",
+        content: "No assistant reflection has been produced yet.",
+        salience: 0.3,
+        confidence: 0.3,
+        source: "assistant-reply",
+        updatedAt: input.updatedAt,
+      }),
+    );
+  }
+
+  return trimNeuronNodes(nodes);
+}
+
 function neuronKey(node: AgentNeuronNode): string {
   return `${node.kind}:${node.content}`.trim().toLowerCase();
 }
@@ -1148,19 +1236,15 @@ function buildNeuronState(input: {
       }),
     ),
   );
-  const reflection = trimNeuronNodes([
-    buildNeuronNode({
-      id: `reflection:${updatedAt}:0`,
-      kind: "reflection",
-      content: latestAssistantTurn
-        ? `The latest reply consolidated the current state and left ${action.length} next action(s).`
-        : "No assistant reflection has been produced yet.",
-      salience: 0.68,
-      confidence: latestAssistantTurn ? 0.72 : 0.3,
-      source: "assistant-reply",
+  const reflection = trimNeuronNodes(
+    buildReflectionNeuronNodes({
+      latestAssistantTurn,
+      recentToolOutcomes: input.recentToolOutcomes,
+      nextActions,
+      hypothesis,
       updatedAt,
     }),
-  ]);
+  );
 
   return {
     updatedAt,
@@ -1389,6 +1473,26 @@ function parseNeuronNodeArray(
       .filter((item): item is AgentNeuronNode => Boolean(item)),
     MAX_NEURON_ITEMS,
   );
+}
+
+function cloneNeuronNode(node: AgentNeuronNode): AgentNeuronNode {
+  return {
+    ...node,
+    ...(node.supportingEvidence ? { supportingEvidence: [...node.supportingEvidence] } : {}),
+    ...(node.conflictingEvidence ? { conflictingEvidence: [...node.conflictingEvidence] } : {}),
+  };
+}
+
+function cloneNeuronState(state: AgentSessionNeuronState): AgentSessionNeuronState {
+  return {
+    updatedAt: state.updatedAt,
+    perception: state.perception.map((node) => cloneNeuronNode(node)),
+    memory: state.memory.map((node) => cloneNeuronNode(node)),
+    hypothesis: state.hypothesis.map((node) => cloneNeuronNode(node)),
+    reasoning: state.reasoning.map((node) => cloneNeuronNode(node)),
+    action: state.action.map((node) => cloneNeuronNode(node)),
+    reflection: state.reflection.map((node) => cloneNeuronNode(node)),
+  };
 }
 
 function tokenizeForSkillMatch(value: string): string[] {
@@ -1934,9 +2038,34 @@ export class AgentRuntime {
     };
   }
 
+  private buildSessionCognition(sessionIdOrSenderId: string, session: AgentSession): AgentSessionCognition {
+    const parsedSession = parseSessionId(sessionIdOrSenderId);
+    const senderId = parsedSession?.senderId ?? sessionIdOrSenderId;
+    const entrySource = parsedSession?.entrySource ?? session.lastEntrySource ?? "direct";
+    const sessionId = parsedSession?.sessionId ?? buildCanonicalSessionId(entrySource, senderId);
+
+    return {
+      sessionId,
+      senderId,
+      entrySource,
+      updatedAt: session.digest.neurons.updatedAt || session.digest.updatedAt,
+      digestUpdatedAt: session.digest.updatedAt,
+      sessionUpdatedAt: session.updatedAt,
+      recentUserIntents: [...session.digest.recentUserIntents],
+      recentToolOutcomes: [...session.digest.recentToolOutcomes],
+      pendingActions: [...session.digest.pendingActions],
+      neurons: cloneNeuronState(session.digest.neurons),
+    };
+  }
+
   async describeSession(senderId: string): Promise<AgentSessionSummary> {
     const { sessionId, session } = await this.getSession(senderId);
     return this.buildSessionSummary(sessionId, session);
+  }
+
+  async describeSessionCognition(senderId: string): Promise<AgentSessionCognition> {
+    const { sessionId, session } = await this.getSession(senderId);
+    return this.buildSessionCognition(sessionId, session);
   }
 
   async findSession(reference: string, source?: AgentEntrySource): Promise<AgentSessionSummary | null> {
@@ -1947,6 +2076,16 @@ export class AgentRuntime {
     }
 
     return this.buildSessionSummary(sessionId, store.sessions[sessionId]!);
+  }
+
+  async findSessionCognition(reference: string, source?: AgentEntrySource): Promise<AgentSessionCognition | null> {
+    const store = await this.readStore();
+    const sessionId = this.findExistingSessionId(store, reference, source);
+    if (!sessionId) {
+      return null;
+    }
+
+    return this.buildSessionCognition(sessionId, store.sessions[sessionId]!);
   }
 
   async findSessionHistory(

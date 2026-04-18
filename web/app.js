@@ -71,6 +71,7 @@ const state = {
   agentRuntimeOverview: null,
   agentSession: null,
   selectedAgentSessionId: `ui:${UI_AGENT_SENDER_ID}`,
+  agentSessionCognition: null,
   agentSessionHistory: null,
   agentSessionHooks: null,
   agentDelegations: [],
@@ -1481,6 +1482,7 @@ function bindSettingsTabs() {
 function renderAgentPanelTabs() {
   const tabs = [
     ["overview", t("agents.panelOverview", "Profile")],
+    ["cognition", t("agents.panelCognition", "Cognition")],
     ["history", t("agents.panelHistory", "History")],
     ["hooks", t("agents.panelHooks", "Hooks")],
     ["delegations", t("agents.panelDelegations", "Delegations")],
@@ -1773,6 +1775,87 @@ function renderAgentHistoryPanel() {
       `
     )
     .join("");
+}
+
+function formatNeuronMetric(value) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "-";
+}
+
+function renderAgentNeuronCard(item) {
+  const badges = [
+    `source=${item.source || "-"}`,
+    `salience=${formatNeuronMetric(item.salience)}`,
+    `confidence=${formatNeuronMetric(item.confidence)}`,
+    ...(item.status ? [`status=${item.status}`] : []),
+  ];
+
+  return `
+    <article class="result-item">
+      <h3>${escapeHtml(item.content || "-")}</h3>
+      <p>${escapeHtml(badges.join(" | "))}</p>
+      ${
+        item.supportingEvidence?.length
+          ? `<small>${escapeHtml(`Support: ${item.supportingEvidence.join(" | ")}`)}</small>`
+          : ""
+      }
+      ${
+        item.conflictingEvidence?.length
+          ? `<small>${escapeHtml(`Conflict: ${item.conflictingEvidence.join(" | ")}`)}</small>`
+          : ""
+      }
+    </article>
+  `;
+}
+
+function renderAgentCognitionLayer(label, items) {
+  const normalizedItems = Array.isArray(items) ? items : [];
+  const tone = normalizedItems.some((item) => item.status === "conflicted")
+    ? (state.lang === "zh" ? "存在冲突信号" : "Conflicting signals remain active.")
+    : normalizedItems.some((item) => item.status === "provisional")
+      ? (state.lang === "zh" ? "当前仍是暂定判断" : "This layer is still provisional.")
+      : normalizedItems.length > 0
+        ? (state.lang === "zh" ? "当前层有稳定信号" : "This layer has active signals.")
+        : (state.lang === "zh" ? "当前层还没有活跃节点" : "This layer has no active nodes yet.");
+
+  return `
+    <section class="result-stack">
+      <article class="result-item">
+        <h3>${escapeHtml(label)}</h3>
+        <p>${escapeHtml(tone)}</p>
+      </article>
+      ${normalizedItems.length ? normalizedItems.map((item) => renderAgentNeuronCard(item)).join("") : ""}
+    </section>
+  `;
+}
+
+function renderAgentCognitionPanel() {
+  const payload = state.agentSessionCognition;
+  if (!payload?.neurons) {
+    return `<div class="empty-state compact-empty">${escapeHtml(
+      state.lang === "zh" ? "当前 session 还没有可观察的 cognition 状态。" : "No observable cognition state for this session yet."
+    )}</div>`;
+  }
+
+  const sections = [
+    ["Perception", payload.neurons.perception || []],
+    ["Memory", payload.neurons.memory || []],
+    ["Hypothesis", payload.neurons.hypothesis || []],
+    ["Reasoning", payload.neurons.reasoning || []],
+    ["Action", payload.neurons.action || []],
+    ["Reflection", payload.neurons.reflection || []],
+  ];
+
+  return [
+    `<article class="result-item"><h3>${escapeHtml("Cognition Summary")}</h3><p>${escapeHtml(
+      `Updated ${formatTime(payload.updatedAt)} | intents=${(payload.recentUserIntents || []).length} | tools=${(payload.recentToolOutcomes || []).length} | pending=${(payload.pendingActions || []).length}`
+    )}</p></article>`,
+    ...sections.map(([label, items]) => renderAgentCognitionLayer(label, items)),
+    `<article class="result-item"><h3>${escapeHtml("Digest")}</h3><p>${escapeHtml(
+      `Recent intents: ${(payload.recentUserIntents || []).join(" | ") || "none"}`
+    )}</p><small>${escapeHtml(
+      `Pending actions: ${(payload.pendingActions || []).join(" | ") || "none"}`
+    )}</small></article>`,
+  ].join("");
 }
 
 function renderAgentHooksPanel() {
@@ -2405,6 +2488,8 @@ function renderAgentSession(session) {
       ]
         .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
         .join("");
+    } else if (state.agentsPanel === "cognition") {
+      panelContent = `<div class="result-stack">${renderAgentCognitionPanel()}</div>`;
     } else if (state.agentsPanel === "history") {
       panelContent = `<div class="result-stack">${renderAgentHistoryPanel()}</div>`;
     } else if (state.agentsPanel === "hooks") {
@@ -7256,6 +7341,7 @@ async function loadAgentSession(sessionId = getSelectedAgentSessionId()) {
     state.selectedAgentSessionId = session.sessionId || sessionId;
     renderAgentSession(session);
     await Promise.all([
+      loadAgentSessionCognition(state.selectedAgentSessionId),
       loadAgentSessionHistory(state.selectedAgentSessionId),
       loadAgentSessionHooks(state.selectedAgentSessionId),
       loadAgentDelegations(state.selectedAgentSessionId),
@@ -7267,6 +7353,7 @@ async function loadAgentSession(sessionId = getSelectedAgentSessionId()) {
       const fallback = await requestJson(`/api/agent/sessions/${encodeURIComponent(state.selectedAgentSessionId)}/profile`);
       renderAgentSession(fallback);
       await Promise.all([
+        loadAgentSessionCognition(state.selectedAgentSessionId),
         loadAgentSessionHistory(state.selectedAgentSessionId),
         loadAgentSessionHooks(state.selectedAgentSessionId),
         loadAgentDelegations(state.selectedAgentSessionId),
@@ -7274,11 +7361,16 @@ async function loadAgentSession(sessionId = getSelectedAgentSessionId()) {
       renderAgentSession(fallback);
       return;
     }
+    state.agentSessionCognition = null;
     state.agentSessionHistory = null;
     state.agentSessionHooks = null;
     state.agentDelegations = [];
     renderAgentSession(null);
   }
+}
+
+async function loadAgentSessionCognition(sessionId = getSelectedAgentSessionId()) {
+  state.agentSessionCognition = await requestJson(`/api/agent/sessions/${encodeURIComponent(sessionId)}/cognition`);
 }
 
 async function loadAgentSessionHistory(sessionId = getSelectedAgentSessionId()) {

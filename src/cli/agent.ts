@@ -128,6 +128,40 @@ type AgentSessionHistoryPayload = {
   }>;
 };
 
+type AgentSessionCognitionPayload = {
+  sessionId: string;
+  senderId: string;
+  entrySource: string;
+  updatedAt: string;
+  digestUpdatedAt: string;
+  sessionUpdatedAt: string;
+  recentUserIntents: string[];
+  recentToolOutcomes: string[];
+  pendingActions: string[];
+  neurons: {
+    updatedAt: string;
+    perception: AgentNeuronPayload[];
+    memory: AgentNeuronPayload[];
+    hypothesis: AgentNeuronPayload[];
+    reasoning: AgentNeuronPayload[];
+    action: AgentNeuronPayload[];
+    reflection: AgentNeuronPayload[];
+  };
+};
+
+type AgentNeuronPayload = {
+  id: string;
+  kind: string;
+  content: string;
+  salience: number;
+  confidence: number;
+  source: string;
+  updatedAt: string;
+  status?: string | undefined;
+  supportingEvidence?: string[] | undefined;
+  conflictingEvidence?: string[] | undefined;
+};
+
 type AgentSessionHooksPayload = {
   sessionId: string;
   senderId: string;
@@ -222,6 +256,7 @@ Commands:
   reagent agent sessions
   reagent agent session <sessionId|senderId>
   reagent agent profile <sessionId|senderId>
+  reagent agent cognition <sessionId|senderId>
   reagent agent history <sessionId|senderId>
   reagent agent hooks <sessionId|senderId>
   reagent agent role <sessionId|senderId> [roleId]
@@ -369,6 +404,50 @@ Flags:
     }
   }
 
+  function printNeuronLayer(label: string, items: AgentNeuronPayload[]): void {
+    console.log(`${label}:`);
+    if (items.length === 0) {
+      console.log("  - none");
+      return;
+    }
+
+    for (const item of items) {
+      console.log(`  - ${item.content}`);
+      console.log(
+        `    salience=${item.salience} confidence=${item.confidence} source=${item.source}${item.status ? ` status=${item.status}` : ""}`,
+      );
+      if (item.supportingEvidence?.length) {
+        console.log(`    support=${item.supportingEvidence.join(" | ")}`);
+      }
+      if (item.conflictingEvidence?.length) {
+        console.log(`    conflict=${item.conflictingEvidence.join(" | ")}`);
+      }
+    }
+  }
+
+  function printAgentCognition(payload: AgentSessionCognitionPayload): void {
+    console.log(`Session: ${payload.sessionId}`);
+    console.log(`Sender: ${payload.senderId}`);
+    console.log(`Entry: ${payload.entrySource}`);
+    console.log(`Updated: ${deps.formatWhen(payload.updatedAt)}`);
+    console.log("");
+    printNeuronLayer("Perception", payload.neurons.perception || []);
+    console.log("");
+    printNeuronLayer("Memory", payload.neurons.memory || []);
+    console.log("");
+    printNeuronLayer("Hypothesis", payload.neurons.hypothesis || []);
+    console.log("");
+    printNeuronLayer("Reasoning", payload.neurons.reasoning || []);
+    console.log("");
+    printNeuronLayer("Action", payload.neurons.action || []);
+    console.log("");
+    printNeuronLayer("Reflection", payload.neurons.reflection || []);
+    console.log("");
+    console.log(`Recent intents: ${(payload.recentUserIntents || []).join(" | ") || "none"}`);
+    console.log(`Recent tools: ${(payload.recentToolOutcomes || []).join(" | ") || "none"}`);
+    console.log(`Pending actions: ${(payload.pendingActions || []).join(" | ") || "none"}`);
+  }
+
   function printAgentHistory(payload: AgentSessionHistoryPayload): void {
     if (payload.items.length === 0) {
       console.log("No agent session history found.");
@@ -489,6 +568,23 @@ Flags:
     }
 
     printAgentProfile(payload);
+  }
+
+  async function agentCognitionCommand(options: ParsedOptions): Promise<void> {
+    const context = await deps.resolveGatewayContext(options);
+    const sessionId = await resolveSessionId(context, options);
+    const payload = await deps.requestGatewayJson<AgentSessionCognitionPayload>(
+      context.baseUrl,
+      `/api/agent/sessions/${encodeURIComponent(sessionId)}/cognition`,
+      { timeoutMs: context.timeoutMs },
+    );
+
+    if (getBooleanFlag(options, "json")) {
+      deps.printJson(payload);
+      return;
+    }
+
+    printAgentCognition(payload);
   }
 
   async function agentHistoryCommand(options: ParsedOptions): Promise<void> {
@@ -746,6 +842,7 @@ Flags:
       agentSessionsCommand,
       agentSessionCommand,
       agentProfileCommand,
+      agentCognitionCommand,
       agentHistoryCommand,
       agentHooksCommand,
       agentRoleCommand,
@@ -766,6 +863,7 @@ Flags:
     agentSessionsCommand,
     agentSessionCommand,
     agentProfileCommand,
+    agentCognitionCommand,
     agentHistoryCommand,
     agentHooksCommand,
     agentRoleCommand,

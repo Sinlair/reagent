@@ -19,6 +19,7 @@ async function main() {
     { id: "agent-session-summary", ok: indexHtml.includes('id="agent-session-summary"') },
     { id: "agent-sessions-list", ok: indexHtml.includes('id="agent-sessions-list"') },
     { id: "agent-runtime-notes", ok: indexHtml.includes('id="agent-runtime-notes"') },
+    { id: "agent-cognition-panel", ok: appJs.includes('["cognition", t("agents.panelCognition", "Cognition")]') },
     { id: "agent-history-panel", ok: appJs.includes('["history", t("agents.panelHistory", "History")]') },
     { id: "agent-hooks-panel", ok: appJs.includes('["hooks", t("agents.panelHooks", "Hooks")]') },
     { id: "agent-delegations-panel", ok: appJs.includes('["delegations", t("agents.panelDelegations", "Delegations")]') },

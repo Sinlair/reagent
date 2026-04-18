@@ -28,6 +28,7 @@ import { ResearchDirectionService } from "./researchDirectionService.js";
 import { ResearchDiscoveryService } from "./researchDiscoveryService.js";
 import { ResearchFeedbackService } from "./researchFeedbackService.js";
 import type { AgentRuntimeOverview } from "../agents/runtime.js";
+import type { AgentSessionCognition } from "../agents/runtime.js";
 import type { AgentSessionHooks } from "../agents/runtime.js";
 import type { AgentSessionHistory } from "../agents/runtime.js";
 import type { MemoryRecallHit } from "../types/memory.js";
@@ -409,6 +410,7 @@ function hasAgentRuntimeControls(
 ): chatService is ChatServiceLike & {
   describeRuntime(): Promise<AgentRuntimeOverview>;
   findSession(reference: string): Promise<AgentRuntimeSummaryShape | null>;
+  findSessionCognition(reference: string): Promise<AgentSessionCognition | null>;
   findSessionHistory(reference: string, limit?: number): Promise<AgentSessionHistory | null>;
   findSessionHooks(
     reference: string,
@@ -436,10 +438,12 @@ function hasAgentRuntimeControls(
   setFallbacks(senderId: string, selections: Array<{ providerId: string; modelId: string }>): Promise<AgentRuntimeSummaryShape>;
   setReasoning(senderId: string, reasoningEffort: string): Promise<AgentRuntimeSummaryShape>;
   describeSession(senderId: string): Promise<AgentRuntimeSummaryShape>;
+  describeSessionCognition(senderId: string): Promise<AgentSessionCognition>;
 } {
   return (
     typeof (chatService as { describeRuntime?: unknown }).describeRuntime === "function" &&
     typeof (chatService as { findSession?: unknown }).findSession === "function" &&
+    typeof (chatService as { findSessionCognition?: unknown }).findSessionCognition === "function" &&
     typeof (chatService as { findSessionHistory?: unknown }).findSessionHistory === "function" &&
     typeof (chatService as { findSessionHooks?: unknown }).findSessionHooks === "function" &&
     typeof (chatService as { listSessions?: unknown }).listSessions === "function" &&
@@ -449,7 +453,8 @@ function hasAgentRuntimeControls(
     typeof (chatService as { clearModel?: unknown }).clearModel === "function" &&
     typeof (chatService as { setFallbacks?: unknown }).setFallbacks === "function" &&
     typeof (chatService as { setReasoning?: unknown }).setReasoning === "function" &&
-    typeof (chatService as { describeSession?: unknown }).describeSession === "function"
+    typeof (chatService as { describeSession?: unknown }).describeSession === "function" &&
+    typeof (chatService as { describeSessionCognition?: unknown }).describeSessionCognition === "function"
   );
 }
 
@@ -2040,6 +2045,14 @@ export class ChannelService {
     }
 
     return this.attachHostLinkage(session);
+  }
+
+  async getAgentSessionCognition(sessionId: string): Promise<AgentSessionCognition | null> {
+    if (!hasAgentRuntimeControls(this.chatService)) {
+      throw new Error("Agent session controls are unavailable in the current chat backend.");
+    }
+
+    return this.chatService.findSessionCognition(sessionId);
   }
 
   async updateAgentSessionProfile(input: {

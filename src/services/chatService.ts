@@ -2,6 +2,7 @@ import {
   AgentRuntime,
   type AgentRuntimeOverview,
   type AgentChatInput,
+  type AgentSessionCognition,
   type AgentSessionHooks,
   type AgentSessionHistory,
   type AgentSessionListEntry,
@@ -26,6 +27,7 @@ export interface ChatServiceLike {
   plainReply?(input: AgentChatInput): Promise<string>;
   describeRuntime?(): Promise<AgentRuntimeOverview>;
   findSession?(reference: string): Promise<AgentSessionSummary | null>;
+  findSessionCognition?(reference: string): Promise<AgentSessionCognition | null>;
   findSessionHistory?(reference: string, limit?: number): Promise<AgentSessionHistory | null>;
   findSessionHooks?(reference: string, limit?: number, event?: "llm_call" | "tool_call" | "tool_error" | "tool_blocked" | "reply_emit"): Promise<AgentSessionHooks | null>;
   listSessions?(): Promise<AgentSessionListEntry[]>;
@@ -36,6 +38,7 @@ export interface ChatServiceLike {
   setFallbacks?(senderId: string, selections: LlmRouteSelection[]): Promise<AgentSessionSummary>;
   setReasoning?(senderId: string, reasoningEffort: "default" | OpenAiReasoningEffort): Promise<AgentSessionSummary>;
   describeSession?(senderId: string): Promise<AgentSessionSummary>;
+  describeSessionCognition?(senderId: string): Promise<AgentSessionCognition>;
 }
 
 export class ChatService implements ChatServiceLike {
@@ -70,6 +73,10 @@ export class ChatService implements ChatServiceLike {
 
   async findSession(reference: string): Promise<AgentSessionSummary | null> {
     return this.runtime.findSession(reference);
+  }
+
+  async findSessionCognition(reference: string): Promise<AgentSessionCognition | null> {
+    return this.runtime.findSessionCognition(reference);
   }
 
   async findSessionHistory(reference: string, limit?: number): Promise<AgentSessionHistory | null> {
@@ -117,5 +124,9 @@ export class ChatService implements ChatServiceLike {
 
   async describeSession(senderId: string): Promise<AgentSessionSummary> {
     return this.runtime.describeSession(senderId);
+  }
+
+  async describeSessionCognition(senderId: string): Promise<AgentSessionCognition> {
+    return this.runtime.describeSessionCognition(senderId);
   }
 }
