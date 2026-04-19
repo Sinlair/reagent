@@ -33,6 +33,7 @@ Completed
   - The runtime now injects structured `Neuron state` blocks with salience, confidence, source, status, and evidence summaries into the model payload.
   - Prompt injection continues to coexist with memory primer and recent session history instead of flattening everything into one raw transcript.
   - The injected cognition view remains an operator-safe summary rather than exposing private chain-of-thought.
+  - Seeded sessions now inject an explicit `Carryover context` block so the model sees which prior session seeded the current one and what summary was inherited.
 - US-010: Expose cognition inspection in the root CLI
   - Added `reagent agent cognition <sessionId|senderId>` with both human-readable and `--json` output.
   - CLI cognition output now surfaces `perception`, `memory`, `hypothesis`, `reasoning`, `action`, and `reflection` layers, plus supporting and conflicting evidence summaries.

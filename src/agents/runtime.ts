@@ -1773,6 +1773,17 @@ function replaceDigestItemsByPrefix(items: string[], prefix: string, nextItem?: 
   ];
 }
 
+function buildCarryoverContextBlock(session: AgentSession): string {
+  if (!session.seededFromSessionId) {
+    return "No cross-session carryover was used for this session.";
+  }
+
+  return [
+    `Seeded from: ${session.seededFromSessionId}${session.seededAt ? ` @ ${session.seededAt}` : ""}`,
+    session.carryoverSummary?.trim() || "Carry over the latest sender cognition into this session.",
+  ].join("\n");
+}
+
 function tokenizeForSkillMatch(value: string): string[] {
   const stopwords = new Set([
     "a",
@@ -3381,6 +3392,9 @@ export class AgentRuntime {
     return [
       "Current workspace primer:",
       buildMemoryPrimer(memoryPrimer),
+      "",
+      "Carryover context:",
+      buildCarryoverContextBlock(session),
       "",
       "Structured session digest:",
       buildSessionDigestBlock(session.digest),

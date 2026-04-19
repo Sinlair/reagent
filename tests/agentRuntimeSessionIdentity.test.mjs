@@ -119,6 +119,9 @@ async function main() {
       });
 
       assert.equal(requests.length, 2);
+      assert.ok(String(requests[1].input).includes("Carryover context:"));
+      assert.ok(String(requests[1].input).includes("Seeded from: wechat:carryover-user"));
+      assert.ok(String(requests[1].input).includes("Last intent: first turn from wechat"));
       assert.ok(String(requests[1].input).includes("User asked: first turn from wechat"));
 
       const uiSession = await chat.describeSession("ui:carryover-user");

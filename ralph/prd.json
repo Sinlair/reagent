@@ -97,7 +97,7 @@
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Completed with structured neuron summaries injected alongside memory primer and recent session history."
+      "notes": "Completed with structured neuron summaries injected alongside memory primer and recent session history, plus explicit carryover context for seeded sessions."
     },
     {
       "id": "US-007",
