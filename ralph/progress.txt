@@ -52,6 +52,7 @@ Completed
   - Delegation lifecycle reads now sync delegation status back into session cognition so delegation progress can become part of the agent's durable memory and next-action state.
   - CLI and Web delegation views now surface the cognition-backed rationale, posture, and matched action/hypothesis signals for each delegation.
   - Delegation lifecycle policy now blocks duplicate active delegations for the same task/kind and prevents synthesis while evidence delegations for that task are still running.
+  - Recent failed delegations now enter a retry cooldown window; retrying them requires an explicit retry-style prompt and the cognition layer records the follow-up recommendation.
 
 Verification
 - `npm.cmd run release:verify`

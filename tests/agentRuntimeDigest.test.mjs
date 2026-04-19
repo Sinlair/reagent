@@ -472,6 +472,33 @@ async function main() {
         synced.neurons.action.some((item) => item.content.includes("Review the completed search delegation for task task_sync_1")),
         true,
       );
+
+      const failed = await chat.syncDelegationCognition("digest-user-6", {
+        delegationId: "dlg_sync_1",
+        taskId: "task_sync_1",
+        kind: "search",
+        status: "failed",
+        error: "search provider timeout",
+      });
+
+      assert.ok(failed);
+      assert.equal(
+        failed.pendingActions.some((item) => item.includes("Review blockers and decide whether to retry the failed search delegation for task task_sync_1")),
+        true,
+      );
+
+      const cancelled = await chat.syncDelegationCognition("digest-user-6", {
+        delegationId: "dlg_sync_1",
+        taskId: "task_sync_1",
+        kind: "search",
+        status: "cancelled",
+      });
+
+      assert.ok(cancelled);
+      assert.equal(
+        cancelled.pendingActions.some((item) => item.includes("Decide whether to restart the cancelled search delegation for task task_sync_1")),
+        true,
+      );
     });
   });
 }

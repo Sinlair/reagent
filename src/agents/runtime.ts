@@ -2357,9 +2357,9 @@ export class AgentRuntime {
       const pendingAction = input.status === "completed"
         ? `Review the completed ${input.kind} delegation for task ${input.taskId}${input.artifactPath ? ` at ${input.artifactPath}` : ""}.`
         : input.status === "failed"
-          ? `Unblock or replace the failed ${input.kind} delegation for task ${input.taskId}.`
+          ? `Review blockers and decide whether to retry the failed ${input.kind} delegation for task ${input.taskId}.`
           : input.status === "cancelled"
-            ? ""
+            ? `Decide whether to restart the cancelled ${input.kind} delegation for task ${input.taskId} or switch strategy.`
             : `Wait for the ${input.kind} delegation on task ${input.taskId} and continue once new evidence arrives.`;
       const nextToolOutcomes = trimDigestItems(
         replaceDigestItemsByPrefix(current.digest.recentToolOutcomes, prefix, toolOutcome),

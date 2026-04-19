@@ -1018,6 +1018,231 @@ async function main() {
 
     await app.close();
   });
+
+  await runTest("agent routes require explicit retry after a recent failed delegation cooldown", async () => {
+    const app = Fastify();
+    const recentIso = new Date().toISOString();
+    let delegation = {
+      delegationId: "dlg_retry_01",
+      sessionId: "wechat:agent-user-9",
+      taskId: "task_retry_1",
+      kind: "search",
+      status: "failed",
+      input: {
+        prompt: "Find new evidence",
+        scope: "research-only",
+        allowRecursiveDelegation: false,
+      },
+      rationale: {
+        source: "cognition-state",
+        summary: "Current cognition prefers evidence-gathering delegations before search.",
+        matchedAction: "Inspect blockers before retrying.",
+        matchedHypothesis: "The current conclusion is still provisional.",
+        posture: {
+          mode: "evidence-gathering",
+          reasons: ["1 provisional hypothesis node(s) still need evidence."],
+          recommendedKinds: ["search", "reading"],
+          deferredKinds: ["synthesis"],
+          conflictedHypotheses: 0,
+          provisionalHypotheses: 1,
+          supportedHypotheses: 0,
+        },
+      },
+      createdAt: recentIso,
+      updatedAt: recentIso,
+      error: "search provider timeout",
+    };
+
+    await registerAgentRoutes(app, {
+      async getAgentRuntimeOverview() {
+        return {
+          sessionCount: 1,
+          sessionCountsByEntrySource: { direct: 0, ui: 0, wechat: 1, openclaw: 0 },
+          defaultRoute: {
+            providerId: "proxy-a",
+            providerLabel: "Proxy A",
+            modelId: "gpt-5.4",
+            modelLabel: "gpt-5.4",
+            llmStatus: "ready",
+            llmSource: "registry",
+          },
+          availableReasoningEfforts: ["default"],
+          audit: {
+            path: "workspace/channels/agent-runtime-audit.jsonl",
+            exists: true,
+            status: "ready",
+          },
+        };
+      },
+      async listAgentSessions() {
+        return [];
+      },
+      async findAgentSession(sessionId) {
+        return sessionId === "wechat:agent-user-9"
+          ? {
+              sessionId,
+              senderId: "agent-user-9",
+              entrySource: "wechat",
+              activeEntrySource: "wechat",
+              activeEntryLabel: "WeChat",
+              enabledToolsets: ["workspace", "memory", "research-core"],
+              availableToolsets: ["workspace", "memory", "research-core", "research-admin", "research-heavy", "mcp"],
+              roleId: "researcher",
+              roleLabel: "Researcher",
+              skillIds: ["research-ops"],
+              skillLabels: ["Research Ops"],
+              providerId: "proxy-a",
+              providerLabel: "Proxy A",
+              modelId: "gpt-5.4",
+              modelLabel: "gpt-5.4",
+              llmStatus: "ready",
+              llmSource: "registry",
+              fallbackRoutes: [],
+              reasoningEffort: "default",
+              availableRoles: [],
+              availableSkills: [],
+              availableLlmProviders: [],
+              availableReasoningEfforts: ["default"],
+              defaultRoute: {
+                providerId: "proxy-a",
+                providerLabel: "Proxy A",
+                modelId: "gpt-5.4",
+                modelLabel: "gpt-5.4",
+                llmStatus: "ready",
+                llmSource: "registry",
+              },
+            }
+          : null;
+      },
+      async getAgentSessionCognition() {
+        return {
+          sessionId: "wechat:agent-user-9",
+          senderId: "agent-user-9",
+          entrySource: "wechat",
+          updatedAt: recentIso,
+          digestUpdatedAt: recentIso,
+          sessionUpdatedAt: recentIso,
+          recentUserIntents: ["User asked: retry the search later"],
+          recentToolOutcomes: ["Delegation dlg_retry_01: search failed for task task_retry_1 (search provider timeout)"],
+          pendingActions: ["Review blockers and decide whether to retry the failed search delegation for task task_retry_1."],
+          neurons: {
+            updatedAt: recentIso,
+            perception: [],
+            memory: [],
+            hypothesis: [
+              {
+                id: "hypothesis:retry",
+                kind: "hypothesis",
+                content: "The current conclusion is still provisional.",
+                salience: 0.76,
+                confidence: 0.52,
+                source: "runtime-inference",
+                updatedAt: recentIso,
+                status: "provisional",
+              },
+            ],
+            reasoning: [],
+            action: [
+              {
+                id: "action:retry",
+                kind: "action",
+                content: "Inspect blockers before retrying.",
+                salience: 0.84,
+                confidence: 0.74,
+                source: "assistant-reply",
+                updatedAt: recentIso,
+              },
+            ],
+            reflection: [],
+          },
+        };
+      },
+      async syncAgentDelegationCognition() {
+        return null;
+      },
+      async updateAgentSessionProfile() {
+        return null;
+      },
+      async getAgentSessionHistory() {
+        return null;
+      },
+      async getAgentSessionHooks() {
+        return null;
+      },
+      async listAgentHostSessions() {
+        return [];
+      },
+      async getAgentHostSessionHistory() {
+        return null;
+      },
+    }, {
+      delegationService: {
+        async listRecent(limit, status, sessionId) {
+          return [delegation].filter((item) => (!status || item.status === status) && (!sessionId || item.sessionId === sessionId)).slice(0, limit);
+        },
+        async createDelegation(input) {
+          delegation = {
+            ...delegation,
+            delegationId: "dlg_retry_02",
+            sessionId: input.sessionId,
+            taskId: input.taskId,
+            kind: input.kind,
+            status: "queued",
+            input: {
+              ...(input.prompt ? { prompt: input.prompt } : {}),
+              scope: "research-only",
+              allowRecursiveDelegation: false,
+            },
+            ...(input.rationale ? { rationale: input.rationale } : {}),
+            createdAt: recentIso,
+            updatedAt: recentIso,
+            error: null,
+          };
+          return delegation;
+        },
+        async getDelegation(id) {
+          return id === delegation.delegationId ? delegation : null;
+        },
+        async cancelDelegation() {
+          return delegation;
+        },
+      },
+    });
+
+    const blockedRetry = await app.inject({
+      method: "POST",
+      url: "/api/agent/delegations",
+      payload: {
+        sessionId: "wechat:agent-user-9",
+        taskId: "task_retry_1",
+        kind: "search",
+      },
+    });
+    assert.equal(blockedRetry.statusCode, 400);
+    assert.equal(
+      blockedRetry.json().message.startsWith("Recent failed search delegation for task task_retry_1 is cooling down."),
+      true,
+    );
+
+    const allowedRetry = await app.inject({
+      method: "POST",
+      url: "/api/agent/delegations",
+      payload: {
+        sessionId: "wechat:agent-user-9",
+        taskId: "task_retry_1",
+        kind: "search",
+        prompt: "Retry search now after checking the blockers.",
+      },
+    });
+    assert.equal(allowedRetry.statusCode, 201);
+    assert.equal(allowedRetry.json().status, "queued");
+    assert.equal(
+      allowedRetry.json().rationale.posture.reasons.some((item) => item.includes("prompt explicitly asked to retry")),
+      true,
+    );
+
+    await app.close();
+  });
 }
 
 await main();

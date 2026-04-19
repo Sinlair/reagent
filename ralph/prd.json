@@ -144,7 +144,7 @@
       ],
       "priority": 9,
       "passes": true,
-      "notes": "Completed with cognition-backed delegation rationale, misaligned synthesis blocking under unresolved uncertainty, duplicate/running lifecycle safeguards, delegation status sync back into session cognition, and delegation rationale surfaced in CLI/Web operator views."
+      "notes": "Completed with cognition-backed delegation rationale, misaligned synthesis blocking under unresolved uncertainty, duplicate/running lifecycle safeguards, failed-delegation retry cooldown with explicit retry intent, delegation status sync back into session cognition, and delegation rationale surfaced in CLI/Web operator views."
     },
     {
       "id": "US-010",

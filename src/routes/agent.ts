@@ -71,6 +71,7 @@ const AgentDelegationCreateSchema = z.object({
 const AgentDelegationParamsSchema = z.object({
   delegationId: z.string().trim().min(1),
 });
+const DELEGATION_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
 
 function delegationPromptExplicitlyRequestsKind(
   kind: AgentDelegationKind,
@@ -87,6 +88,15 @@ function delegationPromptExplicitlyRequestsKind(
     synthesis: /\b(summary|report|synthesis|deck|slides|presentation|总结|汇报|组会|报告)\b/iu,
   };
   return patterns[kind].test(normalized);
+}
+
+function delegationPromptExplicitlyRequestsRetry(prompt: string | undefined): boolean {
+  const normalized = prompt?.trim() ?? "";
+  if (!normalized) {
+    return false;
+  }
+
+  return /\b(retry|rerun|re-run|try again|recover|resume|重试|再试|重新跑|恢复)\b/iu.test(normalized);
 }
 
 function deriveDelegationRationale(
@@ -170,11 +180,28 @@ function deriveDelegationRationale(
   const activeEvidenceKinds = activeTaskDelegations.filter(
     (item) => item.kind === "search" || item.kind === "reading",
   );
+  const latestFailedOrCancelled = existingDelegations
+    .filter(
+      (item) =>
+        item.taskId === taskId &&
+        item.kind === kind &&
+        (item.status === "failed" || item.status === "cancelled"),
+    )
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  const retryRequested = delegationPromptExplicitlyRequestsRetry(prompt);
+  const latestFailedOrCancelledAgeMs = latestFailedOrCancelled
+    ? Math.max(0, Date.now() - Date.parse(latestFailedOrCancelled.updatedAt))
+    : Number.POSITIVE_INFINITY;
   if (activeSameKind.length > 0) {
     reasons.push(`An active ${kind} delegation already exists for this task.`);
   }
   if (kind === "synthesis" && activeEvidenceKinds.length > 0) {
     reasons.push(`Evidence delegations are still active for this task: ${activeEvidenceKinds.map((item) => item.kind).join(", ")}.`);
+  }
+  if (latestFailedOrCancelled) {
+    reasons.push(
+      `A recent ${latestFailedOrCancelled.status} ${kind} delegation exists for this task${retryRequested ? ", but the prompt explicitly asked to retry." : "."}`,
+    );
   }
   const rationale: AgentDelegationRationale = {
     source: "cognition-state",
@@ -205,6 +232,18 @@ function deriveDelegationRationale(
     return {
       allow: false,
       reason: `Cognition prefers search or reading delegations before synthesis because ${rationale.posture.reasons[0] ?? "uncertainty is still high"}`,
+      rationale,
+    };
+  }
+
+  if (
+    latestFailedOrCancelled &&
+    latestFailedOrCancelledAgeMs < DELEGATION_RETRY_COOLDOWN_MS &&
+    !retryRequested
+  ) {
+    return {
+      allow: false,
+      reason: `Recent ${latestFailedOrCancelled.status} ${kind} delegation for task ${taskId} is cooling down. Review blockers or ask explicitly to retry.`,
       rationale,
     };
   }
