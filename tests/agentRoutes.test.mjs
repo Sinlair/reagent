@@ -946,7 +946,7 @@ async function main() {
       url: "/api/agent/delegations",
       payload: {
         sessionId: "wechat:agent-user-2",
-        taskId: "task_123",
+        taskId: "task_456",
         kind: "search",
         prompt: "Find strong browser-agent baselines",
       },
@@ -968,7 +968,22 @@ async function main() {
     });
     assert.equal(blockedCreateResponse.statusCode, 400);
     assert.equal(
-      blockedCreateResponse.json().message.startsWith("Cognition prefers search or reading delegations before synthesis"),
+      blockedCreateResponse.json().message.startsWith("Evidence delegations are still active for task task_123."),
+      true,
+    );
+
+    const duplicateCreateResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent/delegations",
+      payload: {
+        sessionId: "wechat:agent-user-2",
+        taskId: "task_123",
+        kind: "search",
+      },
+    });
+    assert.equal(duplicateCreateResponse.statusCode, 400);
+    assert.equal(
+      duplicateCreateResponse.json().message.startsWith("An active search delegation already exists for task task_123."),
       true,
     );
 

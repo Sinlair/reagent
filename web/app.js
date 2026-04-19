@@ -1905,6 +1905,11 @@ function renderAgentDelegationsPanel() {
               : ""
           }
           ${
+            item.rationale?.posture?.reasons?.length
+              ? `<small>${escapeHtml(`Reasons: ${item.rationale.posture.reasons.join(" | ")}`)}</small>`
+              : ""
+          }
+          ${
             item.rationale?.matchedAction
               ? `<small>${escapeHtml(`Action: ${item.rationale.matchedAction}`)}</small>`
               : ""

@@ -3172,6 +3172,7 @@ async function main() {
         assert.equal(payload.kind, "search");
         assert.equal(payload.rationale.posture.mode, "evidence-gathering");
         assert.equal(payload.rationale.matchedAction.includes("Inspect the strongest evidence"), true);
+        assert.equal(payload.rationale.posture.reasons[0].includes("conflicted hypothesis"), true);
 
         result = await runCli(["agent", "delegates", "--url", fixture.baseUrl, "--json"], cwd);
         assert.equal(result.code, 0, result.stderr);
@@ -3179,6 +3180,7 @@ async function main() {
         assert.equal(payload.items.length, 1);
         assert.equal(payload.items[0].delegationId, "dlg_fixture_1");
         assert.equal(payload.items[0].rationale.posture.recommendedKinds.includes("search"), true);
+        assert.equal(payload.items[0].rationale.posture.reasons[0].includes("conflicted hypothesis"), true);
       });
 
       await runTest("CLI channels chat, inbound, and push commands send message payloads", async () => {

@@ -50,6 +50,7 @@ Completed
   - The agent API blocks misaligned `synthesis` delegations when cognition still prefers evidence gathering, unless the prompt explicitly asks for that deliverable.
   - Delegation lifecycle reads now sync delegation status back into session cognition so delegation progress can become part of the agent's durable memory and next-action state.
   - CLI and Web delegation views now surface the cognition-backed rationale, posture, and matched action/hypothesis signals for each delegation.
+  - Delegation lifecycle policy now blocks duplicate active delegations for the same task/kind and prevents synthesis while evidence delegations for that task are still running.
 
 Verification
 - `npm.cmd run release:verify`
@@ -59,4 +60,4 @@ Verification
 - `node tests/memoryRecallService.test.mjs`
 
 Next
-- Continue deeper cognition-driven runtime policies and extend more operator surfaces around delegation/cognition lifecycle analysis
+- Continue deeper cognition-driven runtime policies across entry source, role, and long-running lifecycle states

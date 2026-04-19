@@ -4,7 +4,7 @@ import { z } from "zod";
 import { AgentDelegationService } from "../services/agentDelegationService.js";
 import type { ChannelService } from "../services/channelService.js";
 import type { AgentSessionCognition } from "../agents/runtime.js";
-import type { AgentDelegationKind, AgentDelegationRationale } from "../types/agentDelegation.js";
+import type { AgentDelegationKind, AgentDelegationRationale, AgentDelegationRecord } from "../types/agentDelegation.js";
 
 const AgentSessionsQuerySchema = z.object({
   source: z.enum(["direct", "ui", "wechat", "openclaw"]).optional(),
@@ -92,6 +92,8 @@ function delegationPromptExplicitlyRequestsKind(
 function deriveDelegationRationale(
   cognition: AgentSessionCognition,
   kind: AgentDelegationKind,
+  taskId: string,
+  existingDelegations: AgentDelegationRecord[],
   prompt?: string | undefined,
 ): {
   allow: boolean;
@@ -132,6 +134,19 @@ function deriveDelegationRationale(
     ...(provisionalHypotheses > 0 ? [`${provisionalHypotheses} provisional hypothesis node(s) still need evidence.`] : []),
     ...(matchedAction ? [`Current action focus: ${matchedAction}`] : []),
   ];
+  const activeTaskDelegations = existingDelegations.filter(
+    (item) => item.taskId === taskId && (item.status === "queued" || item.status === "running"),
+  );
+  const activeSameKind = activeTaskDelegations.filter((item) => item.kind === kind);
+  const activeEvidenceKinds = activeTaskDelegations.filter(
+    (item) => item.kind === "search" || item.kind === "reading",
+  );
+  if (activeSameKind.length > 0) {
+    reasons.push(`An active ${kind} delegation already exists for this task.`);
+  }
+  if (kind === "synthesis" && activeEvidenceKinds.length > 0) {
+    reasons.push(`Evidence delegations are still active for this task: ${activeEvidenceKinds.map((item) => item.kind).join(", ")}.`);
+  }
   const rationale: AgentDelegationRationale = {
     source: "cognition-state",
     summary:
@@ -161,6 +176,22 @@ function deriveDelegationRationale(
     return {
       allow: false,
       reason: `Cognition prefers search or reading delegations before synthesis because ${rationale.posture.reasons[0] ?? "uncertainty is still high"}`,
+      rationale,
+    };
+  }
+
+  if (activeSameKind.length > 0) {
+    return {
+      allow: false,
+      reason: `An active ${kind} delegation already exists for task ${taskId}. Cancel or finish it before creating another one.`,
+      rationale,
+    };
+  }
+
+  if (kind === "synthesis" && activeEvidenceKinds.length > 0) {
+    return {
+      allow: false,
+      reason: `Evidence delegations are still active for task ${taskId}. Finish search/reading before starting synthesis.`,
       rationale,
     };
   }
@@ -450,10 +481,13 @@ export async function registerAgentRoutes(
         message: "Agent cognition not found for this session",
       });
     }
+    const existingDelegations = await delegationService.listRecent(200, undefined, parsed.data.sessionId);
 
     const decision = deriveDelegationRationale(
       cognition,
       parsed.data.kind,
+      parsed.data.taskId,
+      existingDelegations,
       parsed.data.prompt,
     );
     if (!decision.allow) {

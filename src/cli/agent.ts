@@ -519,6 +519,9 @@ Flags:
         console.log(
           `Posture=${item.rationale.posture.mode} Recommended=${item.rationale.posture.recommendedKinds.join(", ") || "-"}`,
         );
+        if (item.rationale.posture.reasons?.length) {
+          console.log(`Reasons=${item.rationale.posture.reasons.join(" | ")}`);
+        }
         if (item.rationale.matchedAction) {
           console.log(`Matched action=${item.rationale.matchedAction}`);
         }
