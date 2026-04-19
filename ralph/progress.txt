@@ -13,6 +13,7 @@ Completed
   - Kept `recentUserIntents`, `recentToolOutcomes`, and `pendingActions` as compatibility summaries while persisting the richer cognition state under `digest.neurons`.
   - Added backward-compatible session-store parsing so old string-array neuron data can still be read and upgraded into structured nodes.
   - Updated prompt injection to read the structured neuron model and render a richer `Neuron state` block.
+  - New source sessions for the same sender now seed themselves from the latest sender cognition/config state instead of restarting from an empty session.
 - US-003: Align cognition memory with workspace memory and artifacts
   - Wired memory recall hits into digest generation so `memory` neurons can persist explicit `workspace-memory` and `artifact-memory` provenance alongside session and tool-derived context.
   - Kept long-term memory in the `memory` layer instead of leaking it into `hypothesis`, while preserving source metadata for each neuron node.

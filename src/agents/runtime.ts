@@ -458,6 +458,34 @@ function defaultSession(): AgentSession {
   };
 }
 
+function cloneSessionDigest(digest: AgentSessionDigest): AgentSessionDigest {
+  return {
+    updatedAt: digest.updatedAt,
+    recentUserIntents: [...digest.recentUserIntents],
+    recentToolOutcomes: [...digest.recentToolOutcomes],
+    pendingActions: [...digest.pendingActions],
+    neurons: cloneNeuronState(digest.neurons),
+  };
+}
+
+function seedSessionFromExisting(
+  seed: AgentSession,
+  source: AgentEntrySource,
+): AgentSession {
+  return {
+    updatedAt: nowIso(),
+    roleId: seed.roleId,
+    skillIds: [...seed.skillIds],
+    lastEntrySource: source,
+    ...(seed.providerId ? { providerId: seed.providerId } : {}),
+    ...(seed.modelId ? { modelId: seed.modelId } : {}),
+    ...(seed.fallbackRoutes ? { fallbackRoutes: [...seed.fallbackRoutes] } : {}),
+    ...(seed.reasoningEffort ? { reasoningEffort: seed.reasoningEffort } : {}),
+    digest: cloneSessionDigest(seed.digest),
+    turns: [],
+  };
+}
+
 function defaultSessionDigest(): AgentSessionDigest {
   return {
     updatedAt: nowIso(),
@@ -2543,7 +2571,7 @@ export class AgentRuntime {
 
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId);
-      const session = store.sessions[key] ?? defaultSession();
+      const session = this.getOrCreateSessionForKey(store, key);
       store.sessions[key] = {
         ...session,
         roleId: role.id,
@@ -2567,7 +2595,7 @@ export class AgentRuntime {
 
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId);
-      const session = store.sessions[key] ?? defaultSession();
+      const session = this.getOrCreateSessionForKey(store, key);
       store.sessions[key] = {
         ...session,
         skillIds: validSkillIds,
@@ -2597,7 +2625,7 @@ export class AgentRuntime {
 
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId);
-      const session = store.sessions[key] ?? defaultSession();
+      const session = this.getOrCreateSessionForKey(store, key);
       store.sessions[key] = {
         ...session,
         providerId: normalizedProviderId,
@@ -2613,7 +2641,7 @@ export class AgentRuntime {
   async clearModel(senderId: string): Promise<AgentSessionSummary> {
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId);
-      const session = store.sessions[key] ?? defaultSession();
+      const session = this.getOrCreateSessionForKey(store, key);
       store.sessions[key] = {
         ...session,
         providerId: undefined,
@@ -2652,7 +2680,7 @@ export class AgentRuntime {
 
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId);
-      const session = store.sessions[key] ?? defaultSession();
+      const session = this.getOrCreateSessionForKey(store, key);
       store.sessions[key] = {
         ...session,
         fallbackRoutes: normalizedSelections,
@@ -2674,7 +2702,7 @@ export class AgentRuntime {
 
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId);
-      const session = store.sessions[key] ?? defaultSession();
+      const session = this.getOrCreateSessionForKey(store, key);
       store.sessions[key] = {
         ...session,
         reasoningEffort: reasoningEffort === "default" ? undefined : reasoningEffort,
@@ -3016,19 +3044,41 @@ export class AgentRuntime {
     await this.writeStore(nextStore);
   }
 
+  private getOrCreateSessionForKey(
+    store: AgentSessionStore,
+    key: string,
+  ): AgentSession {
+    const existing = store.sessions[key];
+    if (existing) {
+      return existing;
+    }
+
+    const parsed = parseSessionId(key);
+    if (parsed) {
+      const latestSeed = Object.entries(store.sessions)
+        .filter(([sessionId]) => sessionId !== key)
+        .filter(([sessionId]) => parseSessionId(sessionId)?.senderId === parsed.senderId)
+        .sort((left, right) => right[1].updatedAt.localeCompare(left[1].updatedAt))
+        .map(([, session]) => session)[0];
+      if (latestSeed) {
+        const seeded = seedSessionFromExisting(latestSeed, parsed.entrySource);
+        store.sessions[key] = seeded;
+        return seeded;
+      }
+    }
+
+    const fallback = defaultSession();
+    if (parsed) {
+      fallback.lastEntrySource = parsed.entrySource;
+    }
+    store.sessions[key] = fallback;
+    return fallback;
+  }
+
   private async getSession(senderId: string, source?: AgentEntrySource): Promise<ResolvedAgentSession> {
     const store = await this.readStore();
     const key = this.resolveSessionId(store, senderId, source);
-    const existing = store.sessions[key];
-    if (existing) {
-      return {
-        sessionId: key,
-        session: existing,
-      };
-    }
-
-    const session = defaultSession();
-    store.sessions[key] = session;
+    const session = this.getOrCreateSessionForKey(store, key);
     await this.writeStore(store);
     return {
       sessionId: key,
@@ -3044,7 +3094,7 @@ export class AgentRuntime {
   ): Promise<void> {
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId, source);
-      const current = store.sessions[key] ?? defaultSession();
+      const current = this.getOrCreateSessionForKey(store, key);
       store.sessions[key] = {
         ...current,
         updatedAt: nowIso(),
@@ -3062,7 +3112,7 @@ export class AgentRuntime {
   ): Promise<void> {
     await this.mutateStore((store) => {
       const key = this.resolveSessionId(store, senderId, sessionSource);
-      const current = store.sessions[key] ?? defaultSession();
+      const current = this.getOrCreateSessionForKey(store, key);
       store.sessions[key] = {
         ...current,
         lastEntrySource: source,
