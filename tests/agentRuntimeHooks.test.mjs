@@ -336,6 +336,63 @@ async function main() {
     });
   });
 
+  await runTest("ChatService runtime blocks delivery tools for assistant role until explicitly requested", async () => {
+    await withTempDir(async (dir) => {
+      const memory = new MemoryService(dir);
+      await memory.ensureWorkspace();
+
+      const events = [];
+      const chat = new ChatService(dir, memory, {
+        client: {
+          responses: {
+            async create(params) {
+              if ("previous_response_id" in params) {
+                return {
+                  id: "resp-assistant-block-2",
+                  output_text: "Blocked by role-entry policy.",
+                  output: []
+                };
+              }
+
+              return {
+                id: "resp-assistant-block-1",
+                output_text: "",
+                output: [
+                  {
+                    type: "function_call",
+                    name: "direction_report_generate",
+                    arguments: JSON.stringify({ topic: "agent runtime" }),
+                    call_id: "call-assistant-block-1"
+                  }
+                ]
+              };
+            }
+          }
+        },
+        model: "gpt-test",
+        wireApi: "responses",
+        hooks: [
+          {
+            toolBlocked({ tool, reason }) {
+              events.push({ name: tool.toolName, reason });
+            }
+          }
+        ]
+      });
+
+      await chat.setRole("hook-user-5", "assistant");
+      const reply = await chat.reply({
+        senderId: "hook-user-5",
+        text: "Keep going from the current runtime state."
+      });
+
+      assert.ok(reply.includes("Blocked by role-entry policy."));
+      assert.equal(events.length, 1);
+      assert.equal(events[0].name, "direction_report_generate");
+      assert.ok(events[0].reason.startsWith("Assistant role stays lightweight until report or deck output is explicitly requested before direction_report_generate."));
+    });
+  });
+
   await runTest("ChatService runtime writes built-in audit trail entries for tool turns", async () => {
     await withTempDir(async (dir) => {
       const memory = new MemoryService(dir);

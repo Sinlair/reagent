@@ -377,6 +377,15 @@ const SYNTHESIS_OR_DELIVERY_TOOLS = new Set([
   "presentation_generate",
   "module_extract",
 ]);
+const ENTRY_CONSTRAINED_TOOLS = new Set([
+  "direction_report_generate",
+  "presentation_generate",
+  "module_extract",
+]);
+const ASSISTANT_LIGHTWEIGHT_BLOCKED_TOOLS = new Set([
+  "direction_report_generate",
+  "presentation_generate",
+]);
 const ALL_AGENT_TOOLSETS: AgentToolsetId[] = [
   "workspace",
   "memory",
@@ -737,6 +746,56 @@ function deriveCognitionToolPolicyReason(
   }
 
   return null;
+}
+
+function deriveRoleAndEntryToolPolicyReason(
+  session: AgentSession,
+  source: AgentEntrySource,
+  inputText: string,
+  toolName: string,
+): string | null {
+  if (
+    (source === "wechat" || source === "openclaw") &&
+    ENTRY_CONSTRAINED_TOOLS.has(toolName) &&
+    !userExplicitlyRequestsToolAlignedOutput(inputText, toolName)
+  ) {
+    return `Active entry ${source} should stay in compact evidence mode before ${toolName}.`;
+  }
+
+  if (
+    session.roleId === "assistant" &&
+    ASSISTANT_LIGHTWEIGHT_BLOCKED_TOOLS.has(toolName) &&
+    !userExplicitlyRequestsToolAlignedOutput(inputText, toolName)
+  ) {
+    return `Assistant role stays lightweight until report or deck output is explicitly requested before ${toolName}.`;
+  }
+
+  return null;
+}
+
+function buildRoleAndEntryToolGuidance(
+  session: AgentSession,
+  source: AgentEntrySource,
+): string[] {
+  const lines = ["Role-and-entry policy guidance:"];
+
+  if (source === "wechat" || source === "openclaw") {
+    lines.push(
+      "- WeChat/OpenClaw entries should prefer compact evidence-gathering tools before long-form synthesis or delivery.",
+    );
+  } else {
+    lines.push("- Direct/UI entries can move into synthesis once cognition is delivery-ready.");
+  }
+
+  if (session.roleId === "assistant") {
+    lines.push("- Assistant role should stay lightweight and avoid report/deck generation unless the user explicitly asks.");
+  } else if (session.roleId === "researcher") {
+    lines.push("- Researcher role should bias toward search, reading, and evidence-backed analysis before delivery.");
+  } else if (session.roleId === "operator") {
+    lines.push("- Operator role may transition into delivery once the cognition state shows stable support.");
+  }
+
+  return lines;
 }
 
 function hasActionReplyShape(text: string): boolean {
@@ -2029,11 +2088,24 @@ export class AgentRuntime {
     tool: AgentRuntimeToolCallInfo,
   ): Promise<AgentRuntimeToolPolicyDecision> {
     const context = this.buildHookContext(input, session);
+    const source = resolveInputSource(input);
     const cognitionPolicyReason = deriveCognitionToolPolicyReason(session.digest, input.text, tool.toolName);
     if (cognitionPolicyReason) {
       return {
         allow: false,
         reason: cognitionPolicyReason,
+      };
+    }
+    const roleAndEntryPolicyReason = deriveRoleAndEntryToolPolicyReason(
+      session,
+      source,
+      input.text,
+      tool.toolName,
+    );
+    if (roleAndEntryPolicyReason) {
+      return {
+        allow: false,
+        reason: roleAndEntryPolicyReason,
       };
     }
 
@@ -3125,6 +3197,8 @@ export class AgentRuntime {
       "- Reply in the same language as the user.",
       "",
       ...buildCognitionToolGuidance(session.digest),
+      "",
+      ...buildRoleAndEntryToolGuidance(session, source),
       ...(workspaceSkillDisclosure.catalogLines.length > 0
         ? [
             "",

@@ -45,6 +45,7 @@ Completed
   - Added cognition-driven tool guidance to tool-turn instructions so the model reads `hypothesis`, `reasoning`, and `action` layers before selecting a tool.
   - Introduced a runtime posture model that biases the agent toward evidence-gathering or delivery-ready tools based on current cognition state.
   - Added policy enforcement that blocks premature synthesis or delivery tools when the cognition layer still indicates unresolved uncertainty.
+  - Extended runtime policy to respect entry source and role, so constrained channel entries and lightweight assistant sessions do not jump into long-form delivery tools too early.
 - US-009: Drive bounded delegations from cognition state
   - Delegation creation now derives a cognition-backed rationale from the current `action` and `hypothesis` layers, including posture, matched signals, and recommended delegation kinds.
   - The agent API blocks misaligned `synthesis` delegations when cognition still prefers evidence gathering, unless the prompt explicitly asks for that deliverable.
@@ -60,4 +61,4 @@ Verification
 - `node tests/memoryRecallService.test.mjs`
 
 Next
-- Continue deeper cognition-driven runtime policies across entry source, role, and long-running lifecycle states
+- Continue cognition-driven runtime policy across longer-running lifecycle states such as retries, retries-after-failure, and cross-session carryover

@@ -91,6 +91,11 @@ function delegationPromptExplicitlyRequestsKind(
 
 function deriveDelegationRationale(
   cognition: AgentSessionCognition,
+  session: {
+    entrySource: "direct" | "ui" | "wechat" | "openclaw";
+    roleId: string;
+    roleLabel?: string | undefined;
+  },
   kind: AgentDelegationKind,
   taskId: string,
   existingDelegations: AgentDelegationRecord[],
@@ -102,6 +107,7 @@ function deriveDelegationRationale(
 } {
   const actionNodes = cognition.neurons.action ?? [];
   const hypothesisNodes = cognition.neurons.hypothesis ?? [];
+  const constrainedEntry = session.entrySource === "wechat" || session.entrySource === "openclaw";
   const conflictedHypotheses = hypothesisNodes.filter((node) => node.status === "conflicted").length;
   const provisionalHypotheses = hypothesisNodes.filter((node) => node.status === "provisional").length;
   const supportedHypotheses = hypothesisNodes.filter((node) => node.status === "supported").length;
@@ -126,6 +132,19 @@ function deriveDelegationRationale(
           : /\b(summary|report|presentation|deck)\b/iu.test(matchedAction ?? "")
             ? ["synthesis", "reading", "search"]
             : ["search", "reading", "synthesis"];
+  if (constrainedEntry && mode !== "delivery-ready") {
+    recommendedKinds.splice(0, recommendedKinds.length, "search", "reading");
+  }
+  if (session.roleId === "assistant" && mode !== "delivery-ready") {
+    recommendedKinds.splice(0, recommendedKinds.length, "search", "reading");
+  }
+  if (
+    (session.entrySource === "direct" || session.entrySource === "ui") &&
+    session.roleId === "operator" &&
+    mode === "delivery-ready"
+  ) {
+    recommendedKinds.splice(0, recommendedKinds.length, "synthesis", "reading", "search");
+  }
   const deferredKinds = (["search", "reading", "synthesis"] as AgentDelegationKind[]).filter(
     (entry) => !recommendedKinds.includes(entry),
   );
@@ -133,6 +152,16 @@ function deriveDelegationRationale(
     ...(conflictedHypotheses > 0 ? [`${conflictedHypotheses} conflicted hypothesis node(s) remain active.`] : []),
     ...(provisionalHypotheses > 0 ? [`${provisionalHypotheses} provisional hypothesis node(s) still need evidence.`] : []),
     ...(matchedAction ? [`Current action focus: ${matchedAction}`] : []),
+    ...(constrainedEntry
+      ? [`Current entry is ${session.entrySource}, so prefer compact evidence delegations before synthesis.`]
+      : []),
+    ...(session.roleId === "assistant"
+      ? ["Current role is assistant, so avoid long-form synthesis until delivery is explicitly requested."]
+      : session.roleId === "researcher"
+        ? ["Current role is researcher, so favor evidence gathering and reading before delivery."]
+        : session.roleId === "operator"
+          ? ["Current role is operator, so synthesis becomes appropriate once cognition is delivery-ready."]
+          : []),
   ];
   const activeTaskDelegations = existingDelegations.filter(
     (item) => item.taskId === taskId && (item.status === "queued" || item.status === "running"),
@@ -192,6 +221,32 @@ function deriveDelegationRationale(
     return {
       allow: false,
       reason: `Evidence delegations are still active for task ${taskId}. Finish search/reading before starting synthesis.`,
+      rationale,
+    };
+  }
+
+  if (
+    constrainedEntry &&
+    kind === "synthesis" &&
+    mode !== "delivery-ready" &&
+    !delegationPromptExplicitlyRequestsKind(kind, prompt)
+  ) {
+    return {
+      allow: false,
+      reason: `Active entry ${session.entrySource} should stay in compact evidence mode before synthesis for task ${taskId}.`,
+      rationale,
+    };
+  }
+
+  if (
+    session.roleId === "assistant" &&
+    kind === "synthesis" &&
+    mode !== "delivery-ready" &&
+    !delegationPromptExplicitlyRequestsKind(kind, prompt)
+  ) {
+    return {
+      allow: false,
+      reason: `Assistant role should avoid synthesis delegations before the cognition state is delivery-ready for task ${taskId}.`,
       rationale,
     };
   }
@@ -485,6 +540,11 @@ export async function registerAgentRoutes(
 
     const decision = deriveDelegationRationale(
       cognition,
+      {
+        entrySource: session.entrySource ?? session.activeEntrySource ?? "direct",
+        roleId: session.roleId,
+        ...(session.roleLabel ? { roleLabel: session.roleLabel } : {}),
+      },
       parsed.data.kind,
       parsed.data.taskId,
       existingDelegations,

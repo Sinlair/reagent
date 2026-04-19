@@ -941,22 +941,6 @@ async function main() {
     assert.equal(listResponse.json().items[0].delegationId, "dlg_01");
     assert.equal(synced.length, 1);
 
-    const createResponse = await app.inject({
-      method: "POST",
-      url: "/api/agent/delegations",
-      payload: {
-        sessionId: "wechat:agent-user-2",
-        taskId: "task_456",
-        kind: "search",
-        prompt: "Find strong browser-agent baselines",
-      },
-    });
-    assert.equal(createResponse.statusCode, 201);
-    assert.equal(createResponse.json().status, "completed");
-    assert.equal(createResponse.json().artifact.path, "research/rounds/task_123/workstreams/search.md");
-    assert.equal(createResponse.json().rationale.posture.mode, "evidence-gathering");
-    assert.deepEqual(createResponse.json().rationale.posture.recommendedKinds, ["search", "reading"]);
-
     const blockedCreateResponse = await app.inject({
       method: "POST",
       url: "/api/agent/delegations",
@@ -968,7 +952,7 @@ async function main() {
     });
     assert.equal(blockedCreateResponse.statusCode, 400);
     assert.equal(
-      blockedCreateResponse.json().message.startsWith("Evidence delegations are still active for task task_123."),
+      blockedCreateResponse.json().message.startsWith("Cognition prefers search or reading delegations before synthesis"),
       true,
     );
 
@@ -984,6 +968,30 @@ async function main() {
     assert.equal(duplicateCreateResponse.statusCode, 400);
     assert.equal(
       duplicateCreateResponse.json().message.startsWith("An active search delegation already exists for task task_123."),
+      true,
+    );
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent/delegations",
+      payload: {
+        sessionId: "wechat:agent-user-2",
+        taskId: "task_456",
+        kind: "search",
+        prompt: "Find strong browser-agent baselines",
+      },
+    });
+    assert.equal(createResponse.statusCode, 201);
+    assert.equal(createResponse.json().status, "completed");
+    assert.equal(createResponse.json().artifact.path, "research/rounds/task_123/workstreams/search.md");
+    assert.equal(createResponse.json().rationale.posture.mode, "evidence-gathering");
+    assert.deepEqual(createResponse.json().rationale.posture.recommendedKinds, ["search", "reading"]);
+    assert.equal(
+      createResponse.json().rationale.posture.reasons.some((item) => item.includes("Current entry is wechat")),
+      true,
+    );
+    assert.equal(
+      createResponse.json().rationale.posture.reasons.some((item) => item.includes("Current role is researcher")),
       true,
     );
 

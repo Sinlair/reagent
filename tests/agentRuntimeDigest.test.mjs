@@ -390,6 +390,7 @@ async function main() {
 
       await chat.reply({
         senderId: "digest-user-5",
+        source: "wechat",
         text: "Research the next step from the same context."
       });
 
@@ -399,6 +400,8 @@ async function main() {
       assert.ok(instructions.includes("Current tool posture: evidence-gathering."));
       assert.ok(instructions.includes("Read the hypothesis, reasoning, and action neuron layers before calling tools."));
       assert.ok(instructions.includes("Defer these tools unless the user explicitly asks for the deliverable:"));
+      assert.ok(instructions.includes("Role-and-entry policy guidance:"));
+      assert.ok(instructions.includes("WeChat/OpenClaw entries should prefer compact evidence-gathering tools before long-form synthesis or delivery."));
     });
   });
 
