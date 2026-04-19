@@ -24,6 +24,7 @@ async function main() {
     { id: "agent-hooks-panel", ok: appJs.includes('["hooks", t("agents.panelHooks", "Hooks")]') },
     { id: "agent-delegations-panel", ok: appJs.includes('["delegations", t("agents.panelDelegations", "Delegations")]') },
     { id: "agent-delegation-rationale", ok: appJs.includes("item.rationale.summary") && appJs.includes("matchedHypothesis") },
+    { id: "agent-delegation-retry", ok: appJs.includes("item.retryHint") && appJs.includes("item.retryState") },
     { id: "session-switching", ok: appJs.includes("data-agent-session-id") && appJs.includes("loadAgentSession(sessionId)") },
     { id: "discovery-run-detail", ok: indexHtml.includes('id="discovery-run-detail"') && appJs.includes("function renderDiscoveryRunDetail(run)") },
     { id: "discovery-run-selection", ok: appJs.includes('data-discovery-run-id') && appJs.includes("hydrateDiscoveryRun(runId)") },

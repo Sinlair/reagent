@@ -763,6 +763,7 @@ async function main() {
         path: "research/rounds/task_123/workstreams/search.md",
         type: "workstream-memo",
       },
+      retryState: "not-applicable",
       createdAt: "2026-04-14T00:00:00.000Z",
       updatedAt: "2026-04-14T00:01:00.000Z",
       error: null,
@@ -912,6 +913,9 @@ async function main() {
             },
             ...(input.rationale ? { rationale: input.rationale } : {}),
             updatedAt: "2026-04-14T00:02:00.000Z",
+            retryState: "not-applicable",
+            retryAfter: undefined,
+            retryHint: undefined,
           };
           return delegation;
         },
@@ -926,6 +930,9 @@ async function main() {
             ...delegation,
             status: "cancelled",
             updatedAt: "2026-04-14T00:03:00.000Z",
+            retryState: "cooldown",
+            retryAfter: "2026-04-14T00:18:00.000Z",
+            retryHint: "Wait for the cooldown window to pass, then retry with an explicit retry-style prompt after reviewing blockers.",
           };
           return delegation;
         },
@@ -986,6 +993,7 @@ async function main() {
     assert.equal(createResponse.json().artifact.path, "research/rounds/task_123/workstreams/search.md");
     assert.equal(createResponse.json().rationale.posture.mode, "evidence-gathering");
     assert.deepEqual(createResponse.json().rationale.posture.recommendedKinds, ["search", "reading"]);
+    assert.equal(createResponse.json().retryState, "not-applicable");
     assert.equal(
       createResponse.json().rationale.posture.reasons.some((item) => item.includes("Current entry is wechat")),
       true,
@@ -1008,6 +1016,8 @@ async function main() {
     });
     assert.equal(cancelResponse.statusCode, 200);
     assert.equal(cancelResponse.json().status, "cancelled");
+    assert.equal(cancelResponse.json().retryState, "cooldown");
+    assert.equal(cancelResponse.json().retryHint.includes("cooldown window"), true);
 
     const missingDetailResponse = await app.inject({
       method: "GET",
@@ -1048,6 +1058,9 @@ async function main() {
           supportedHypotheses: 0,
         },
       },
+      retryState: "cooldown",
+      retryAfter: recentIso,
+      retryHint: "Wait for the cooldown window to pass, then retry with an explicit retry-style prompt after reviewing blockers.",
       createdAt: recentIso,
       updatedAt: recentIso,
       error: "search provider timeout",
@@ -1194,6 +1207,7 @@ async function main() {
               allowRecursiveDelegation: false,
             },
             ...(input.rationale ? { rationale: input.rationale } : {}),
+            retryState: "not-applicable",
             createdAt: recentIso,
             updatedAt: recentIso,
             error: null,
@@ -1236,6 +1250,7 @@ async function main() {
     });
     assert.equal(allowedRetry.statusCode, 201);
     assert.equal(allowedRetry.json().status, "queued");
+    assert.equal(allowedRetry.json().retryState, "not-applicable");
     assert.equal(
       allowedRetry.json().rationale.posture.reasons.some((item) => item.includes("prompt explicitly asked to retry")),
       true,

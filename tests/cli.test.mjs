@@ -160,6 +160,7 @@ async function createFixtureServer() {
       path: "research/rounds/11111111-1111-1111-1111-111111111111/workstreams/search.md",
       type: "workstream-memo",
     },
+    retryState: "not-applicable",
     createdAt: "2026-04-08T08:20:00.000Z",
     updatedAt: "2026-04-08T08:29:00.000Z",
     error: null,
@@ -1211,6 +1212,9 @@ async function createFixtureServer() {
             supportedHypotheses: 0,
           },
         },
+        retryState: "not-applicable",
+        retryAfter: undefined,
+        retryHint: undefined,
       };
       sendJson(201, agentDelegation);
       return;
@@ -1226,6 +1230,9 @@ async function createFixtureServer() {
         ...agentDelegation,
         status: "cancelled",
         updatedAt: "2026-04-08T08:31:10.000Z",
+        retryState: "cooldown",
+        retryAfter: "2026-04-08T08:46:10.000Z",
+        retryHint: "Wait for the cooldown window to pass, then retry with an explicit retry-style prompt after reviewing blockers.",
       };
       sendJson(200, agentDelegation);
       return;
@@ -3181,6 +3188,7 @@ async function main() {
         assert.equal(payload.items[0].delegationId, "dlg_fixture_1");
         assert.equal(payload.items[0].rationale.posture.recommendedKinds.includes("search"), true);
         assert.equal(payload.items[0].rationale.posture.reasons[0].includes("conflicted hypothesis"), true);
+        assert.equal(payload.items[0].retryState, "not-applicable");
       });
 
       await runTest("CLI channels chat, inbound, and push commands send message payloads", async () => {

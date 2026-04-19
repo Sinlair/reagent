@@ -1919,6 +1919,16 @@ function renderAgentDelegationsPanel() {
               ? `<small>${escapeHtml(`Hypothesis: ${item.rationale.matchedHypothesis}`)}</small>`
               : ""
           }
+          ${
+            item.retryState && item.retryState !== "not-applicable"
+              ? `<small>${escapeHtml(`Retry: ${item.retryState}${item.retryAfter ? ` after ${item.retryAfter}` : ""}`)}</small>`
+              : ""
+          }
+          ${
+            item.retryHint
+              ? `<small>${escapeHtml(`Retry hint: ${item.retryHint}`)}</small>`
+              : ""
+          }
           <small>${escapeHtml(item.artifact?.path || item.input?.prompt || item.error || formatTime(item.updatedAt))}</small>
         </article>
       `

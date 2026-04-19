@@ -15,6 +15,8 @@ interface AgentDelegationStore {
   items: AgentDelegationRecord[];
 }
 
+const DELEGATION_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -23,6 +25,40 @@ function defaultStore(): AgentDelegationStore {
   return {
     updatedAt: nowIso(),
     items: [],
+  };
+}
+
+function buildRetryMetadata(
+  status: AgentDelegationStatus,
+  updatedAt: string,
+): Pick<AgentDelegationRecord, "retryState" | "retryAfter" | "retryHint"> {
+  if (status === "failed" || status === "cancelled") {
+    const retryAfterMs = Date.parse(updatedAt) + DELEGATION_RETRY_COOLDOWN_MS;
+    const retryAfter = new Date(retryAfterMs).toISOString();
+    if (Date.now() < retryAfterMs) {
+      return {
+        retryState: "cooldown",
+        retryAfter,
+        retryHint: "Wait for the cooldown window to pass, then retry with an explicit retry-style prompt after reviewing blockers.",
+      };
+    }
+
+    return {
+      retryState: "available",
+      retryAfter,
+      retryHint: "Retry is available. Use an explicit retry-style prompt after reviewing blockers or changing strategy.",
+    };
+  }
+
+  return {
+    retryState: "not-applicable",
+  };
+}
+
+function applyRetryMetadata(record: AgentDelegationRecord): AgentDelegationRecord {
+  return {
+    ...record,
+    ...buildRetryMetadata(record.status, record.updatedAt),
   };
 }
 
@@ -79,7 +115,7 @@ export class AgentDelegationService {
             ? "failed"
             : "queued";
     const createdAt = nowIso();
-    const nextRecord: AgentDelegationRecord = {
+    const nextRecord = applyRetryMetadata({
       delegationId: `dlg_${randomUUID()}`,
       sessionId: input.sessionId,
       taskId: input.taskId,
@@ -109,7 +145,7 @@ export class AgentDelegationService {
               "The requested workstream is blocked or unavailable for this task.",
           }
         : {}),
-    };
+    });
 
     const store = await this.readStore();
     await this.writeStore({
@@ -131,12 +167,12 @@ export class AgentDelegationService {
       return current;
     }
 
-    const nextRecord: AgentDelegationRecord = {
+    const nextRecord = applyRetryMetadata({
       ...current,
       status: "cancelled",
       updatedAt: nowIso(),
       error: null,
-    };
+    });
     const nextItems = [...store.items];
     nextItems[index] = nextRecord;
     await this.writeStore({
@@ -158,7 +194,7 @@ export class AgentDelegationService {
         const memo = await this.researchRoundService.getWorkstreamMemo(item.taskId, item.kind);
         if (memo) {
           changed = true;
-          return {
+          return applyRetryMetadata({
             ...item,
             status: "completed",
             artifact: {
@@ -167,18 +203,18 @@ export class AgentDelegationService {
             },
             updatedAt: nowIso(),
             error: null,
-          } satisfies AgentDelegationRecord;
+          } satisfies AgentDelegationRecord);
         }
 
         const handoff = await this.researchRoundService.getHandoff(item.taskId);
         if (!handoff || handoff.state === "failed") {
           changed = true;
-          return {
+          return applyRetryMetadata({
             ...item,
             status: "failed",
             updatedAt: nowIso(),
             error: handoff?.blockers[0] ?? handoff?.currentMessage ?? "Research handoff is no longer available.",
-          } satisfies AgentDelegationRecord;
+          } satisfies AgentDelegationRecord);
         }
 
         const workstream = handoff.workstreams.find((entry) => entry.id === item.kind);
@@ -189,7 +225,7 @@ export class AgentDelegationService {
         }
 
         changed = true;
-        return {
+        return applyRetryMetadata({
           ...item,
           status: nextStatus,
           updatedAt: nowIso(),
@@ -200,7 +236,7 @@ export class AgentDelegationService {
             : {
                 error: null,
               }),
-        } satisfies AgentDelegationRecord;
+        } satisfies AgentDelegationRecord);
       }),
     );
 
@@ -222,7 +258,9 @@ export class AgentDelegationService {
       const parsed = JSON.parse(raw) as Partial<AgentDelegationStore>;
       return {
         updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : nowIso(),
-        items: Array.isArray(parsed.items) ? parsed.items as AgentDelegationRecord[] : [],
+        items: Array.isArray(parsed.items)
+          ? (parsed.items as AgentDelegationRecord[]).map((item) => applyRetryMetadata(item))
+          : [],
       };
     } catch {
       return defaultStore();

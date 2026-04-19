@@ -53,6 +53,7 @@ Completed
   - CLI and Web delegation views now surface the cognition-backed rationale, posture, and matched action/hypothesis signals for each delegation.
   - Delegation lifecycle policy now blocks duplicate active delegations for the same task/kind and prevents synthesis while evidence delegations for that task are still running.
   - Recent failed delegations now enter a retry cooldown window; retrying them requires an explicit retry-style prompt and the cognition layer records the follow-up recommendation.
+  - Delegation records now expose explicit retry metadata (`retryState`, `retryAfter`, `retryHint`) so operators can see retry timing directly in CLI and Web surfaces.
 
 Verification
 - `npm.cmd run release:verify`

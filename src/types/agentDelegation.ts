@@ -7,6 +7,8 @@ export interface AgentDelegationArtifactRef {
   type: "workstream-memo";
 }
 
+export type AgentDelegationRetryState = "cooldown" | "available" | "not-applicable";
+
 export interface AgentDelegationInput {
   prompt?: string | undefined;
   scope: "research-only";
@@ -40,6 +42,9 @@ export interface AgentDelegationRecord {
   input: AgentDelegationInput;
   rationale?: AgentDelegationRationale | undefined;
   artifact?: AgentDelegationArtifactRef | undefined;
+  retryState?: AgentDelegationRetryState | undefined;
+  retryAfter?: string | undefined;
+  retryHint?: string | undefined;
   createdAt: string;
   updatedAt: string;
   error?: string | null | undefined;

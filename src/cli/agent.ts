@@ -236,6 +236,9 @@ type AgentDelegationRecord = {
     path: string;
     type: "workstream-memo";
   } | undefined;
+  retryState?: "cooldown" | "available" | "not-applicable" | undefined;
+  retryAfter?: string | undefined;
+  retryHint?: string | undefined;
   createdAt: string;
   updatedAt: string;
   error?: string | null | undefined;
@@ -531,6 +534,12 @@ Flags:
       }
       if (item.error) {
         console.log(`Error=${item.error}`);
+      }
+      if (item.retryState && item.retryState !== "not-applicable") {
+        console.log(`Retry=${item.retryState}${item.retryAfter ? ` after ${item.retryAfter}` : ""}`);
+      }
+      if (item.retryHint) {
+        console.log(`Retry hint=${item.retryHint}`);
       }
       console.log("");
     }
