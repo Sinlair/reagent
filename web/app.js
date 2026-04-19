@@ -1848,7 +1848,11 @@ function renderAgentCognitionPanel() {
   return [
     `<article class="result-item"><h3>${escapeHtml("Cognition Summary")}</h3><p>${escapeHtml(
       `Updated ${formatTime(payload.updatedAt)} | intents=${(payload.recentUserIntents || []).length} | tools=${(payload.recentToolOutcomes || []).length} | pending=${(payload.pendingActions || []).length}`
-    )}</p></article>`,
+    )}</p>${
+      payload.seededFromSessionId
+        ? `<small>${escapeHtml(`Carryover from ${payload.seededFromSessionId}${payload.seededAt ? ` @ ${payload.seededAt}` : ""}`)}</small>`
+        : ""
+    }</article>`,
     ...sections.map(([label, items]) => renderAgentCognitionLayer(label, items)),
     `<article class="result-item"><h3>${escapeHtml("Digest")}</h3><p>${escapeHtml(
       `Recent intents: ${(payload.recentUserIntents || []).join(" | ") || "none"}`
@@ -2505,6 +2509,7 @@ function renderAgentSession(session) {
         ["Session", session.sessionId || "-"],
         ["Sender", session.senderId || "-"],
         ["Entry", `${session.activeEntryLabel || session.activeEntrySource} (${session.entrySource || session.activeEntrySource || "-"})`],
+        ["Carryover", session.seededFromSessionId ? `${session.seededFromSessionId}${session.seededAt ? ` @ ${session.seededAt}` : ""}` : "-"],
         ["Toolsets", session.enabledToolsets?.join(", ") || "-"],
         ["Role", `${session.roleLabel} (${session.roleId})`],
         ["Skills", session.skillLabels.join(", ") || "-"],

@@ -79,6 +79,8 @@ export interface AgentSessionSummary {
   entrySource: AgentEntrySource;
   activeEntrySource: AgentEntrySource;
   activeEntryLabel: string;
+  seededFromSessionId?: string | undefined;
+  seededAt?: string | undefined;
   enabledToolsets: AgentToolsetId[];
   availableToolsets: AgentToolsetId[];
   roleId: string;
@@ -162,6 +164,8 @@ export interface AgentSessionCognition {
   sessionId: string;
   senderId: string;
   entrySource: AgentEntrySource;
+  seededFromSessionId?: string | undefined;
+  seededAt?: string | undefined;
   updatedAt: string;
   digestUpdatedAt: string;
   sessionUpdatedAt: string;
@@ -249,6 +253,8 @@ interface AgentSession {
   roleId: string;
   skillIds: string[];
   lastEntrySource?: AgentEntrySource | undefined;
+  seededFromSessionId?: string | undefined;
+  seededAt?: string | undefined;
   providerId?: string | undefined;
   modelId?: string | undefined;
   fallbackRoutes?: LlmRouteSelection[] | undefined;
@@ -469,6 +475,7 @@ function cloneSessionDigest(digest: AgentSessionDigest): AgentSessionDigest {
 }
 
 function seedSessionFromExisting(
+  seedSessionId: string,
   seed: AgentSession,
   source: AgentEntrySource,
 ): AgentSession {
@@ -477,6 +484,8 @@ function seedSessionFromExisting(
     roleId: seed.roleId,
     skillIds: [...seed.skillIds],
     lastEntrySource: source,
+    seededFromSessionId: seedSessionId,
+    seededAt: nowIso(),
     ...(seed.providerId ? { providerId: seed.providerId } : {}),
     ...(seed.modelId ? { modelId: seed.modelId } : {}),
     ...(seed.fallbackRoutes ? { fallbackRoutes: [...seed.fallbackRoutes] } : {}),
@@ -2268,6 +2277,8 @@ export class AgentRuntime {
       entrySource,
       activeEntrySource,
       activeEntryLabel: labelForEntrySource(activeEntrySource),
+      ...(session.seededFromSessionId ? { seededFromSessionId: session.seededFromSessionId } : {}),
+      ...(session.seededAt ? { seededAt: session.seededAt } : {}),
       enabledToolsets: allowedToolsets,
       availableToolsets: [...ALL_AGENT_TOOLSETS],
       roleId: role.id,
@@ -2317,6 +2328,8 @@ export class AgentRuntime {
       sessionId,
       senderId,
       entrySource,
+      ...(session.seededFromSessionId ? { seededFromSessionId: session.seededFromSessionId } : {}),
+      ...(session.seededAt ? { seededAt: session.seededAt } : {}),
       updatedAt: session.digest.neurons.updatedAt || session.digest.updatedAt,
       digestUpdatedAt: session.digest.updatedAt,
       sessionUpdatedAt: session.updatedAt,
@@ -3007,6 +3020,12 @@ export class AgentRuntime {
                     roleId,
                     skillIds: skillIds.length ? skillIds : SKILL_DEFINITIONS.map((skill) => skill.id),
                     lastEntrySource,
+                    ...(typeof partial.seededFromSessionId === "string" && partial.seededFromSessionId.trim()
+                      ? { seededFromSessionId: partial.seededFromSessionId.trim() }
+                      : {}),
+                    ...(typeof partial.seededAt === "string" && partial.seededAt.trim()
+                      ? { seededAt: partial.seededAt.trim() }
+                      : {}),
                     ...(providerId ? { providerId } : {}),
                     ...(modelId ? { modelId } : {}),
                     fallbackRoutes,
@@ -3059,9 +3078,9 @@ export class AgentRuntime {
         .filter(([sessionId]) => sessionId !== key)
         .filter(([sessionId]) => parseSessionId(sessionId)?.senderId === parsed.senderId)
         .sort((left, right) => right[1].updatedAt.localeCompare(left[1].updatedAt))
-        .map(([, session]) => session)[0];
+        [0];
       if (latestSeed) {
-        const seeded = seedSessionFromExisting(latestSeed, parsed.entrySource);
+        const seeded = seedSessionFromExisting(latestSeed[0], latestSeed[1], parsed.entrySource);
         store.sessions[key] = seeded;
         return seeded;
       }

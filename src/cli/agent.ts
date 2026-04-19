@@ -74,6 +74,8 @@ type AgentSessionProfile = {
   entrySource: "direct" | "ui" | "wechat" | "openclaw";
   activeEntrySource: "direct" | "ui" | "wechat" | "openclaw";
   activeEntryLabel: string;
+  seededFromSessionId?: string | undefined;
+  seededAt?: string | undefined;
   enabledToolsets: string[];
   availableToolsets: string[];
   roleId: string;
@@ -132,6 +134,8 @@ type AgentSessionCognitionPayload = {
   sessionId: string;
   senderId: string;
   entrySource: string;
+  seededFromSessionId?: string | undefined;
+  seededAt?: string | undefined;
   updatedAt: string;
   digestUpdatedAt: string;
   sessionUpdatedAt: string;
@@ -397,6 +401,9 @@ Flags:
     console.log(`Sender: ${session.senderId}`);
     console.log(`Entry: ${session.entrySource}`);
     console.log(`Active entry: ${session.activeEntryLabel} (${session.activeEntrySource})`);
+    if (session.seededFromSessionId) {
+      console.log(`Carryover: ${session.seededFromSessionId}${session.seededAt ? ` @ ${session.seededAt}` : ""}`);
+    }
     console.log(`Role: ${session.roleLabel} (${session.roleId})`);
     console.log(
       `Model: ${session.providerLabel}/${session.modelLabel}${session.wireApi ? ` via ${session.wireApi}` : ""} [${session.llmStatus}]`,
@@ -447,6 +454,9 @@ Flags:
     console.log(`Session: ${payload.sessionId}`);
     console.log(`Sender: ${payload.senderId}`);
     console.log(`Entry: ${payload.entrySource}`);
+    if (payload.seededFromSessionId) {
+      console.log(`Carryover: ${payload.seededFromSessionId}${payload.seededAt ? ` @ ${payload.seededAt}` : ""}`);
+    }
     console.log(`Updated: ${deps.formatWhen(payload.updatedAt)}`);
     console.log("");
     printNeuronLayer("Perception", payload.neurons.perception || []);
