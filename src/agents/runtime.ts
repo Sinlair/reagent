@@ -181,6 +181,8 @@ export interface AgentSessionListEntry {
   senderId: string;
   entrySource: AgentEntrySource;
   activeEntrySource: AgentEntrySource;
+  seededFromSessionId?: string | undefined;
+  seededAt?: string | undefined;
   roleId: string;
   roleLabel: string;
   skillIds: string[];
@@ -2551,6 +2553,8 @@ export class AgentRuntime {
           senderId: summary.senderId,
           entrySource: summary.entrySource,
           activeEntrySource: summary.activeEntrySource,
+          ...(session.seededFromSessionId ? { seededFromSessionId: session.seededFromSessionId } : {}),
+          ...(session.seededAt ? { seededAt: session.seededAt } : {}),
           roleId: summary.roleId,
           roleLabel: summary.roleLabel,
           skillIds: summary.skillIds,

@@ -47,6 +47,8 @@ type AgentSessionEntry = {
   senderId: string;
   entrySource: "direct" | "ui" | "wechat" | "openclaw";
   activeEntrySource: "direct" | "ui" | "wechat" | "openclaw";
+  seededFromSessionId?: string | undefined;
+  seededAt?: string | undefined;
   roleId: string;
   roleLabel: string;
   skillIds: string[];
@@ -391,6 +393,9 @@ Flags:
       console.log(
         `Role=${session.roleLabel} Model=${session.providerLabel}/${session.modelLabel}${session.wireApi ? ` via ${session.wireApi}` : ""} Turns=${session.turnCount}`,
       );
+      if (session.seededFromSessionId) {
+        console.log(`Carryover=${session.seededFromSessionId}${session.seededAt ? ` @ ${session.seededAt}` : ""}`);
+      }
       console.log(`Skills=${session.skillLabels.join(", ") || "-"}`);
       console.log("");
     }

@@ -1968,6 +1968,7 @@ function renderAgentSessionsList(sessions) {
           <div class="message__meta">
             <span>${escapeHtml(session.roleLabel)} (${escapeHtml(session.roleId)})</span>
             <span>${escapeHtml(session.activeEntrySource || "-")}</span>
+            ${session.seededFromSessionId ? `<span>${escapeHtml(`carryover:${session.seededFromSessionId}`)}</span>` : ""}
             <span>${escapeHtml(
               state.lang === "zh" ? `${String(session.turnCount)} \u8f6e\u5bf9\u8bdd` : `${String(session.turnCount)} turns`
             )}</span>

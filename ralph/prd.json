@@ -33,7 +33,7 @@
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Completed with structured neuron persistence layered under the legacy digest summaries, including cross-session carryover when a new source session is created for the same sender and operator-visible carryover provenance in session surfaces."
+      "notes": "Completed with structured neuron persistence layered under the legacy digest summaries, including cross-session carryover when a new source session is created for the same sender and operator-visible carryover provenance in session detail and session list surfaces."
     },
     {
       "id": "US-003",

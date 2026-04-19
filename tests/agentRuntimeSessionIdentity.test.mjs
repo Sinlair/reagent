@@ -138,6 +138,11 @@ async function main() {
         true,
       );
       assert.equal(uiCognition.neurons.memory.length > 0, true);
+
+      const listedUi = (await chat.listSessions()).find((session) => session.sessionId === "ui:carryover-user");
+      assert.ok(listedUi);
+      assert.equal(listedUi.seededFromSessionId, "wechat:carryover-user");
+      assert.equal(typeof listedUi.seededAt, "string");
     });
   });
 }
