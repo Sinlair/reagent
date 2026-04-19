@@ -49,6 +49,7 @@ type AgentSessionEntry = {
   activeEntrySource: "direct" | "ui" | "wechat" | "openclaw";
   seededFromSessionId?: string | undefined;
   seededAt?: string | undefined;
+  carryoverSummary?: string | undefined;
   roleId: string;
   roleLabel: string;
   skillIds: string[];
@@ -78,6 +79,7 @@ type AgentSessionProfile = {
   activeEntryLabel: string;
   seededFromSessionId?: string | undefined;
   seededAt?: string | undefined;
+  carryoverSummary?: string | undefined;
   enabledToolsets: string[];
   availableToolsets: string[];
   roleId: string;
@@ -138,6 +140,7 @@ type AgentSessionCognitionPayload = {
   entrySource: string;
   seededFromSessionId?: string | undefined;
   seededAt?: string | undefined;
+  carryoverSummary?: string | undefined;
   updatedAt: string;
   digestUpdatedAt: string;
   sessionUpdatedAt: string;
@@ -395,6 +398,9 @@ Flags:
       );
       if (session.seededFromSessionId) {
         console.log(`Carryover=${session.seededFromSessionId}${session.seededAt ? ` @ ${session.seededAt}` : ""}`);
+        if (session.carryoverSummary) {
+          console.log(`Carryover summary=${session.carryoverSummary}`);
+        }
       }
       console.log(`Skills=${session.skillLabels.join(", ") || "-"}`);
       console.log("");
@@ -408,6 +414,9 @@ Flags:
     console.log(`Active entry: ${session.activeEntryLabel} (${session.activeEntrySource})`);
     if (session.seededFromSessionId) {
       console.log(`Carryover: ${session.seededFromSessionId}${session.seededAt ? ` @ ${session.seededAt}` : ""}`);
+      if (session.carryoverSummary) {
+        console.log(`Carryover summary: ${session.carryoverSummary}`);
+      }
     }
     console.log(`Role: ${session.roleLabel} (${session.roleId})`);
     console.log(
@@ -461,6 +470,9 @@ Flags:
     console.log(`Entry: ${payload.entrySource}`);
     if (payload.seededFromSessionId) {
       console.log(`Carryover: ${payload.seededFromSessionId}${payload.seededAt ? ` @ ${payload.seededAt}` : ""}`);
+      if (payload.carryoverSummary) {
+        console.log(`Carryover summary: ${payload.carryoverSummary}`);
+      }
     }
     console.log(`Updated: ${deps.formatWhen(payload.updatedAt)}`);
     console.log("");

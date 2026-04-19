@@ -1850,7 +1850,9 @@ function renderAgentCognitionPanel() {
       `Updated ${formatTime(payload.updatedAt)} | intents=${(payload.recentUserIntents || []).length} | tools=${(payload.recentToolOutcomes || []).length} | pending=${(payload.pendingActions || []).length}`
     )}</p>${
       payload.seededFromSessionId
-        ? `<small>${escapeHtml(`Carryover from ${payload.seededFromSessionId}${payload.seededAt ? ` @ ${payload.seededAt}` : ""}`)}</small>`
+        ? `<small>${escapeHtml(`Carryover from ${payload.seededFromSessionId}${payload.seededAt ? ` @ ${payload.seededAt}` : ""}`)}</small>${
+            payload.carryoverSummary ? `<small>${escapeHtml(payload.carryoverSummary)}</small>` : ""
+          }`
         : ""
     }</article>`,
     ...sections.map(([label, items]) => renderAgentCognitionLayer(label, items)),
@@ -1969,6 +1971,7 @@ function renderAgentSessionsList(sessions) {
             <span>${escapeHtml(session.roleLabel)} (${escapeHtml(session.roleId)})</span>
             <span>${escapeHtml(session.activeEntrySource || "-")}</span>
             ${session.seededFromSessionId ? `<span>${escapeHtml(`carryover:${session.seededFromSessionId}`)}</span>` : ""}
+            ${session.carryoverSummary ? `<span>${escapeHtml(clipText(session.carryoverSummary, 72))}</span>` : ""}
             <span>${escapeHtml(
               state.lang === "zh" ? `${String(session.turnCount)} \u8f6e\u5bf9\u8bdd` : `${String(session.turnCount)} turns`
             )}</span>
@@ -2511,6 +2514,7 @@ function renderAgentSession(session) {
         ["Sender", session.senderId || "-"],
         ["Entry", `${session.activeEntryLabel || session.activeEntrySource} (${session.entrySource || session.activeEntrySource || "-"})`],
         ["Carryover", session.seededFromSessionId ? `${session.seededFromSessionId}${session.seededAt ? ` @ ${session.seededAt}` : ""}` : "-"],
+        ["Carryover Summary", session.carryoverSummary || "-"],
         ["Toolsets", session.enabledToolsets?.join(", ") || "-"],
         ["Role", `${session.roleLabel} (${session.roleId})`],
         ["Skills", session.skillLabels.join(", ") || "-"],

@@ -128,11 +128,14 @@ async function main() {
       assert.deepEqual(uiSession.skillIds, ["workspace-control", "research-ops"]);
       assert.equal(uiSession.seededFromSessionId, "wechat:carryover-user");
       assert.equal(typeof uiSession.seededAt, "string");
+      assert.equal(typeof uiSession.carryoverSummary, "string");
+      assert.equal(uiSession.carryoverSummary.includes("Last intent: first turn from wechat"), true);
 
       const uiCognition = await chat.findSessionCognition("ui:carryover-user");
       assert.ok(uiCognition);
       assert.equal(uiCognition.seededFromSessionId, "wechat:carryover-user");
       assert.equal(typeof uiCognition.seededAt, "string");
+      assert.equal(typeof uiCognition.carryoverSummary, "string");
       assert.equal(
         uiCognition.recentUserIntents.some((item) => item.includes("first turn from wechat")),
         true,
@@ -143,6 +146,7 @@ async function main() {
       assert.ok(listedUi);
       assert.equal(listedUi.seededFromSessionId, "wechat:carryover-user");
       assert.equal(typeof listedUi.seededAt, "string");
+      assert.equal(typeof listedUi.carryoverSummary, "string");
     });
   });
 }

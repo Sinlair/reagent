@@ -16,6 +16,7 @@ Completed
   - New source sessions for the same sender now seed themselves from the latest sender cognition/config state instead of restarting from an empty session.
   - Session profile and cognition surfaces now expose carryover provenance so operators can see which prior session seeded the current one.
   - Session lists now surface carryover provenance too, so inherited sessions are visible before drilling into detail views.
+  - Carryover surfaces now include a compact `carryoverSummary`, so operators can see what context was inherited, not just where it came from.
 - US-003: Align cognition memory with workspace memory and artifacts
   - Wired memory recall hits into digest generation so `memory` neurons can persist explicit `workspace-memory` and `artifact-memory` provenance alongside session and tool-derived context.
   - Kept long-term memory in the `memory` layer instead of leaking it into `hypothesis`, while preserving source metadata for each neuron node.

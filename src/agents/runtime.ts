@@ -81,6 +81,7 @@ export interface AgentSessionSummary {
   activeEntryLabel: string;
   seededFromSessionId?: string | undefined;
   seededAt?: string | undefined;
+  carryoverSummary?: string | undefined;
   enabledToolsets: AgentToolsetId[];
   availableToolsets: AgentToolsetId[];
   roleId: string;
@@ -166,6 +167,7 @@ export interface AgentSessionCognition {
   entrySource: AgentEntrySource;
   seededFromSessionId?: string | undefined;
   seededAt?: string | undefined;
+  carryoverSummary?: string | undefined;
   updatedAt: string;
   digestUpdatedAt: string;
   sessionUpdatedAt: string;
@@ -183,6 +185,7 @@ export interface AgentSessionListEntry {
   activeEntrySource: AgentEntrySource;
   seededFromSessionId?: string | undefined;
   seededAt?: string | undefined;
+  carryoverSummary?: string | undefined;
   roleId: string;
   roleLabel: string;
   skillIds: string[];
@@ -257,6 +260,7 @@ interface AgentSession {
   lastEntrySource?: AgentEntrySource | undefined;
   seededFromSessionId?: string | undefined;
   seededAt?: string | undefined;
+  carryoverSummary?: string | undefined;
   providerId?: string | undefined;
   modelId?: string | undefined;
   fallbackRoutes?: LlmRouteSelection[] | undefined;
@@ -476,6 +480,19 @@ function cloneSessionDigest(digest: AgentSessionDigest): AgentSessionDigest {
   };
 }
 
+function buildCarryoverSummary(session: AgentSession): string {
+  const latestIntent = session.digest.recentUserIntents.at(-1)?.replace(/^User asked:\s*/u, "").trim();
+  const topHypothesis = session.digest.neurons.hypothesis[0]?.content?.trim();
+  const nextAction = session.digest.pendingActions[0]?.trim() ?? session.digest.neurons.action[0]?.content?.trim();
+  const parts = [
+    latestIntent ? `Last intent: ${latestIntent}` : "",
+    topHypothesis ? `Working hypothesis: ${topHypothesis}` : "",
+    nextAction ? `Next action: ${nextAction}` : "",
+  ].filter(Boolean);
+
+  return parts.length > 0 ? clipText(parts.join(" | "), 220) : "Carry over the latest sender cognition into this new session.";
+}
+
 function seedSessionFromExisting(
   seedSessionId: string,
   seed: AgentSession,
@@ -488,6 +505,7 @@ function seedSessionFromExisting(
     lastEntrySource: source,
     seededFromSessionId: seedSessionId,
     seededAt: nowIso(),
+    carryoverSummary: buildCarryoverSummary(seed),
     ...(seed.providerId ? { providerId: seed.providerId } : {}),
     ...(seed.modelId ? { modelId: seed.modelId } : {}),
     ...(seed.fallbackRoutes ? { fallbackRoutes: [...seed.fallbackRoutes] } : {}),
@@ -2281,6 +2299,7 @@ export class AgentRuntime {
       activeEntryLabel: labelForEntrySource(activeEntrySource),
       ...(session.seededFromSessionId ? { seededFromSessionId: session.seededFromSessionId } : {}),
       ...(session.seededAt ? { seededAt: session.seededAt } : {}),
+      ...(session.carryoverSummary ? { carryoverSummary: session.carryoverSummary } : {}),
       enabledToolsets: allowedToolsets,
       availableToolsets: [...ALL_AGENT_TOOLSETS],
       roleId: role.id,
@@ -2332,6 +2351,7 @@ export class AgentRuntime {
       entrySource,
       ...(session.seededFromSessionId ? { seededFromSessionId: session.seededFromSessionId } : {}),
       ...(session.seededAt ? { seededAt: session.seededAt } : {}),
+      ...(session.carryoverSummary ? { carryoverSummary: session.carryoverSummary } : {}),
       updatedAt: session.digest.neurons.updatedAt || session.digest.updatedAt,
       digestUpdatedAt: session.digest.updatedAt,
       sessionUpdatedAt: session.updatedAt,
@@ -2555,6 +2575,7 @@ export class AgentRuntime {
           activeEntrySource: summary.activeEntrySource,
           ...(session.seededFromSessionId ? { seededFromSessionId: session.seededFromSessionId } : {}),
           ...(session.seededAt ? { seededAt: session.seededAt } : {}),
+          ...(session.carryoverSummary ? { carryoverSummary: session.carryoverSummary } : {}),
           roleId: summary.roleId,
           roleLabel: summary.roleLabel,
           skillIds: summary.skillIds,
@@ -3029,6 +3050,9 @@ export class AgentRuntime {
                       : {}),
                     ...(typeof partial.seededAt === "string" && partial.seededAt.trim()
                       ? { seededAt: partial.seededAt.trim() }
+                      : {}),
+                    ...(typeof partial.carryoverSummary === "string" && partial.carryoverSummary.trim()
+                      ? { carryoverSummary: partial.carryoverSummary.trim() }
                       : {}),
                     ...(providerId ? { providerId } : {}),
                     ...(modelId ? { modelId } : {}),
