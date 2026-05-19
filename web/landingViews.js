@@ -50,20 +50,20 @@ export function renderWorkspacePulseView(ctx) {
     headline = state.lang === "zh"
       ? "\u7814\u7a76\u8fd0\u884c\u8fdb\u884c\u4e2d\uff0c\u8bc1\u636e\u8fd8\u5728\u7d2f\u79ef\u3002"
       : "A research run is in flight and evidence is still accumulating.";
-    subtitle = `${formatResearchTaskState(activeTask)} 璺?${trimText(activeTask.topic || activeTask.taskId || "-", 92)}`;
+    subtitle = `${formatResearchTaskState(activeTask)} - ${trimText(activeTask.topic || activeTask.taskId || "-", 92)}`;
   } else if (summary) {
     headline = state.lang === "zh"
       ? "\u6700\u65b0\u4ea7\u51fa\u5df2\u5c31\u7eea\uff0c\u53ef\u4ee5\u7ee7\u7eed\u5ba1\u9605\u6216\u4ea4\u4ed8\u3002"
       : "The latest output is ready for review or delivery.";
-    subtitle = `${trimText(summary.topic || summary.taskId || "-", 92)} 璺?${formatRelativeTime(summary.generatedAt)}`;
+    subtitle = `${trimText(summary.topic || summary.taskId || "-", 92)} - ${formatRelativeTime(summary.generatedAt)}`;
   }
 
   if (healthOk && starterProfileActive && noArtifactsYet) {
     headline = state.lang === "zh"
-      ? "Starter profile 瀹告彃鎯庨悽顭掔礉閸欘垯浜掗惄瀛樺复鐠х柉绐囩粭顑跨閺夛紕鐖虹粚鑸电ウ閵?"
+      ? "Starter profile 已启用，工作区可以开始第一次研究运行。"
       : "The starter profile is active and the workspace is ready for the first run.";
     subtitle = state.lang === "zh"
-      ? "瑜版挸澧犳担璺ㄦ暏 fallback + mock閿涘矂鈧倸鎮庢＃鏍偧娴ｆ捇鐛欓妴鍌涘复娑撳娼甸幍鎾崇磻 Research 妞ょ敻娼伴崚娑樼紦缁楊兛绔存稉?brief 閹?task閵?"
+      ? "当前使用 fallback + mock，适合首次体验。接下来打开 Research 页面创建第一个 brief 或 task。"
       : "ReAgent is currently using fallback + mock for first-run evaluation. Open Research and create the first brief or task next.";
   }
 
@@ -144,7 +144,7 @@ export function renderWorkspacePulseView(ctx) {
   if (activeTask) {
     actions.push({
       label: state.lang === "zh" ? "\u8ddf\u8fdb\u6d3b\u8dc3\u8fd0\u884c" : "Follow active run",
-      hint: `${formatResearchTaskState(activeTask)} 璺?${trimText(activeTask.topic || activeTask.taskId || "-", 64)}`,
+      hint: `${formatResearchTaskState(activeTask)} - ${trimText(activeTask.topic || activeTask.taskId || "-", 64)}`,
       tab: "research"
     });
   } else if (briefsCount) {
@@ -227,7 +227,7 @@ export function renderLandingCommandBarView(ctx) {
       ? {
           eyebrow: t("landing.commandLatestEyebrow", "Latest Deliverable"),
           title: t("landing.commandLatestTitle", "Review the latest deliverable"),
-          meta: `${formatRelativeTime(summary.generatedAt)} 璺?${trimText(summary.topic || summary.taskId, 52)}`,
+          meta: `${formatRelativeTime(summary.generatedAt)} - ${trimText(summary.topic || summary.taskId, 52)}`,
           taskId: summary.taskId,
           tone: "accent"
         }
@@ -242,11 +242,11 @@ export function renderLandingCommandBarView(ctx) {
         : {
             eyebrow: t("landing.commandStartEyebrow", "Start Research"),
             title: starterProfileActive && noArtifactsYet
-              ? (state.lang === "zh" ? "Starter profile 瀹告彃鎯庨悽?" : "Starter profile is active")
+              ? (state.lang === "zh" ? "Starter profile 已启用" : "Starter profile is active")
               : t("landing.commandStartTitle", "Start the first scoped investigation"),
             meta: starterProfileActive && noArtifactsYet
               ? (state.lang === "zh"
-                ? "fallback + mock 瀹告彃姘ㄧ紒顏勩偨閿涘本甯存稉瀣降閸掓稑缂撶粭顑跨娑?brief 閹?task閵?"
+                ? "fallback + mock 已准备好用于评估。下一步创建第一个 brief 或 task。"
                 : "fallback + mock is ready for evaluation. Create the first brief or task next.")
               : t("landing.commandStartMeta", "Open the evidence workspace and queue the first topic."),
             tab: "research",
@@ -268,7 +268,7 @@ export function renderLandingCommandBarView(ctx) {
         ? t("landing.commandMemoryReadyTitle", "Reuse workspace memory")
         : t("landing.commandMemoryEmptyTitle", "Write the first working memory"),
       meta: state.memoryStatus?.searchMode
-        ? `${memoryFiles} files 璺?${state.memoryStatus.searchMode}`
+        ? `${memoryFiles} files - ${state.memoryStatus.searchMode}`
         : (state.lang === "zh" ? "\u67e5\u770b\u5df2\u4fdd\u5b58\u6587\u4ef6\u5e76\u6253\u5f00\u539f\u59cb\u4e0a\u4e0b\u6587" : "Inspect saved files and reopen raw context."),
       tab: "memory"
     },
@@ -276,8 +276,8 @@ export function renderLandingCommandBarView(ctx) {
       eyebrow: t("landing.commandDeliveryEyebrow", "Delivery"),
       title: t("landing.commandDeliveryStatusTitle", "Delivery status"),
       meta: transport.tone === "warn" || transport.tone === "danger"
-        ? `${formatResearchTaskState(activeTask)} 璺?${transport.value}`
-        : `${transport.value} 璺?${transport.hint || "-"}`,
+        ? `${formatResearchTaskState(activeTask)} - ${transport.value}`
+        : `${transport.value} - ${transport.hint || "-"}`,
       tab: "channels",
       tone: transport.tone === "warn" || transport.tone === "danger" ? "warn" : ""
     },

@@ -22,7 +22,7 @@ export function renderDirectionReportView(ctx, report) {
               <div class="report-item-head">
                 <h3>${escapeHtml(paper.title)}</h3>
                 <div class="report-chip-list">
-                  ${paper.sourceUrl ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(paper.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "閹垫挸绱戦弶銉︾爱" : "Open source")}</a>` : ""}
+                  ${paper.sourceUrl ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(paper.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开来源" : "Open source")}</a>` : ""}
                 </div>
               </div>
               <p>${escapeHtml(paper.reason)}</p>
@@ -62,11 +62,11 @@ export function renderDirectionReportView(ctx, report) {
           <strong>${escapeHtml(report.directionId || report.topic)}</strong>
         </article>
         <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "娴狅綀銆冪拋鐑樻瀮" : "Representative papers")}</span>
+          <span>${escapeHtml(state.lang === "zh" ? "代表论文" : "Representative papers")}</span>
           <strong>${escapeHtml(String(report.representativePapers?.length || 0))}</strong>
         </article>
         <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "瀵ら缚顔呯捄顖滃殠" : "Suggested routes")}</span>
+          <span>${escapeHtml(state.lang === "zh" ? "建议路线" : "Suggested routes")}</span>
           <strong>${escapeHtml(String(report.suggestedRoutes?.length || 0))}</strong>
         </article>
       </div>

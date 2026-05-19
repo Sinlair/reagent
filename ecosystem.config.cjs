@@ -1,3 +1,6 @@
+const host = process.env.HOST ?? "0.0.0.0";
+const port = process.env.PORT ?? "3000";
+
 module.exports = {
   apps: [
     {
@@ -18,8 +21,8 @@ module.exports = {
       error_file: ".reagent-pm2.err.log",
       env: {
         NODE_ENV: "production",
-        HOST: "127.0.0.1",
-        PORT: "3000",
+        HOST: host,
+        PORT: port,
       },
     },
   ],

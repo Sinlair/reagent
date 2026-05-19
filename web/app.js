@@ -1038,20 +1038,20 @@ function renderWorkspacePulse() {
     headline = state.lang === "zh"
       ? "\u7814\u7a76\u8fd0\u884c\u8fdb\u884c\u4e2d\uff0c\u8bc1\u636e\u8fd8\u5728\u7d2f\u79ef\u3002"
       : "A research run is in flight and evidence is still accumulating.";
-    subtitle = `${formatResearchTaskState(activeTask)} 路 ${trimText(activeTask.topic || activeTask.taskId || "-", 92)}`;
+    subtitle = `${formatResearchTaskState(activeTask)} - ${trimText(activeTask.topic || activeTask.taskId || "-", 92)}`;
   } else if (summary) {
     headline = state.lang === "zh"
       ? "\u6700\u65b0\u4ea7\u51fa\u5df2\u5c31\u7eea\uff0c\u53ef\u4ee5\u7ee7\u7eed\u5ba1\u9605\u6216\u4ea4\u4ed8\u3002"
       : "The latest output is ready for review or delivery.";
-    subtitle = `${trimText(summary.topic || summary.taskId || "-", 92)} 路 ${formatRelativeTime(summary.generatedAt)}`;
+    subtitle = `${trimText(summary.topic || summary.taskId || "-", 92)} - ${formatRelativeTime(summary.generatedAt)}`;
   }
 
   if (healthOk && starterProfileActive && noArtifactsYet) {
     headline = state.lang === "zh"
-      ? "Starter profile 宸插惎鐢紝鍙互鐩存帴璧疯窇绗竴鏉＄爺绌舵祦銆?"
+      ? "Starter profile 已启用，工作区可以开始第一次研究运行。"
       : "The starter profile is active and the workspace is ready for the first run.";
     subtitle = state.lang === "zh"
-      ? "褰撳墠浣跨敤 fallback + mock锛岄€傚悎棣栨浣撻獙銆傛帴涓嬫潵鎵撳紑 Research 椤甸潰鍒涘缓绗竴涓?brief 鎴?task銆?"
+      ? "当前使用 fallback + mock，适合首次体验。接下来打开 Research 页面创建第一个 brief 或 task。"
       : "ReAgent is currently using fallback + mock for first-run evaluation. Open Research and create the first brief or task next.";
   }
 
@@ -1132,7 +1132,7 @@ function renderWorkspacePulse() {
   if (activeTask) {
     actions.push({
       label: state.lang === "zh" ? "\u8ddf\u8fdb\u6d3b\u8dc3\u8fd0\u884c" : "Follow active run",
-      hint: `${formatResearchTaskState(activeTask)} 路 ${trimText(activeTask.topic || activeTask.taskId || "-", 64)}`,
+      hint: `${formatResearchTaskState(activeTask)} - ${trimText(activeTask.topic || activeTask.taskId || "-", 64)}`,
       tab: "research"
     });
   } else if (briefsCount) {
@@ -1215,7 +1215,7 @@ function renderLandingCommandBar() {
       ? {
           eyebrow: t("landing.commandLatestEyebrow", "Latest Deliverable"),
           title: t("landing.commandLatestTitle", "Review the latest deliverable"),
-          meta: `${formatRelativeTime(summary.generatedAt)} 路 ${trimText(summary.topic || summary.taskId, 52)}`,
+          meta: `${formatRelativeTime(summary.generatedAt)} - ${trimText(summary.topic || summary.taskId, 52)}`,
           taskId: summary.taskId,
           tone: "accent"
         }
@@ -1230,11 +1230,11 @@ function renderLandingCommandBar() {
         : {
             eyebrow: t("landing.commandStartEyebrow", "Start Research"),
             title: starterProfileActive && noArtifactsYet
-              ? (state.lang === "zh" ? "Starter profile 宸插惎鐢?" : "Starter profile is active")
+              ? (state.lang === "zh" ? "Starter profile 已启用" : "Starter profile is active")
               : t("landing.commandStartTitle", "Start the first scoped investigation"),
             meta: starterProfileActive && noArtifactsYet
               ? (state.lang === "zh"
-                ? "fallback + mock 宸插氨缁ソ锛屾帴涓嬫潵鍒涘缓绗竴涓?brief 鎴?task銆?"
+                ? "fallback + mock 已准备好用于评估。下一步创建第一个 brief 或 task。"
                 : "fallback + mock is ready for evaluation. Create the first brief or task next.")
               : t("landing.commandStartMeta", "Open the evidence workspace and queue the first topic."),
             tab: "research",
@@ -1256,7 +1256,7 @@ function renderLandingCommandBar() {
         ? t("landing.commandMemoryReadyTitle", "Reuse workspace memory")
         : t("landing.commandMemoryEmptyTitle", "Write the first working memory"),
       meta: state.memoryStatus?.searchMode
-        ? `${memoryFiles} files 路 ${state.memoryStatus.searchMode}`
+        ? `${memoryFiles} files - ${state.memoryStatus.searchMode}`
         : (state.lang === "zh" ? "\u67e5\u770b\u5df2\u4fdd\u5b58\u6587\u4ef6\u5e76\u6253\u5f00\u539f\u59cb\u4e0a\u4e0b\u6587" : "Inspect saved files and reopen raw context."),
       tab: "memory"
     },
@@ -1264,8 +1264,8 @@ function renderLandingCommandBar() {
       eyebrow: t("landing.commandDeliveryEyebrow", "Delivery"),
       title: t("landing.commandDeliveryStatusTitle", "Delivery status"),
       meta: transport.tone === "warn" || transport.tone === "danger"
-        ? `${formatResearchTaskState(activeTask)} 路 ${transport.value}`
-        : `${transport.value} 路 ${transport.hint || "-"}`,
+        ? `${formatResearchTaskState(activeTask)} - ${transport.value}`
+        : `${transport.value} - ${transport.hint || "-"}`,
       tab: "channels",
       tone: transport.tone === "warn" || transport.tone === "danger" ? "warn" : ""
     },
@@ -3509,10 +3509,10 @@ function verdictTone(verdict) {
 
 function supportKindLabel(kind) {
   const labels = {
-    paper: state.lang === "zh" ? "璁烘枃璇佹嵁" : "Paper",
-    code: state.lang === "zh" ? "浠ｇ爜璇佹嵁" : "Code",
-    inference: state.lang === "zh" ? "鎺ㄦ柇" : "Inference",
-    speculation: state.lang === "zh" ? "鐚滄祴" : "Speculation"
+    paper: state.lang === "zh" ? "论文证据" : "Paper",
+    code: state.lang === "zh" ? "代码证据" : "Code",
+    inference: state.lang === "zh" ? "推断" : "Inference",
+    speculation: state.lang === "zh" ? "猜测" : "Speculation"
   };
   return labels[kind] || kind;
 }
@@ -3575,13 +3575,13 @@ function researchReportWarningBody(alert) {
 
 function conclusionKindLabel(kind) {
   const labels = {
-    problem_statement: state.lang === "zh" ? "闂瀹氫箟" : "Problem",
-    core_method: state.lang === "zh" ? "鏍稿績鏂规硶" : "Method",
+    problem_statement: state.lang === "zh" ? "问题定义" : "Problem",
+    core_method: state.lang === "zh" ? "核心方法" : "Method",
     innovation: state.lang === "zh" ? "创新点" : "Innovation",
-    strength: state.lang === "zh" ? "浼樺娍" : "Strength",
-    weakness: state.lang === "zh" ? "椋庨櫓/寮辩偣" : "Weakness",
-    baseline: state.lang === "zh" ? "鍩虹嚎" : "Baseline",
-    recommendation: state.lang === "zh" ? "寤鸿" : "Recommendation",
+    strength: state.lang === "zh" ? "优势" : "Strength",
+    weakness: state.lang === "zh" ? "风险/弱点" : "Weakness",
+    baseline: state.lang === "zh" ? "基线" : "Baseline",
+    recommendation: state.lang === "zh" ? "建议" : "Recommendation",
     repo_availability: state.lang === "zh" ? "代码可用性" : "Code Availability"
   };
   return labels[kind] || kind;
@@ -4225,7 +4225,7 @@ function renderDirectionReport(report) {
               <div class="report-item-head">
                 <h3>${escapeHtml(paper.title)}</h3>
                 <div class="report-chip-list">
-                  ${paper.sourceUrl ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(paper.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑鏉ユ簮" : "Open source")}</a>` : ""}
+                  ${paper.sourceUrl ? `<a class="graph-inline-link research-paper-card__link" href="${escapeHtml(paper.sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开来源" : "Open source")}</a>` : ""}
                 </div>
               </div>
               <p>${escapeHtml(paper.reason)}</p>
@@ -4265,11 +4265,11 @@ function renderDirectionReport(report) {
           <strong>${escapeHtml(report.directionId || report.topic)}</strong>
         </article>
         <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "浠ｈ〃璁烘枃" : "Representative papers")}</span>
+          <span>${escapeHtml(state.lang === "zh" ? "代表论文" : "Representative papers")}</span>
           <strong>${escapeHtml(String(report.representativePapers?.length || 0))}</strong>
         </article>
         <article class="research-stat">
-          <span>${escapeHtml(state.lang === "zh" ? "寤鸿璺嚎" : "Suggested routes")}</span>
+          <span>${escapeHtml(state.lang === "zh" ? "建议路线" : "Suggested routes")}</span>
           <strong>${escapeHtml(String(report.suggestedRoutes?.length || 0))}</strong>
         </article>
       </div>
@@ -4386,13 +4386,13 @@ function renderPresentationArtifact(presentation) {
             <article class="result-item">
               <h3>${escapeHtml("Markdown")}</h3>
               <p>${escapeHtml(presentation.filePath)}</p>
-              <small><a class="graph-inline-link" href="${escapeHtml(markdownHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑鏂囦欢" : "Open file")}</a></small>
+              <small><a class="graph-inline-link" href="${escapeHtml(markdownHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
             </article>
             ${presentation.pptxPath ? `
               <article class="result-item">
                 <h3>${escapeHtml("PPTX")}</h3>
                 <p>${escapeHtml(presentation.pptxPath)}</p>
-                <small><a class="graph-inline-link" href="${escapeHtml(pptxHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑鏂囦欢" : "Open file")}</a></small>
+                <small><a class="graph-inline-link" href="${escapeHtml(pptxHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
               </article>
             ` : ""}
           </div>
@@ -4414,7 +4414,7 @@ function renderPresentationArtifact(presentation) {
               ? presentation.imagePaths.map((filePath) => `
                   <article class="result-item">
                     <p>${escapeHtml(filePath)}</p>
-                    <small><a class="graph-inline-link" href="/api/research/artifact?path=${encodeURIComponent(filePath)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑鏂囦欢" : "Open file")}</a></small>
+                    <small><a class="graph-inline-link" href="/api/research/artifact?path=${encodeURIComponent(filePath)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开文件" : "Open file")}</a></small>
                   </article>
                 `).join("")
               : `<div class="empty-state compact-empty">${escapeHtml(state.lang === "zh" ? "No image assets recorded." : "No image assets recorded.")}</div>`}
@@ -4485,13 +4485,13 @@ function renderModuleAsset(asset) {
             <article class="result-item">
               <h3>${escapeHtml(state.lang === "zh" ? "Repository URL" : "Repository URL")}</h3>
               <p>${escapeHtml(asset.repoUrl)}</p>
-              <small><a class="graph-inline-link" href="${escapeHtml(asset.repoUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑浠撳簱" : "Open repo")}</a></small>
+              <small><a class="graph-inline-link" href="${escapeHtml(asset.repoUrl)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开仓库" : "Open repo")}</a></small>
             </article>
             ${asset.archivePath ? `
               <article class="result-item">
                 <h3>${escapeHtml(state.lang === "zh" ? "Archive Path" : "Archive Path")}</h3>
                 <p>${escapeHtml(asset.archivePath)}</p>
-                <small><a class="graph-inline-link" href="${escapeHtml(archiveHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "鎵撳紑褰掓。" : "Open archive")}</a></small>
+                <small><a class="graph-inline-link" href="${escapeHtml(archiveHref)}" target="_blank" rel="noopener">${escapeHtml(state.lang === "zh" ? "打开归档" : "Open archive")}</a></small>
               </article>
             ` : ""}
           </div>
@@ -4613,7 +4613,7 @@ function renderResearchBriefList(briefs) {
             <span>${escapeHtml(formatRelativeTime(brief.updatedAt))}</span>
           </div>
           <p>${escapeHtml(trimText(brief.summary || brief.tlDr || brief.targetProblem || "", 140) || (state.lang === "zh" ? "No brief summary yet." : "No brief summary yet."))}</p>
-          <small>${escapeHtml(`${brief.priority || "secondary"}${brief.enabled === false ? " 路 disabled" : ""}`)}</small>
+          <small>${escapeHtml(`${brief.priority || "secondary"}${brief.enabled === false ? " - disabled" : ""}`)}</small>
         </button>
       `
     )
@@ -4725,19 +4725,19 @@ function renderDiscoveryScheduler(status) {
   const directionMap = new Map((state.researchBriefs || []).map((brief) => [brief.id, brief.label]));
   const selectedDirections = (scheduler.directionIds || []).length
     ? scheduler.directionIds.map((directionId) => directionMap.get(directionId) ? `${directionMap.get(directionId)} (${directionId})` : directionId)
-    : [state.lang === "zh" ? "All enabled templates" : "All enabled templates"];
+    : [state.lang === "zh" ? "全部启用模板" : "All enabled templates"];
   const lastRuns = Object.entries(scheduler.lastRunDateByDirection || {});
 
   els.discoverySchedulerStatus.innerHTML = [
-    [state.lang === "zh" ? "鍚庡彴璁″垝浠诲姟" : "Background schedule", scheduler.running ? (state.lang === "zh" ? "Running" : "Running") : (state.lang === "zh" ? "Not running" : "Not running")],
-    [state.lang === "zh" ? "鏄惁鍚敤" : "Enabled", String(Boolean(scheduler.enabled))],
-    [state.lang === "zh" ? "姣忔棩鏃堕棿" : "Daily time", scheduler.dailyTimeLocal || "09:00"],
-    [state.lang === "zh" ? "Push target" : "Push target", scheduler.senderId || "-"],
-    [state.lang === "zh" ? "瑕嗙洊涓婚" : "Topics", selectedDirections.join(" | ")],
+    [state.lang === "zh" ? "后台计划" : "Background schedule", scheduler.running ? (state.lang === "zh" ? "运行中" : "Running") : (state.lang === "zh" ? "未运行" : "Not running")],
+    [state.lang === "zh" ? "已启用" : "Enabled", String(Boolean(scheduler.enabled))],
+    [state.lang === "zh" ? "每日时间" : "Daily time", scheduler.dailyTimeLocal || "09:00"],
+    [state.lang === "zh" ? "推送目标" : "Push target", scheduler.senderId || "-"],
+    [state.lang === "zh" ? "主题" : "Topics", selectedDirections.join(" | ")],
     ["Top K", String(scheduler.topK || 5)],
-    [state.lang === "zh" ? "姣忔妫€绱㈣鏂囨暟" : "Papers / search", String(scheduler.maxPapersPerQuery || 4)],
-    [state.lang === "zh" ? "Updated" : "Updated", scheduler.updatedAt ? formatTime(scheduler.updatedAt) : "-"],
-    [state.lang === "zh" ? "Recent runs" : "Recent runs", lastRuns.length ? lastRuns.map(([directionId, value]) => `${directionMap.get(directionId) || directionId}: ${value}`).join(" | ") : (state.lang === "zh" ? "None yet" : "None yet")],
+    [state.lang === "zh" ? "每次搜索论文数" : "Papers / search", String(scheduler.maxPapersPerQuery || 4)],
+    [state.lang === "zh" ? "更新时间" : "Updated", scheduler.updatedAt ? formatTime(scheduler.updatedAt) : "-"],
+    [state.lang === "zh" ? "最近运行" : "Recent runs", lastRuns.length ? lastRuns.map(([directionId, value]) => `${directionMap.get(directionId) || directionId}: ${value}`).join(" | ") : (state.lang === "zh" ? "暂无" : "None yet")],
   ]
     .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join("");
@@ -4802,7 +4802,7 @@ function renderDiscoveryRuns() {
             <span>${escapeHtml(formatRelativeTime(run.generatedAt))}</span>
           </div>
           <p>${escapeHtml(run.topTitle || (state.lang === "zh" ? "No top paper recorded." : "No top paper recorded."))}</p>
-          <small>${escapeHtml(`${run.itemCount || 0} items 路 ${run.pushed ? "pushed" : "local"}`)}</small>
+          <small>${escapeHtml(`${run.itemCount || 0} items - ${run.pushed ? "pushed" : "local"}`)}</small>
         </article>
       `
     )
@@ -4952,7 +4952,7 @@ function renderLifecycleAudit(items) {
   els.channelLifecycleAudit.innerHTML = state.wechatLifecycleAudit
     .map((entry) => {
       const details = entry.details && typeof entry.details === "object"
-        ? Object.entries(entry.details).map(([key, value]) => `${key}=${value}`).join(" 路 ")
+        ? Object.entries(entry.details).map(([key, value]) => `${key}=${value}`).join(" - ")
         : "";
       return `
         <article class="result-item">
@@ -4960,7 +4960,7 @@ function renderLifecycleAudit(items) {
             <span class="message__author">${escapeHtml(entry.event || "-")}</span>
             <span>${escapeHtml(entry.ts ? formatTime(entry.ts) : "-")}</span>
           </div>
-          <p>${escapeHtml([entry.state, entry.reason].filter(Boolean).join(" 路 ") || (state.lang === "zh" ? "No additional state." : "No additional state."))}</p>
+          <p>${escapeHtml([entry.state, entry.reason].filter(Boolean).join(" - ") || (state.lang === "zh" ? "No additional state." : "No additional state."))}</p>
           <small>${escapeHtml(details || entry.providerMode || "-")}</small>
         </article>
       `;
@@ -4984,10 +4984,10 @@ function renderFeedbackSummary(summary) {
   const negative = (summary.counts?.["not-useful"] || 0) + (summary.counts?.["less-like-this"] || 0) + (summary.counts?.["too-theoretical"] || 0) + (summary.counts?.["too-engineering-heavy"] || 0) + (summary.counts?.["not-worth-following"] || 0);
 
   els.feedbackSummary.innerHTML = `
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鎬绘暟" : "Total")}</span><strong>${escapeHtml(String(summary.total))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "姝ｅ悜鍙嶉" : "Positive feedback")}</span><strong>${escapeHtml(String(positive))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "璐熷悜鍙嶉" : "Negative feedback")}</span><strong>${escapeHtml(String(negative))}</strong></div>
-    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Updated" : "Updated")}</span><strong>${escapeHtml(formatTime(summary.updatedAt))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "总数" : "Total")}</span><strong>${escapeHtml(String(summary.total))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "正向反馈" : "Positive feedback")}</span><strong>${escapeHtml(String(positive))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "负向反馈" : "Negative feedback")}</span><strong>${escapeHtml(String(negative))}</strong></div>
+    <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "更新时间" : "Updated")}</span><strong>${escapeHtml(formatTime(summary.updatedAt))}</strong></div>
   `;
 }
 
@@ -5050,7 +5050,7 @@ function renderPresentationList(presentations) {
             <span>${escapeHtml(formatRelativeTime(presentation.generatedAt))}</span>
           </div>
           <p>${escapeHtml(trimText(presentation.filePath || presentation.id, 140))}</p>
-          <small>${escapeHtml(`${presentation.sourceReportTaskIds?.length || 0} reports${presentation.pptxPath ? " 路 pptx" : ""}`)}</small>
+          <small>${escapeHtml(`${presentation.sourceReportTaskIds?.length || 0} reports${presentation.pptxPath ? " - pptx" : ""}`)}</small>
         </button>
       `
     )
@@ -5109,7 +5109,7 @@ function renderModuleAssetList(assets) {
             <span>${escapeHtml(formatRelativeTime(asset.updatedAt))}</span>
           </div>
           <p>${escapeHtml(trimText(asset.selectedPaths?.join(", ") || asset.archivePath || asset.id, 140))}</p>
-          <small>${escapeHtml(`${asset.selectedPaths?.length || 0} paths${asset.defaultBranch ? ` 路 ${asset.defaultBranch}` : ""}`)}</small>
+          <small>${escapeHtml(`${asset.selectedPaths?.length || 0} paths${asset.defaultBranch ? ` - ${asset.defaultBranch}` : ""}`)}</small>
         </button>
       `
     )
@@ -5443,10 +5443,10 @@ function renderGraphSummary(graph) {
 
   const filters = [
     state.graphSearch.trim()
-      ? `${state.lang === "zh" ? "鎼滅储" : "Search"}: ${state.graphSearch.trim()}`
+      ? `${state.lang === "zh" ? "搜索" : "Search"}: ${state.graphSearch.trim()}`
       : "",
     state.graphDateRange !== "all"
-      ? `${state.lang === "zh" ? "鏃堕棿鑼冨洿" : "Window"}: ${state.lang === "zh" ? `last ${state.graphDateRange.replace("d", "")} days` : `last ${state.graphDateRange.replace("d", "")} days`}`
+      ? `${state.lang === "zh" ? "时间范围" : "Window"}: ${state.lang === "zh" ? `最近 ${state.graphDateRange.replace("d", "")} 天` : `last ${state.graphDateRange.replace("d", "")} days`}`
       : "",
   ].filter(Boolean);
   const connectedPaperIds = new Set((graph.edges || []).flatMap((edge) => [edge.source, edge.target]));
@@ -5455,13 +5455,13 @@ function renderGraphSummary(graph) {
   const largestCluster = state.graphReport?.components?.[0];
   els.graphSummary.className = "detail-list";
   els.graphSummary.innerHTML = [
-    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated")}</span><strong>${escapeHtml(formatTime(graph.generatedAt))}</strong></div>`,
-    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "璁烘枃鏁伴噺" : "Papers")}</span><strong>${escapeHtml(String(graph.stats?.nodes ?? 0))}</strong></div>`,
-    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鑱旂郴鏁伴噺" : "Connections")}</span><strong>${escapeHtml(String(graph.stats?.edges ?? 0))}</strong></div>`,
-    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "瀛ょ珛璁烘枃" : "Isolated papers")}</span><strong>${escapeHtml(String(isolatedPaperCount))}</strong></div>`,
-    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鍏抽敭鑺傜偣" : "Top hub")}</span><strong>${escapeHtml(topHub ? trimText(topHub.node.label, 28) : (state.lang === "zh" ? "鏆傛棤" : "n/a"))}</strong></div>`,
-    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鏈€澶х皣" : "Largest cluster")}</span><strong>${escapeHtml(largestCluster ? String(largestCluster.size) : (state.lang === "zh" ? "鏆傛棤" : "n/a"))}</strong></div>`,
-    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "Active filter" : "Active filter")}</span><strong>${escapeHtml(filters.join(" | ") || (state.lang === "zh" ? "None" : "None"))}</strong></div>`
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "更新时间" : "Updated")}</span><strong>${escapeHtml(formatTime(graph.generatedAt))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "论文数量" : "Papers")}</span><strong>${escapeHtml(String(graph.stats?.nodes ?? 0))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "联系数量" : "Connections")}</span><strong>${escapeHtml(String(graph.stats?.edges ?? 0))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "孤立论文" : "Isolated papers")}</span><strong>${escapeHtml(String(isolatedPaperCount))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "关键节点" : "Top hub")}</span><strong>${escapeHtml(topHub ? trimText(topHub.node.label, 28) : (state.lang === "zh" ? "暂无" : "n/a"))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "最大簇" : "Largest cluster")}</span><strong>${escapeHtml(largestCluster ? String(largestCluster.size) : (state.lang === "zh" ? "暂无" : "n/a"))}</strong></div>`,
+    `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "当前筛选" : "Active filter")}</span><strong>${escapeHtml(filters.join(" | ") || (state.lang === "zh" ? "无" : "None"))}</strong></div>`
   ].join("");
 }
 
@@ -5775,10 +5775,10 @@ function renderGraphReportInsights() {
     <div class="graph-detail__section">
       <div class="card-sub">${escapeHtml(t("graph.reportTitle", "Graph brief"))}</div>
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "鍙鑺傜偣" : "Visible nodes", report.stats?.nodes ?? 0],
-        [state.lang === "zh" ? "鍙杩炵嚎" : "Visible links", report.stats?.edges ?? 0, "info"],
-        [state.lang === "zh" ? "瀛ょ珛鑺傜偣" : "Isolated nodes", report.isolatedNodeCount ?? 0, (report.isolatedNodeCount ?? 0) > 0 ? "warn" : "ok"],
-        [state.lang === "zh" ? "鏈€澶х皣" : "Largest cluster", largestCluster?.size ?? 0],
+        [state.lang === "zh" ? "可见节点" : "Visible nodes", report.stats?.nodes ?? 0],
+        [state.lang === "zh" ? "可见连线" : "Visible links", report.stats?.edges ?? 0, "info"],
+        [state.lang === "zh" ? "孤立节点" : "Isolated nodes", report.isolatedNodeCount ?? 0, (report.isolatedNodeCount ?? 0) > 0 ? "warn" : "ok"],
+        [state.lang === "zh" ? "最大簇" : "Largest cluster", largestCluster?.size ?? 0],
       ])}
       <div class="graph-insight-list">
         ${(report.summary || []).map((item) => `<article class="graph-connection-card"><p>${escapeHtml(item)}</p></article>`).join("")}
@@ -5950,16 +5950,16 @@ function renderGraphConnectionComposer(detail) {
 function graphTypeLabel(type) {
   if (state.lang === "zh") {
     const labels = {
-      direction: "涓婚",
-      discovery_run: "鍙戠幇鎵规",
-      source_item: "鏉ユ簮",
-      paper: "璁烘枃",
-      paper_report: "璁烘枃鍒嗘瀽",
-      repo: "浠撳簱",
-      repo_report: "浠撳簱鍒嗘瀽",
-      module_asset: "妯″潡褰掓。",
-      workflow_report: "鐮旂┒鎶ュ憡",
-      presentation: "婕旂ず鏂囩",
+      direction: "主题",
+      discovery_run: "发现批次",
+      source_item: "来源",
+      paper: "论文",
+      paper_report: "论文分析",
+      repo: "代码仓库",
+      repo_report: "仓库分析",
+      module_asset: "模块归档",
+      workflow_report: "研究报告",
+      presentation: "演示文档",
     };
     return labels[type] || type;
   }
@@ -5968,32 +5968,32 @@ function graphTypeLabel(type) {
 
 function paperRelationLabel(kind) {
   const labels = {
-    shared_discovery_run: state.lang === "zh" ? "Discovered together" : "Discovered together",
-    shared_source_item: state.lang === "zh" ? "鍚屼竴鏉ユ簮" : "Mentioned in the same source",
-    shared_repo: state.lang === "zh" ? "鍚屼竴浠撳簱" : "Share the same code repository",
-    shared_workflow_report: state.lang === "zh" ? "鍚屼竴鎶ュ憡" : "Used in the same report",
-    shared_context: state.lang === "zh" ? "Connected in multiple research contexts" : "Connected in multiple research contexts",
+    shared_discovery_run: state.lang === "zh" ? "同批发现" : "Discovered together",
+    shared_source_item: state.lang === "zh" ? "同一来源提及" : "Mentioned in the same source",
+    shared_repo: state.lang === "zh" ? "共享同一代码仓库" : "Share the same code repository",
+    shared_workflow_report: state.lang === "zh" ? "用于同一报告" : "Used in the same report",
+    shared_context: state.lang === "zh" ? "多个研究上下文相关" : "Connected in multiple research contexts",
   };
-  return labels[kind] || (state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers");
+  return labels[kind] || (state.lang === "zh" ? "相关论文" : "Related papers");
 }
 
 function graphMetaLabel(key) {
   const labels = {
-    sourceItems: state.lang === "zh" ? "Sources" : "Sources",
-    discoveryRuns: state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs",
-    workflowReports: state.lang === "zh" ? "Reports" : "Reports",
-    paperReports: state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses",
-    linkedRepos: state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos",
-    connectedPapers: state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers",
-    repoReports: state.lang === "zh" ? "浠撳簱鍒嗘瀽" : "Repo analyses",
-    linkedPapers: state.lang === "zh" ? "鍏宠仈璁烘枃" : "Linked papers",
-    moduleAssets: state.lang === "zh" ? "妯″潡褰掓。" : "Module archives",
-    generatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
-    updatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
-    paperCount: state.lang === "zh" ? "Paper count" : "Paper count",
-    evidenceCount: state.lang === "zh" ? "Evidence items" : "Evidence items",
-    archivePath: state.lang === "zh" ? "褰掓。璺緞" : "Archive path",
-    pathCount: state.lang === "zh" ? "Path count" : "Path count",
+    sourceItems: state.lang === "zh" ? "来源" : "Sources",
+    discoveryRuns: state.lang === "zh" ? "发现批次" : "Discovery runs",
+    workflowReports: state.lang === "zh" ? "报告" : "Reports",
+    paperReports: state.lang === "zh" ? "论文分析" : "Paper analyses",
+    linkedRepos: state.lang === "zh" ? "关联仓库" : "Linked repos",
+    connectedPapers: state.lang === "zh" ? "相关论文" : "Related papers",
+    repoReports: state.lang === "zh" ? "仓库分析" : "Repo analyses",
+    linkedPapers: state.lang === "zh" ? "关联论文" : "Linked papers",
+    moduleAssets: state.lang === "zh" ? "模块归档" : "Module archives",
+    generatedAt: state.lang === "zh" ? "生成时间" : "Updated",
+    updatedAt: state.lang === "zh" ? "更新时间" : "Updated",
+    paperCount: state.lang === "zh" ? "论文数量" : "Paper count",
+    evidenceCount: state.lang === "zh" ? "证据项" : "Evidence items",
+    archivePath: state.lang === "zh" ? "归档路径" : "Archive path",
+    pathCount: state.lang === "zh" ? "路径数量" : "Path count",
   };
   return labels[key] || key;
 }
@@ -6010,26 +6010,26 @@ function renderGraphStats(graph) {
   const isolatedPaperCount = (graph.nodes || []).filter((node) => !connectedPaperIds.has(node.id)).length;
   const cards = [
     [
-      state.lang === "zh" ? "鍙璁烘枃" : "Visible papers",
+      state.lang === "zh" ? "可见论文" : "Visible papers",
       String(graph.stats?.nodes ?? 0),
-      state.lang === "zh" ? "Paper count in the current filter" : "Paper count in the current filter",
+      state.lang === "zh" ? "当前筛选下的论文数量" : "Paper count in the current filter",
     ],
     [
-      state.lang === "zh" ? "鍙鍏宠仈" : "Visible links",
+      state.lang === "zh" ? "可见关联" : "Visible links",
       String(graph.stats?.edges ?? 0),
-      state.lang === "zh" ? "褰撳墠鑼冨洿鍐呮垚绔嬬殑璁烘枃鍏宠仈" : "Visible paper-to-paper relationships",
+      state.lang === "zh" ? "当前范围内成立的论文关联" : "Visible paper-to-paper relationships",
     ],
     [
-      state.lang === "zh" ? "瀛ょ珛璁烘枃" : "Isolated papers",
+      state.lang === "zh" ? "孤立论文" : "Isolated papers",
       String(isolatedPaperCount),
-      state.lang === "zh" ? "Papers with no visible connection yet" : "Papers with no visible connection yet",
+      state.lang === "zh" ? "当前没有可见连接的论文" : "Papers with no visible connection yet",
     ],
     [
-      state.lang === "zh" ? "褰撳墠閫変腑" : "Selected paper",
+      state.lang === "zh" ? "当前选中" : "Selected paper",
       state.graphDetail?.node?.label || "-",
       state.graphDetail?.node
-        ? (state.lang === "zh" ? "See why this paper is connected on the right" : "See why this paper is connected on the right")
-        : (state.lang === "zh" ? "Pick a paper to inspect it" : "Pick a paper to inspect it"),
+        ? (state.lang === "zh" ? "在右侧查看关联原因" : "See why this paper is connected on the right")
+        : (state.lang === "zh" ? "选择一篇论文查看详情" : "Pick a paper to inspect it"),
     ],
   ];
 
@@ -6174,14 +6174,14 @@ function renderGraphEdges(graph) {
             return `
               <article class="result-item graph-edge-item">
                 <div class="message__meta">
-                  <span class="message__author">${escapeHtml(state.lang === "zh" ? `鍏宠仈寮哄害 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
+                  <span class="message__author">${escapeHtml(state.lang === "zh" ? `关联强度 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
                 </div>
                 <div class="graph-edge-item__nodes">
                   <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(source?.id || edge.source)}">${escapeHtml(source?.label || edge.source)}</button>
-                  <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "鍏宠仈" : "related")}</span>
+                  <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "关联" : "related")}</span>
                   <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(target?.id || edge.target)}">${escapeHtml(target?.label || edge.target)}</button>
                 </div>
-                ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `鍏宠仈渚濇嵁: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
+                ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `关联依据: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
               </article>
             `;
           }).join("")}
@@ -6203,13 +6203,13 @@ function renderGraphDetailHighlights(detail) {
 
     return `
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "鐩稿叧璁烘枃" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
+        [state.lang === "zh" ? "相关论文" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
         [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
         [state.lang === "zh" ? "Discovery runs" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
         [state.lang === "zh" ? "Shared repos" : "Shared repos", detail.node.meta.linkedRepos ?? 0, "ok"],
       ])}
       <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鍏宠仈渚濇嵁" : "Why it connects")}</div>
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "关联依据" : "Why it connects")}</div>
         <div class="graph-related-list">
           ${
             relationKinds.length
@@ -6241,14 +6241,14 @@ function renderGraphDetailHighlights(detail) {
   if (raw.kind === "canonical_paper") {
     return `
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses", detail.node.meta.paperReports ?? 0],
-        [state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "论文分析" : "Paper analyses", detail.node.meta.paperReports ?? 0],
+        [state.lang === "zh" ? "发现批次" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
         [state.lang === "zh" ? "Sources" : "Sources", detail.node.meta.sourceItems ?? 0],
         [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
-        [state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
+        [state.lang === "zh" ? "关联仓库" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
       ])}
       <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮姒傝" : "Provenance summary")}</div>
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "来源概览" : "Provenance summary")}</div>
         <div class="graph-related-list">
           ${Object.entries(raw.relatedByType || {}).map(([type, entries]) => `
             <div class="graph-summary-chip">
@@ -6327,19 +6327,19 @@ function renderGraphDetail(detail) {
       <span class="pill"><strong>${escapeHtml(detail.relatedEdges?.length ? (state.lang === "zh" ? `${detail.relatedEdges.length} links` : `${detail.relatedEdges.length} links`) : (state.lang === "zh" ? "0 links" : "0 links"))}</strong></span>
     </div>
     <div class="detail-list">
-      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鑺傜偣 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
-      ${detail.node.occurredAt ? `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "棣栨鍑虹幇" : "First seen")}</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
+      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "节点 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
+      ${detail.node.occurredAt ? `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "首次出现" : "First seen")}</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
       ${metaRows}
     </div>
     ${highlightMarkup}
     ${renderGraphReportInsights()}
     ${renderGraphConnectionComposer(detail)}
     <div class="graph-detail__section">
-      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers")}</div>
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "相关论文" : "Related papers")}</div>
       <div class="graph-related-list">${relatedNodes}</div>
     </div>
     <div class="graph-detail__section">
-      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮閾炬帴" : "Source links")}</div>
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "来源链接" : "Source links")}</div>
       <div class="fallback-route-list">${links}</div>
     </div>
     <details class="graph-detail__toggle">
@@ -6367,10 +6367,10 @@ renderGraphReportInsights = function () {
     <div class="graph-detail__section">
       <div class="card-sub">${escapeHtml(t("graph.reportTitle", "Graph brief"))}</div>
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "鍙鑺傜偣" : "Visible nodes", report.stats?.nodes ?? 0],
-        [state.lang === "zh" ? "鍙杩炵嚎" : "Visible links", report.stats?.edges ?? 0, "info"],
-        [state.lang === "zh" ? "瀛ょ珛鑺傜偣" : "Isolated nodes", report.isolatedNodeCount ?? 0, (report.isolatedNodeCount ?? 0) > 0 ? "warn" : "ok"],
-        [state.lang === "zh" ? "鏈€澶х皣" : "Largest cluster", largestCluster?.size ?? 0],
+        [state.lang === "zh" ? "可见节点" : "Visible nodes", report.stats?.nodes ?? 0],
+        [state.lang === "zh" ? "可见连线" : "Visible links", report.stats?.edges ?? 0, "info"],
+        [state.lang === "zh" ? "孤立节点" : "Isolated nodes", report.isolatedNodeCount ?? 0, (report.isolatedNodeCount ?? 0) > 0 ? "warn" : "ok"],
+        [state.lang === "zh" ? "最大簇" : "Largest cluster", largestCluster?.size ?? 0],
       ])}
       <div class="graph-insight-list">
         ${(report.summary || []).map((item) => `<article class="graph-connection-card"><p>${escapeHtml(item)}</p></article>`).join("")}
@@ -6542,16 +6542,16 @@ renderGraphConnectionComposer = function (detail) {
 graphTypeLabel = function (type) {
   if (state.lang === "zh") {
     const labels = {
-      direction: "涓婚",
-      discovery_run: "鍙戠幇鎵规",
-      source_item: "鏉ユ簮",
-      paper: "璁烘枃",
-      paper_report: "璁烘枃鍒嗘瀽",
-      repo: "浠撳簱",
-      repo_report: "浠撳簱鍒嗘瀽",
-      module_asset: "妯″潡褰掓。",
-      workflow_report: "鐮旂┒鎶ュ憡",
-      presentation: "婕旂ず鏂囩",
+      direction: "主题",
+      discovery_run: "发现批次",
+      source_item: "来源",
+      paper: "论文",
+      paper_report: "论文分析",
+      repo: "代码仓库",
+      repo_report: "仓库分析",
+      module_asset: "模块归档",
+      workflow_report: "研究报告",
+      presentation: "演示文档",
     };
     return labels[type] || type;
   }
@@ -6560,32 +6560,32 @@ graphTypeLabel = function (type) {
 
 paperRelationLabel = function (kind) {
   const labels = {
-    shared_discovery_run: state.lang === "zh" ? "Discovered together" : "Discovered together",
-    shared_source_item: state.lang === "zh" ? "鍚屼竴鏉ユ簮" : "Mentioned in the same source",
-    shared_repo: state.lang === "zh" ? "鍚屼竴浠撳簱" : "Share the same code repository",
-    shared_workflow_report: state.lang === "zh" ? "鍚屼竴鎶ュ憡" : "Used in the same report",
-    shared_context: state.lang === "zh" ? "Connected in multiple research contexts" : "Connected in multiple research contexts",
+    shared_discovery_run: state.lang === "zh" ? "同批发现" : "Discovered together",
+    shared_source_item: state.lang === "zh" ? "同一来源提及" : "Mentioned in the same source",
+    shared_repo: state.lang === "zh" ? "共享同一代码仓库" : "Share the same code repository",
+    shared_workflow_report: state.lang === "zh" ? "用于同一报告" : "Used in the same report",
+    shared_context: state.lang === "zh" ? "多个研究上下文相关" : "Connected in multiple research contexts",
   };
-  return labels[kind] || (state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers");
+  return labels[kind] || (state.lang === "zh" ? "相关论文" : "Related papers");
 };
 
 graphMetaLabel = function (key) {
   const labels = {
-    sourceItems: state.lang === "zh" ? "Sources" : "Sources",
-    discoveryRuns: state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs",
-    workflowReports: state.lang === "zh" ? "Reports" : "Reports",
-    paperReports: state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses",
-    linkedRepos: state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos",
-    connectedPapers: state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers",
-    repoReports: state.lang === "zh" ? "浠撳簱鍒嗘瀽" : "Repo analyses",
-    linkedPapers: state.lang === "zh" ? "鍏宠仈璁烘枃" : "Linked papers",
-    moduleAssets: state.lang === "zh" ? "妯″潡褰掓。" : "Module archives",
-    generatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
-    updatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
-    paperCount: state.lang === "zh" ? "Paper count" : "Paper count",
-    evidenceCount: state.lang === "zh" ? "Evidence items" : "Evidence items",
-    archivePath: state.lang === "zh" ? "褰掓。璺緞" : "Archive path",
-    pathCount: state.lang === "zh" ? "Path count" : "Path count",
+    sourceItems: state.lang === "zh" ? "来源" : "Sources",
+    discoveryRuns: state.lang === "zh" ? "发现批次" : "Discovery runs",
+    workflowReports: state.lang === "zh" ? "报告" : "Reports",
+    paperReports: state.lang === "zh" ? "论文分析" : "Paper analyses",
+    linkedRepos: state.lang === "zh" ? "关联仓库" : "Linked repos",
+    connectedPapers: state.lang === "zh" ? "相关论文" : "Related papers",
+    repoReports: state.lang === "zh" ? "仓库分析" : "Repo analyses",
+    linkedPapers: state.lang === "zh" ? "关联论文" : "Linked papers",
+    moduleAssets: state.lang === "zh" ? "模块归档" : "Module archives",
+    generatedAt: state.lang === "zh" ? "生成时间" : "Updated",
+    updatedAt: state.lang === "zh" ? "更新时间" : "Updated",
+    paperCount: state.lang === "zh" ? "论文数量" : "Paper count",
+    evidenceCount: state.lang === "zh" ? "证据项" : "Evidence items",
+    archivePath: state.lang === "zh" ? "归档路径" : "Archive path",
+    pathCount: state.lang === "zh" ? "路径数量" : "Path count",
   };
   return labels[key] || key;
 };
@@ -6602,26 +6602,26 @@ renderGraphStats = function (graph) {
   const isolatedPaperCount = (graph.nodes || []).filter((node) => !connectedPaperIds.has(node.id)).length;
   const cards = [
     [
-      state.lang === "zh" ? "鍙璁烘枃" : "Visible papers",
+      state.lang === "zh" ? "可见论文" : "Visible papers",
       String(graph.stats?.nodes ?? 0),
-      state.lang === "zh" ? "Paper count in the current filter" : "Paper count in the current filter",
+      state.lang === "zh" ? "当前筛选下的论文数量" : "Paper count in the current filter",
     ],
     [
-      state.lang === "zh" ? "鍙鍏宠仈" : "Visible links",
+      state.lang === "zh" ? "可见关联" : "Visible links",
       String(graph.stats?.edges ?? 0),
-      state.lang === "zh" ? "褰撳墠鑼冨洿鍐呮垚绔嬬殑璁烘枃鍏宠仈" : "Visible paper-to-paper relationships",
+      state.lang === "zh" ? "当前范围内成立的论文关联" : "Visible paper-to-paper relationships",
     ],
     [
-      state.lang === "zh" ? "瀛ょ珛璁烘枃" : "Isolated papers",
+      state.lang === "zh" ? "孤立论文" : "Isolated papers",
       String(isolatedPaperCount),
-      state.lang === "zh" ? "Papers with no visible connection yet" : "Papers with no visible connection yet",
+      state.lang === "zh" ? "当前没有可见连接的论文" : "Papers with no visible connection yet",
     ],
     [
-      state.lang === "zh" ? "褰撳墠閫変腑" : "Selected paper",
+      state.lang === "zh" ? "当前选中" : "Selected paper",
       state.graphDetail?.node?.label || "-",
       state.graphDetail?.node
-        ? (state.lang === "zh" ? "See why this paper is connected on the right" : "See why this paper is connected on the right")
-        : (state.lang === "zh" ? "Pick a paper to inspect it" : "Pick a paper to inspect it"),
+        ? (state.lang === "zh" ? "在右侧查看关联原因" : "See why this paper is connected on the right")
+        : (state.lang === "zh" ? "选择一篇论文查看详情" : "Pick a paper to inspect it"),
     ],
   ];
 
@@ -6766,14 +6766,14 @@ renderGraphEdges = function (graph) {
             return `
               <article class="result-item graph-edge-item">
                 <div class="message__meta">
-                  <span class="message__author">${escapeHtml(state.lang === "zh" ? `鍏宠仈寮哄害 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
+                  <span class="message__author">${escapeHtml(state.lang === "zh" ? `关联强度 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
                 </div>
                 <div class="graph-edge-item__nodes">
                   <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(source?.id || edge.source)}">${escapeHtml(source?.label || edge.source)}</button>
-                  <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "鍏宠仈" : "related")}</span>
+                  <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "关联" : "related")}</span>
                   <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(target?.id || edge.target)}">${escapeHtml(target?.label || edge.target)}</button>
                 </div>
-                ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `鍏宠仈渚濇嵁: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
+                ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `关联依据: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
               </article>
             `;
           }).join("")}
@@ -6795,13 +6795,13 @@ renderGraphDetailHighlights = function (detail) {
 
     return `
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "鐩稿叧璁烘枃" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
+        [state.lang === "zh" ? "相关论文" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
         [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
         [state.lang === "zh" ? "Discovery runs" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
         [state.lang === "zh" ? "Shared repos" : "Shared repos", detail.node.meta.linkedRepos ?? 0, "ok"],
       ])}
       <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鍏宠仈渚濇嵁" : "Why it connects")}</div>
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "关联依据" : "Why it connects")}</div>
         <div class="graph-related-list">
           ${
             relationKinds.length
@@ -6833,14 +6833,14 @@ renderGraphDetailHighlights = function (detail) {
   if (raw.kind === "canonical_paper") {
     return `
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses", detail.node.meta.paperReports ?? 0],
-        [state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "论文分析" : "Paper analyses", detail.node.meta.paperReports ?? 0],
+        [state.lang === "zh" ? "发现批次" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
         [state.lang === "zh" ? "Sources" : "Sources", detail.node.meta.sourceItems ?? 0],
         [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
-        [state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
+        [state.lang === "zh" ? "关联仓库" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
       ])}
       <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮姒傝" : "Provenance summary")}</div>
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "来源概览" : "Provenance summary")}</div>
         <div class="graph-related-list">
           ${Object.entries(raw.relatedByType || {}).map(([type, entries]) => `
             <div class="graph-summary-chip">
@@ -6919,7 +6919,7 @@ renderGraphDetail = function (detail) {
       <span class="pill"><strong>${escapeHtml(detail.relatedEdges?.length ? (state.lang === "zh" ? `${detail.relatedEdges.length} links` : `${detail.relatedEdges.length} links`) : (state.lang === "zh" ? "0 links" : "0 links"))}</strong></span>
     </div>
     <div class="detail-list">
-      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鑺傜偣 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
+      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "节点 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
       ${detail.node.occurredAt ? `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "棣栨鍑虹幇" : "First seen")}</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
       ${metaRows}
     </div>
@@ -6927,11 +6927,11 @@ renderGraphDetail = function (detail) {
     ${renderGraphReportInsights()}
     ${renderGraphConnectionComposer(detail)}
     <div class="graph-detail__section">
-      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers")}</div>
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "相关论文" : "Related papers")}</div>
       <div class="graph-related-list">${relatedNodes}</div>
     </div>
     <div class="graph-detail__section">
-      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮閾炬帴" : "Source links")}</div>
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "来源链接" : "Source links")}</div>
       <div class="fallback-route-list">${links}</div>
     </div>
     <details class="graph-detail__toggle">
@@ -6945,16 +6945,16 @@ renderGraphDetail = function (detail) {
 graphTypeLabel = function (type) {
   if (state.lang === "zh") {
     const labels = {
-      direction: "涓婚",
-      discovery_run: "鍙戠幇鎵规",
-      source_item: "鏉ユ簮",
-      paper: "璁烘枃",
-      paper_report: "璁烘枃鍒嗘瀽",
-      repo: "浠撳簱",
-      repo_report: "浠撳簱鍒嗘瀽",
-      module_asset: "妯″潡褰掓。",
-      workflow_report: "鐮旂┒鎶ュ憡",
-      presentation: "婕旂ず鏂囩",
+      direction: "主题",
+      discovery_run: "发现批次",
+      source_item: "来源",
+      paper: "论文",
+      paper_report: "论文分析",
+      repo: "代码仓库",
+      repo_report: "仓库分析",
+      module_asset: "模块归档",
+      workflow_report: "研究报告",
+      presentation: "演示文档",
     };
     return labels[type] || type;
   }
@@ -6963,32 +6963,32 @@ graphTypeLabel = function (type) {
 
 paperRelationLabel = function (kind) {
   const labels = {
-    shared_discovery_run: state.lang === "zh" ? "Discovered together" : "Discovered together",
-    shared_source_item: state.lang === "zh" ? "鍚屼竴鏉ユ簮" : "Mentioned in the same source",
-    shared_repo: state.lang === "zh" ? "鍚屼竴浠撳簱" : "Share the same code repository",
-    shared_workflow_report: state.lang === "zh" ? "鍚屼竴鎶ュ憡" : "Used in the same report",
-    shared_context: state.lang === "zh" ? "Connected in multiple research contexts" : "Connected in multiple research contexts",
+    shared_discovery_run: state.lang === "zh" ? "同批发现" : "Discovered together",
+    shared_source_item: state.lang === "zh" ? "同一来源提及" : "Mentioned in the same source",
+    shared_repo: state.lang === "zh" ? "共享同一代码仓库" : "Share the same code repository",
+    shared_workflow_report: state.lang === "zh" ? "用于同一报告" : "Used in the same report",
+    shared_context: state.lang === "zh" ? "多个研究上下文相关" : "Connected in multiple research contexts",
   };
-  return labels[kind] || (state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers");
+  return labels[kind] || (state.lang === "zh" ? "相关论文" : "Related papers");
 };
 
 graphMetaLabel = function (key) {
   const labels = {
-    sourceItems: state.lang === "zh" ? "Sources" : "Sources",
-    discoveryRuns: state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs",
-    workflowReports: state.lang === "zh" ? "Reports" : "Reports",
-    paperReports: state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses",
-    linkedRepos: state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos",
-    connectedPapers: state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers",
-    repoReports: state.lang === "zh" ? "浠撳簱鍒嗘瀽" : "Repo analyses",
-    linkedPapers: state.lang === "zh" ? "鍏宠仈璁烘枃" : "Linked papers",
-    moduleAssets: state.lang === "zh" ? "妯″潡褰掓。" : "Module archives",
-    generatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
-    updatedAt: state.lang === "zh" ? "鏇存柊鏃堕棿" : "Updated",
-    paperCount: state.lang === "zh" ? "Paper count" : "Paper count",
-    evidenceCount: state.lang === "zh" ? "Evidence items" : "Evidence items",
-    archivePath: state.lang === "zh" ? "褰掓。璺緞" : "Archive path",
-    pathCount: state.lang === "zh" ? "Path count" : "Path count",
+    sourceItems: state.lang === "zh" ? "来源" : "Sources",
+    discoveryRuns: state.lang === "zh" ? "发现批次" : "Discovery runs",
+    workflowReports: state.lang === "zh" ? "报告" : "Reports",
+    paperReports: state.lang === "zh" ? "论文分析" : "Paper analyses",
+    linkedRepos: state.lang === "zh" ? "关联仓库" : "Linked repos",
+    connectedPapers: state.lang === "zh" ? "相关论文" : "Related papers",
+    repoReports: state.lang === "zh" ? "仓库分析" : "Repo analyses",
+    linkedPapers: state.lang === "zh" ? "关联论文" : "Linked papers",
+    moduleAssets: state.lang === "zh" ? "模块归档" : "Module archives",
+    generatedAt: state.lang === "zh" ? "生成时间" : "Updated",
+    updatedAt: state.lang === "zh" ? "更新时间" : "Updated",
+    paperCount: state.lang === "zh" ? "论文数量" : "Paper count",
+    evidenceCount: state.lang === "zh" ? "证据项" : "Evidence items",
+    archivePath: state.lang === "zh" ? "归档路径" : "Archive path",
+    pathCount: state.lang === "zh" ? "路径数量" : "Path count",
   };
   return labels[key] || key;
 };
@@ -7005,26 +7005,26 @@ renderGraphStats = function (graph) {
   const isolatedPaperCount = (graph.nodes || []).filter((node) => !connectedPaperIds.has(node.id)).length;
   const cards = [
     [
-      state.lang === "zh" ? "鍙璁烘枃" : "Visible papers",
+      state.lang === "zh" ? "可见论文" : "Visible papers",
       String(graph.stats?.nodes ?? 0),
-      state.lang === "zh" ? "Paper count in the current filter" : "Paper count in the current filter",
+      state.lang === "zh" ? "当前筛选下的论文数量" : "Paper count in the current filter",
     ],
     [
-      state.lang === "zh" ? "鍙鍏宠仈" : "Visible links",
+      state.lang === "zh" ? "可见关联" : "Visible links",
       String(graph.stats?.edges ?? 0),
-      state.lang === "zh" ? "褰撳墠鑼冨洿鍐呮垚绔嬬殑璁烘枃鍏宠仈" : "Visible paper-to-paper relationships",
+      state.lang === "zh" ? "当前范围内成立的论文关联" : "Visible paper-to-paper relationships",
     ],
     [
-      state.lang === "zh" ? "瀛ょ珛璁烘枃" : "Isolated papers",
+      state.lang === "zh" ? "孤立论文" : "Isolated papers",
       String(isolatedPaperCount),
-      state.lang === "zh" ? "Papers with no visible connection yet" : "Papers with no visible connection yet",
+      state.lang === "zh" ? "当前没有可见连接的论文" : "Papers with no visible connection yet",
     ],
     [
-      state.lang === "zh" ? "褰撳墠閫変腑" : "Selected paper",
+      state.lang === "zh" ? "当前选中" : "Selected paper",
       state.graphDetail?.node?.label || "-",
       state.graphDetail?.node
-        ? (state.lang === "zh" ? "See why this paper is connected on the right" : "See why this paper is connected on the right")
-        : (state.lang === "zh" ? "Pick a paper to inspect it" : "Pick a paper to inspect it"),
+        ? (state.lang === "zh" ? "在右侧查看关联原因" : "See why this paper is connected on the right")
+        : (state.lang === "zh" ? "选择一篇论文查看详情" : "Pick a paper to inspect it"),
     ],
   ];
 
@@ -7177,14 +7177,14 @@ renderGraphEdges = function (graph) {
                 return `
                   <article class="result-item graph-edge-item">
                     <div class="message__meta">
-                      <span class="message__author">${escapeHtml(state.lang === "zh" ? `鍏宠仈寮哄害 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
+                      <span class="message__author">${escapeHtml(state.lang === "zh" ? `关联强度 ${edge.weight || 1}` : `Strength ${edge.weight || 1}`)}</span>
                     </div>
                     <div class="graph-edge-item__nodes">
                       <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(source?.id || edge.source)}">${escapeHtml(source?.label || edge.source)}</button>
-                      <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "鍏宠仈" : "related")}</span>
+                      <span class="graph-edge-arrow">${escapeHtml(state.lang === "zh" ? "关联" : "related")}</span>
                       <button class="graph-inline-link" type="button" data-graph-open-node="${escapeHtml(target?.id || edge.target)}">${escapeHtml(target?.label || edge.target)}</button>
                     </div>
-                    ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `鍏宠仈渚濇嵁: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
+                    ${supportText ? `<p>${escapeHtml(state.lang === "zh" ? `关联依据: ${supportText}` : `Based on: ${supportText}`)}</p>` : ""}
                   </article>
                 `;
               })
@@ -7209,13 +7209,13 @@ renderGraphDetailHighlights = function (detail) {
 
     return `
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "鐩稿叧璁烘枃" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
+        [state.lang === "zh" ? "相关论文" : "Connected papers", raw.connectedPaperCount ?? detail.relatedNodes?.length ?? 0, "info"],
         [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
         [state.lang === "zh" ? "Discovery runs" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
         [state.lang === "zh" ? "Shared repos" : "Shared repos", detail.node.meta.linkedRepos ?? 0, "ok"],
       ])}
       <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鍏宠仈渚濇嵁" : "Why it connects")}</div>
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "关联依据" : "Why it connects")}</div>
         <div class="graph-related-list">
           ${
             relationKinds.length
@@ -7251,14 +7251,14 @@ renderGraphDetailHighlights = function (detail) {
   if (raw.kind === "canonical_paper") {
     return `
       ${renderGraphDetailStats([
-        [state.lang === "zh" ? "璁烘枃鍒嗘瀽" : "Paper analyses", detail.node.meta.paperReports ?? 0],
-        [state.lang === "zh" ? "鍙戠幇鎵规" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
+        [state.lang === "zh" ? "论文分析" : "Paper analyses", detail.node.meta.paperReports ?? 0],
+        [state.lang === "zh" ? "发现批次" : "Discovery runs", detail.node.meta.discoveryRuns ?? 0],
         [state.lang === "zh" ? "Sources" : "Sources", detail.node.meta.sourceItems ?? 0],
         [state.lang === "zh" ? "Reports" : "Reports", detail.node.meta.workflowReports ?? 0],
-        [state.lang === "zh" ? "鍏宠仈浠撳簱" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
+        [state.lang === "zh" ? "关联仓库" : "Linked repos", detail.node.meta.linkedRepos ?? 0],
       ])}
       <div class="graph-detail__section">
-        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮姒傝" : "Provenance summary")}</div>
+        <div class="card-sub">${escapeHtml(state.lang === "zh" ? "来源概览" : "Provenance summary")}</div>
         <div class="graph-related-list">
           ${Object.entries(raw.relatedByType || {})
             .map(
@@ -7349,19 +7349,19 @@ renderGraphDetail = function (detail) {
       <span class="pill"><strong>${escapeHtml(detail.relatedEdges?.length ? (state.lang === "zh" ? `${detail.relatedEdges.length} links` : `${detail.relatedEdges.length} links`) : (state.lang === "zh" ? "0 links" : "0 links"))}</strong></span>
     </div>
     <div class="detail-list">
-      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "鑺傜偣 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
-      ${detail.node.occurredAt ? `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "棣栨鍑虹幇" : "First seen")}</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
+      <div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "节点 ID" : "Node ID")}</span><strong>${escapeHtml(detail.node.id)}</strong></div>
+      ${detail.node.occurredAt ? `<div class="detail-row"><span>${escapeHtml(state.lang === "zh" ? "首次出现" : "First seen")}</span><strong>${escapeHtml(formatTime(detail.node.occurredAt))}</strong></div>` : ""}
       ${metaRows}
     </div>
     ${highlightMarkup}
     ${renderGraphReportInsights()}
     ${renderGraphConnectionComposer(detail)}
     <div class="graph-detail__section">
-      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鐩稿叧璁烘枃" : "Related papers")}</div>
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "相关论文" : "Related papers")}</div>
       <div class="graph-related-list">${relatedNodes}</div>
     </div>
     <div class="graph-detail__section">
-      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "鏉ユ簮閾炬帴" : "Source links")}</div>
+      <div class="card-sub">${escapeHtml(state.lang === "zh" ? "来源链接" : "Source links")}</div>
       <div class="fallback-route-list">${links}</div>
     </div>
     <details class="graph-detail__toggle">

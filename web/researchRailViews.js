@@ -63,19 +63,19 @@ export function renderDiscoverySchedulerView(ctx, status) {
   const directionMap = new Map((state.researchBriefs || []).map((brief) => [brief.id, brief.label]));
   const selectedDirections = (scheduler.directionIds || []).length
     ? scheduler.directionIds.map((directionId) => directionMap.get(directionId) ? `${directionMap.get(directionId)} (${directionId})` : directionId)
-    : [state.lang === "zh" ? "All enabled templates" : "All enabled templates"];
+    : [state.lang === "zh" ? "全部启用模板" : "All enabled templates"];
   const lastRuns = Object.entries(scheduler.lastRunDateByDirection || {});
 
   els.discoverySchedulerStatus.innerHTML = [
-    [state.lang === "zh" ? "閸氬骸褰寸拋鈥冲灊娴犺濮?" : "Background schedule", scheduler.running ? (state.lang === "zh" ? "Running" : "Running") : (state.lang === "zh" ? "Not running" : "Not running")],
-    [state.lang === "zh" ? "閺勵垰鎯侀崥顖滄暏" : "Enabled", String(Boolean(scheduler.enabled))],
-    [state.lang === "zh" ? "濮ｅ繑妫╅弮鍫曟？" : "Daily time", scheduler.dailyTimeLocal || "09:00"],
-    [state.lang === "zh" ? "Push target" : "Push target", scheduler.senderId || "-"],
-    [state.lang === "zh" ? "鐟曞棛娲婃稉濠氼暯" : "Topics", selectedDirections.join(" | ")],
+    [state.lang === "zh" ? "后台计划" : "Background schedule", scheduler.running ? (state.lang === "zh" ? "运行中" : "Running") : (state.lang === "zh" ? "未运行" : "Not running")],
+    [state.lang === "zh" ? "已启用" : "Enabled", String(Boolean(scheduler.enabled))],
+    [state.lang === "zh" ? "每日时间" : "Daily time", scheduler.dailyTimeLocal || "09:00"],
+    [state.lang === "zh" ? "推送目标" : "Push target", scheduler.senderId || "-"],
+    [state.lang === "zh" ? "主题" : "Topics", selectedDirections.join(" | ")],
     ["Top K", String(scheduler.topK || 5)],
-    [state.lang === "zh" ? "濮ｅ繑顐煎Λ鈧槐銏ｎ啈閺傚洦鏆?" : "Papers / search", String(scheduler.maxPapersPerQuery || 4)],
-    [state.lang === "zh" ? "Updated" : "Updated", scheduler.updatedAt ? formatTime(scheduler.updatedAt) : "-"],
-    [state.lang === "zh" ? "Recent runs" : "Recent runs", lastRuns.length ? lastRuns.map(([directionId, value]) => `${directionMap.get(directionId) || directionId}: ${value}`).join(" | ") : (state.lang === "zh" ? "None yet" : "None yet")],
+    [state.lang === "zh" ? "每次搜索论文数" : "Papers / search", String(scheduler.maxPapersPerQuery || 4)],
+    [state.lang === "zh" ? "更新时间" : "Updated", scheduler.updatedAt ? formatTime(scheduler.updatedAt) : "-"],
+    [state.lang === "zh" ? "最近运行" : "Recent runs", lastRuns.length ? lastRuns.map(([directionId, value]) => `${directionMap.get(directionId) || directionId}: ${value}`).join(" | ") : (state.lang === "zh" ? "暂无" : "None yet")],
   ]
     .map(([label, value]) => `<div class="detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
     .join("");
@@ -135,7 +135,7 @@ export function renderDiscoveryRunsView(ctx) {
             <span>${escapeHtml(formatRelativeTime(run.generatedAt))}</span>
           </div>
           <p>${escapeHtml(run.topTitle || (state.lang === "zh" ? "No top paper recorded." : "No top paper recorded."))}</p>
-          <small>${escapeHtml(`${run.itemCount || 0} items 璺?${run.pushed ? "pushed" : "local"}`)}</small>
+          <small>${escapeHtml(`${run.itemCount || 0} items - ${run.pushed ? "pushed" : "local"}`)}</small>
         </button>
       `
     )

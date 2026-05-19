@@ -5928,3 +5928,550 @@ body::before {
 #agent-runtime-overview {
   margin-bottom: 14px;
 }
+
+/* Final frontend polish: dense research console */
+:root {
+  --bg: #f6f8fb;
+  --bg-accent: #eef3f8;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f1f5f9;
+  --bg-muted: #e8eef5;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --chrome: rgba(255, 255, 255, 0.92);
+  --chrome-strong: rgba(255, 255, 255, 0.98);
+  --text: #334155;
+  --text-strong: #0f172a;
+  --muted: #64748b;
+  --muted-strong: #475569;
+  --border: #d7e0ea;
+  --border-strong: #bdcad8;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-subtle: rgba(37, 99, 235, 0.09);
+  --accent-glow: rgba(37, 99, 235, 0.16);
+  --ok: #15803d;
+  --warn: #b45309;
+  --danger: #b91c1c;
+  --info: #0f766e;
+  --shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 12px 30px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 18px 46px rgba(15, 23, 42, 0.09);
+  --shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.06);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --shell-nav-width: 248px;
+  --shell-nav-rail-width: 76px;
+  --shell-topbar-height: 62px;
+}
+
+body {
+  letter-spacing: 0;
+  background: linear-gradient(180deg, #f7f9fc 0%, #eef3f8 100%);
+}
+
+body::before {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.82), transparent 88%);
+  opacity: 0.38;
+}
+
+body::after {
+  display: none;
+}
+
+.dashboard-header__breadcrumb,
+.dashboard-header__title-row h1,
+.card-title,
+.card-title--lg,
+.card-sub,
+.nav-section__label,
+.ov-card__label,
+.ov-card__value,
+.landing-hero__title,
+.landing-console__title,
+.research-launchpad__copy .page-title,
+.graph-launchpad__copy .page-title,
+.workspace-pulse__headline,
+.launch-checklist__summary-label,
+.launch-checklist__summary strong,
+.launch-checklist__state,
+.graph-stat-card__label,
+.graph-stat-card__value,
+.graph-detail__header h3,
+.report-pill,
+.btn,
+.pill,
+.topbar-search,
+.lang-switch__btn {
+  letter-spacing: 0;
+}
+
+.topbar {
+  padding: 0 18px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+}
+
+.topnav-shell {
+  gap: 14px;
+  min-width: 0;
+}
+
+.topnav-shell__actions,
+.topbar-status,
+.dashboard-header__title-row {
+  min-width: 0;
+}
+
+.dashboard-header__title-row {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.dashboard-header__title-row h1 {
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.dashboard-header__title-row p {
+  max-width: min(58ch, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-search {
+  min-width: 176px;
+  min-height: 36px;
+  border-radius: var(--radius-md);
+}
+
+.topbar-status {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: min(44vw, 560px);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.pill {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.lang-switch {
+  border-radius: var(--radius-md);
+}
+
+.lang-switch__btn {
+  height: 28px;
+  min-width: 38px;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(20, 36, 58, 0.98)),
+    #0f172a;
+}
+
+.sidebar-brand__logo,
+.nav-collapse-toggle,
+.nav-item {
+  border-radius: var(--radius-md);
+}
+
+.content {
+  padding: 18px 20px 30px;
+}
+
+.content > * {
+  width: min(100%, 1480px);
+}
+
+.card,
+.panel-card,
+.side-card,
+.panel-head,
+.overview-hero,
+.report-hero,
+.landing-section,
+.landing-console,
+.landing-hero,
+.workspace-pulse,
+.research-launchpad,
+.graph-launchpad,
+.memory-launchpad,
+.research-rail-group,
+.research-rail-card,
+.chat-workspace-card,
+.chat-thread-shell {
+  border-radius: var(--radius-lg);
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow-sm);
+}
+
+.card::before,
+.landing-hero::before,
+.research-launchpad::before,
+.graph-launchpad::before,
+.memory-launchpad::before,
+.overview-hero::before {
+  display: none;
+}
+
+.detail-row,
+.command-item,
+.result-item,
+.file-item,
+.report-block,
+.activity-item,
+.session-item,
+.pairing-card,
+.code-panel,
+.ov-card,
+.agent-skill,
+.route-chip,
+.graph-conclusion,
+.graph-detail__toggle,
+.landing-command-card,
+.launch-checklist__summary,
+.launch-checklist__item,
+.launch-stage,
+.launch-outcome,
+.showcase-evidence-card,
+.report-evidence-card,
+.research-paper-card {
+  border-radius: var(--radius-md);
+  border-color: var(--border);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.card:hover,
+.ov-card:hover,
+.landing-command-card:hover,
+.session-item:hover,
+.file-item:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.btn {
+  min-height: 36px;
+  border-radius: var(--radius-md);
+  white-space: normal;
+}
+
+.btn--icon {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border-radius: var(--radius-md);
+}
+
+.btn.primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-hover));
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+}
+
+.landing-shell,
+.research-shell,
+.graph-shell,
+.memory-shell {
+  gap: 16px;
+}
+
+.workspace-pulse {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 18px;
+}
+
+.workspace-pulse__headline {
+  font-size: clamp(22px, 2.4vw, 34px);
+}
+
+.workspace-pulse__metrics {
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+}
+
+.landing-console,
+.landing-hero,
+.research-launchpad,
+.graph-launchpad,
+.memory-launchpad,
+.overview-hero {
+  padding: 20px;
+}
+
+.landing-console-grid,
+.landing-grid,
+.research-workspace,
+.graph-workbench {
+  gap: 16px;
+}
+
+.landing-console .ov-cards--landing,
+.ov-cards--hero,
+.graph-stats,
+.graph-detail__stats {
+  gap: 10px;
+}
+
+.ov-card {
+  min-height: 104px;
+  padding: 14px;
+}
+
+.ov-card__value {
+  font-size: clamp(22px, 2.2vw, 32px);
+}
+
+.landing-command-bar--launch {
+  gap: 10px;
+}
+
+.landing-command-bar--launch .landing-command-card,
+.landing-command-card {
+  min-height: 118px;
+  padding: 14px;
+}
+
+.launch-home-grid {
+  grid-template-columns: minmax(360px, 0.96fr) minmax(0, 1.04fr);
+  gap: 16px;
+}
+
+.launch-workflow-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.launch-outcome-grid {
+  gap: 12px;
+}
+
+.launch-checklist__item {
+  min-height: 98px;
+  padding: 14px;
+}
+
+.research-launchpad {
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+}
+
+.research-launchpad__panel {
+  padding: 14px;
+}
+
+.research-rail-group {
+  overflow: clip;
+}
+
+.research-rail-group__summary {
+  padding: 14px;
+}
+
+.research-rail-card {
+  padding: 14px;
+}
+
+.chat-layout {
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr);
+}
+
+.chat-compose,
+.chat-thread-shell {
+  border-radius: var(--radius-lg);
+}
+
+.graph-toolbar,
+.graph-toolbar__actions,
+.graph-filter-chips {
+  flex-wrap: wrap;
+}
+
+.graph-toolbar__search {
+  min-width: min(280px, 100%);
+}
+
+.graph-workbench {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.38fr);
+}
+
+.graph-canvas {
+  min-height: clamp(420px, 54vh, 680px);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(rgba(203, 213, 225, 0.42) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(203, 213, 225, 0.34) 1px, transparent 1px),
+    linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
+  background-size: 28px 28px, 28px 28px, auto;
+}
+
+.graph-detail-card {
+  border-radius: var(--radius-lg);
+}
+
+.graph-related-chip,
+.graph-inline-link,
+.report-pill,
+.graph-summary-chip,
+.graph-detail-stat,
+.graph-stat-card {
+  border-radius: var(--radius-md);
+}
+
+input,
+textarea,
+select,
+.topbar-search,
+.cmd-palette__input {
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 1280px) {
+  .topbar-search {
+    min-width: 148px;
+  }
+
+  .topbar-status {
+    max-width: 360px;
+  }
+
+  .workspace-pulse,
+  .launch-home-grid,
+  .landing-console-grid,
+  .landing-grid,
+  .research-launchpad,
+  .research-workspace,
+  .chat-layout,
+  .graph-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-pulse__actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 960px) {
+  :root {
+    --shell-topbar-height: 58px;
+  }
+
+  .topnav-shell__actions {
+    gap: 8px;
+  }
+
+  .topbar-search__kbd,
+  .topbar-status {
+    display: none;
+  }
+
+  .landing-console .ov-cards--landing,
+  .workspace-pulse__metrics,
+  .launch-workflow-grid,
+  .launch-outcome-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .content {
+    padding: 14px 12px 24px;
+  }
+
+  .topbar {
+    padding: 0 10px;
+  }
+
+  .dashboard-header__breadcrumb,
+  .dashboard-header__title-row p,
+  .topbar-search {
+    display: none;
+  }
+
+  .dashboard-header__title-row h1 {
+    font-size: 18px;
+  }
+
+  .landing-console,
+  .landing-hero,
+  .workspace-pulse,
+  .research-launchpad,
+  .graph-launchpad,
+  .memory-launchpad,
+  .overview-hero,
+  .panel-card,
+  .side-card {
+    padding: 14px;
+  }
+
+  .landing-console .ov-cards--landing,
+  .workspace-pulse__metrics,
+  .launch-workflow-grid,
+  .launch-outcome-grid,
+  .graph-stats,
+  .graph-detail__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-console__head,
+  .launch-checklist__item {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-console__actions,
+  .workspace-pulse__actions,
+  .landing-hero__actions,
+  .landing-cta-banner__actions,
+  .button-row {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .landing-console__actions .btn,
+  .workspace-pulse__actions .btn,
+  .landing-hero__actions .btn,
+  .landing-cta-banner__actions .btn,
+  .button-row .btn {
+    flex: 1 1 100%;
+  }
+
+  .ov-card {
+    min-height: 92px;
+  }
+
+  .graph-canvas {
+    min-height: 380px;
+  }
+}
+
+html body,
+html body * {
+  letter-spacing: 0 !important;
+}
+
+.sidebar,
+.landing-section--latest,
+.landing-section--runs,
+.landing-command-bar--launch .landing-command-card--accent,
+.landing-command-bar--launch .landing-command-card--warn,
+.session-item[data-agent-session-id].session-item--current {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+}
+
+.sidebar {
+  background-image: linear-gradient(180deg, #0f172a 0%, #14243a 100%);
+}
