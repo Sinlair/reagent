@@ -922,6 +922,12 @@ function updateShellClasses() {
   els.shell.classList.toggle("shell--nav-collapsed", state.navCollapsed);
   els.shell.classList.toggle("shell--nav-drawer-open", state.navDrawerOpen);
   els.content.classList.toggle("content--chat", state.activeTab === "chat");
+  els.navToggle?.setAttribute("aria-expanded", String(state.navDrawerOpen));
+  els.navCollapseToggle?.setAttribute("aria-expanded", String(!state.navCollapsed));
+  els.navTabs.forEach((item) => {
+    const active = item.dataset.tab === state.activeTab;
+    item.setAttribute("aria-current", active ? "page" : "false");
+  });
 }
 
 function setSidebarStatus(online) {
@@ -2701,8 +2707,14 @@ function renderAgentSession(session) {
 function renderLatestReport(target, report) {
   if (!target) return;
   if (!report) {
-    target.className = "empty-state compact-empty";
-    target.textContent = t("empty.report", "No report yet.");
+    renderActionEmptyState(target, {
+      title: t("empty.report", "No report yet."),
+      body: state.lang === "zh"
+        ? "创建第一个研究任务后，最新报告会固定显示在这里。"
+        : "Create the first research task and the latest report will stay pinned here.",
+      actionLabel: state.lang === "zh" ? "开始研究" : "Start research",
+      tab: "research"
+    });
     return;
   }
 
@@ -2726,6 +2738,21 @@ function renderLatestReport(target, report) {
     </button>
   `;
   bindReportButtons(target);
+}
+
+function renderActionEmptyState(target, options) {
+  if (!target) return;
+  target.className = options.compact ? "empty-state compact-empty empty-state--action" : "empty-state empty-state--action";
+  target.innerHTML = `
+    <strong>${escapeHtml(options.title)}</strong>
+    ${options.body ? `<span>${escapeHtml(options.body)}</span>` : ""}
+    ${
+      options.tab
+        ? `<button class="btn btn--ghost" type="button" data-open-tab="${escapeHtml(options.tab)}">${escapeHtml(options.actionLabel)}</button>`
+        : ""
+    }
+  `;
+  bindOpenTabButtons(target);
 }
 
 function renderActivityFeed(target, messages) {
@@ -2847,8 +2874,15 @@ function renderProductAlerts() {
 function renderSessionCards(target, reports, compact = false) {
   if (!target) return;
   if (!reports.length) {
-    target.className = compact ? "empty-state compact-empty" : "empty-state";
-    target.textContent = t("empty.sessions", "No sessions yet.");
+    renderActionEmptyState(target, {
+      compact,
+      title: t("empty.sessions", "No sessions yet."),
+      body: state.lang === "zh"
+        ? "运行研究任务后，可以从这里快速回到历史上下文。"
+        : "Run a research task and this list becomes the shortcut back to prior context.",
+      actionLabel: state.lang === "zh" ? "打开 Research" : "Open Research",
+      tab: "research"
+    });
     return;
   }
 
@@ -8279,6 +8313,9 @@ i18n?.init(state);
 state.navCollapsed = loadRememberedNavCollapsed();
 i18n?.apply(state);
 updateShellClasses();
+els.navToggle?.setAttribute("aria-controls", "sidebar");
+els.navToggle?.setAttribute("aria-expanded", "false");
+els.navCollapseToggle?.setAttribute("aria-expanded", String(!state.navCollapsed));
 document.querySelector(".skip-link")?.addEventListener("click", () => {
   window.requestAnimationFrame(() => els.content?.focus({ preventScroll: true }));
 });
@@ -8335,6 +8372,13 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     if (state.paletteOpen) closePalette();
     else openPalette();
+    return;
+  }
+
+  if (event.key === "Escape" && state.navDrawerOpen) {
+    state.navDrawerOpen = false;
+    updateShellClasses();
+    els.navToggle?.focus();
     return;
   }
 
